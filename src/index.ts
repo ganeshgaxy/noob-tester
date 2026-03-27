@@ -23,6 +23,7 @@ import { registerRcaCommands } from "./cli/commands/rca.js";
 import { registerA11yCommands } from "./cli/commands/a11y.js";
 import { registerVisualCommands } from "./cli/commands/visual.js";
 import { registerChainCommands } from "./cli/commands/chain.js";
+import { registerSettingsCommands } from "./cli/commands/settings.js";
 
 program
   .name("noob-tester")
@@ -81,6 +82,7 @@ registerRcaCommands(program);
 registerA11yCommands(program);
 registerVisualCommands(program);
 registerChainCommands(program);
+registerSettingsCommands(program);
 registerSetupCommand(program);
 
 // Evidence path command

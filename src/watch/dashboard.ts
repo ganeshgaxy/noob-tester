@@ -243,6 +243,7 @@ export function getDashboardHtml(port: number, filterSessionId?: string): string
       <div class="nav-group-label">System</div>
       <div class="nav-btn" data-page="context" onclick="switchPage('context')">Context Cache</div>
       <div class="nav-btn" data-page="metrics" onclick="switchPage('metrics')">Metrics</div>
+      <div class="nav-btn" data-page="settings" onclick="switchPage('settings')">Settings</div>
       <div class="nav-btn" data-page="docs" onclick="switchPage('docs')">Docs</div>
     </div>
     <div class="sidebar-stats">
@@ -373,6 +374,11 @@ function render() {
 
   if (currentPage === "audit") {
     renderTestAuditPage();
+    return;
+  }
+
+  if (currentPage === "settings") {
+    renderSettingsPage();
     return;
   }
 
@@ -1074,6 +1080,63 @@ function timeAgo(dateStr) {
   return Math.floor(diff / 86400) + "d ago";
 }
 
+async function renderSettingsPage() {
+  const res = await fetch(API + "/api/settings");
+  const settings = await res.json();
+  const app = document.getElementById("app");
+
+  const providers = ["github", "gitlab", "bitbucket"];
+  const currentProvider = (settings.repo_provider || "").toLowerCase();
+
+  let html = '<div class="panel" style="margin-bottom:16px">';
+  html += '<div class="panel-title">Settings</div>';
+  html += '</div>';
+
+  // Repository Provider
+  html += '<div class="panel">';
+  html += '<div style="margin-bottom:12px;font-weight:600;color:var(--fg)">Repository Provider</div>';
+  html += '<div style="display:flex;gap:12px;margin-bottom:16px">';
+  for (const p of providers) {
+    const selected = currentProvider === p;
+    const style = selected
+      ? 'background:var(--accent);color:var(--bg);border:1px solid var(--accent)'
+      : 'background:var(--bg);color:var(--dim);border:1px solid var(--border);cursor:pointer';
+    html += \`<div onclick="saveRepoProvider('\${p}')" style="padding:12px 24px;border-radius:8px;\${style};font-size:14px;font-weight:500;text-transform:capitalize;transition:all 0.15s ease">
+      \${p === 'github' ? '&#9679; GitHub' : p === 'gitlab' ? '&#9679; GitLab' : '&#9679; Bitbucket'}
+    </div>\`;
+  }
+  html += '</div>';
+  if (currentProvider) {
+    html += \`<div style="font-size:12px;color:var(--dim)">Current: <span style="color:var(--green)">\${currentProvider}</span></div>\`;
+  } else {
+    html += '<div style="font-size:12px;color:var(--yellow)">No repository provider selected. Choose one above.</div>';
+  }
+  html += '</div>';
+
+  // All settings table
+  const allKeys = Object.keys(settings);
+  if (allKeys.length > 0) {
+    html += '<div class="panel" style="margin-top:16px">';
+    html += '<div style="margin-bottom:12px;font-weight:600;color:var(--fg)">All Settings</div>';
+    html += '<table class="data-table"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+    for (const key of allKeys) {
+      html += \`<tr><td style="color:var(--accent)">\${esc(key)}</td><td>\${esc(settings[key])}</td></tr>\`;
+    }
+    html += '</tbody></table></div>';
+  }
+
+  app.innerHTML = html;
+}
+
+window.saveRepoProvider = async function(provider) {
+  await fetch(API + "/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "repo_provider", value: provider })
+  });
+  renderSettingsPage();
+};
+
 async function renderDocsPage() {
   const res = await fetch(API + "/api/docs");
   const html = await res.text();
@@ -1413,7 +1476,10 @@ async function renderAnalysesPage() {
       html += \`<div class="session-card" onclick="analysisSelectedRun='\${runId}';analysisSelectedId='';renderAnalysesPage()">
         <div class="session-header">
           <span class="session-id" style="font-size:14px">\${esc(g.ref)}</span>
-          <span style="font-size:12px;color:var(--dim)">\${g.items.length} analyses</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:12px;color:var(--dim)">\${g.items.length} analyses</span>
+            <button onclick="event.stopPropagation();deleteAnalysesForRun('\${runId}','\${esc(g.ref)}')" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;cursor:pointer" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">Delete</button>
+          </div>
         </div>
         \${g.targetUrl ? \`<div style="font-size:12px;color:var(--dim);margin-top:2px">\${esc(g.targetUrl)}</div>\` : ""}
         <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
@@ -1749,6 +1815,14 @@ async function exportAnalysisPdf(id) {
     win.document.close();
     setTimeout(() => { win.print(); }, 500);
   } catch (e) { alert("Export failed: " + e.message); }
+}
+
+async function deleteAnalysesForRun(runId, ref) {
+  if (!confirm("Delete all analyses for " + ref + "?")) return;
+  await fetch(API + "/api/analyses/delete?run=" + encodeURIComponent(runId), { method: "DELETE" });
+  analysisSelectedRun = "";
+  analysisSelectedId = "";
+  renderAnalysesPage();
 }
 
 async function exportAllAnalysesMd(runId) {

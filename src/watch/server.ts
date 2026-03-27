@@ -671,6 +671,16 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
+    if (url.pathname === "/api/analyses/delete" && req.method === "DELETE") {
+      const db = getDb();
+      const runId = url.searchParams.get("run");
+      if (!runId) { res.writeHead(400); res.end('{"error":"run param required"}'); return; }
+      const result = db.prepare("DELETE FROM analyses WHERE run_id = ?").run(runId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ deleted: result.changes }));
+      return;
+    }
+
     // ── Metrics API ──
 
     if (url.pathname === "/api/metrics" && req.method === "GET") {
@@ -1735,6 +1745,39 @@ export function startWatchServer(opts: WatchOptions): void {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ deleted: true, runs: runIds.length }));
         } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })); }
+      });
+      return;
+    }
+
+    // ── Settings API ──
+
+    if (url.pathname === "/api/settings" && req.method === "GET") {
+      const sdb = getDb();
+      const rows = sdb.prepare("SELECT key, value FROM settings").all() as Array<{ key: string; value: string }>;
+      const settings: Record<string, string> = {};
+      for (const row of rows) settings[row.key] = row.value;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(settings));
+      return;
+    }
+
+    if (url.pathname === "/api/settings" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { key, value } = JSON.parse(body);
+          if (!key || !value) { res.writeHead(400); res.end('{"error":"key and value required"}'); return; }
+          const sdb = getDb();
+          sdb.prepare(
+            "INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')"
+          ).run(uuidv4(), key, value, value);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
       });
       return;
     }

@@ -1134,6 +1134,19 @@ CREATE INDEX IF NOT EXISTS idx_uimf_map ON ui_map_forms(ui_map_id);
     } catch { /* ok */ }
     db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("045-a11y-ticket");
   }
+
+  if (!applied.has("046-settings")) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        id         TEXT PRIMARY KEY,
+        key        TEXT NOT NULL UNIQUE,
+        value      TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("046-settings");
+  }
 }
 
 function tryLoadVss(db: Database.Database): void {
