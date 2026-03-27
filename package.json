@@ -1,5 +1,5 @@
 {
-  "name": "noob-tester",
+  "name": "@ganeshgaxy/noob-tester",
   "version": "0.1.0",
   "description": "Automated manual QA tester — CLI data layer + Claude Code skills",
   "type": "module",
