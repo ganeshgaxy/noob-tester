@@ -77,7 +77,7 @@ Multiple Claude Code sessions run in parallel — they share the same database a
 ## Install
 
 ```bash
-npm install -g noob-tester
+npm install -g @ganeshgaxy/noob-tester
 noob-tester setup
 ```
 
