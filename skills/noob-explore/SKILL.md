@@ -7,29 +7,6 @@ description: Execute UI test cases via browser automation. Uses run packs for tr
 
 Execute ONE test case per invocation via browser automation. Invoke repeatedly for all cases.
 
-## 0. Understand the Ticket + Codebase (cache-first)
-
-Before executing, understand WHAT you're testing:
-
-```bash
-# Read ticket context from cache (prior skills likely already fetched these)
-noob-tester ticket-context get <TICKET-ID> --type ticket_info    # miss → getJiraIssue → save
-noob-tester ticket-context get <TICKET-ID> --type remote_links   # miss → getJiraIssueRemoteIssueLinks → save
-noob-tester ticket-context get <TICKET-ID> --type parent_issue   # miss → getJiraIssue on parent → save
-noob-tester ticket-context get <TICKET-ID> --type mr_metadata    # miss → parse remote_links → save
-```
-
-Read the ticket description + AC to understand the feature being tested. Read parent issue for broader context.
-
-```bash
-# Get repos + MR diffs (for root cause analysis on failures)
-noob-tester ticket-context get <TICKET-ID> --type mr_diff:!<mr-or-pr-id>
-# If miss: glab mr view <id> --repo <org/repo> OR bb pr diff <id> -R workspace/repo --raw → save
-
-REPO_PATH=$(noob-tester repos path <repo-name>)
-# Keep REPO_PATH available — you'll need it if a test fails to trace root cause in code
-```
-
 ## 1. Resolve Target URL + Initialize + UI Map + Claim
 
 **Before init, resolve the target URL from the secret target name.** Do NOT guess or hardcode URLs.

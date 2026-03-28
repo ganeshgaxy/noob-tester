@@ -18,13 +18,15 @@ Each skill works **standalone** or as part of a pipeline:
 
 | User says... | Use this |
 |---|---|
-| "analyze the impact of PROJ-123" | `/noob-analyze` |
-| "write test cases for PROJ-123" | `/noob-testcase` |
-| "PROJ-123 is ready for QA" / "plan the testing" | `/noob-plan` |
-| "test the login page at https://app.com" | `/noob-explore` |
-| "run the test cases for PROJ-123" | `/noob-explore` (ui/ui_api) + `/noob-api-explore` (api) |
-| "run the API tests for PROJ-123" | `/noob-api-explore` |
-| "test the endpoints for PROJ-123" | `/noob-api-explore` |
+| "cache ticket context for PROJ-123" / "fetch ticket data" | `/noob-ticket-cache` |
+| "set up repos for PROJ-123" / "clone the repos" | `/noob-ticket-cache` → `/noob-repos-setup` |
+| "analyze the impact of PROJ-123" | `/noob-ticket-cache` → `/noob-repos-setup` → `/noob-analyze` |
+| "write test cases for PROJ-123" | `/noob-ticket-cache` → `/noob-repos-setup` → `/noob-testcase` |
+| "PROJ-123 is ready for QA" / "plan the testing" | `/noob-ticket-cache` → `/noob-repos-setup` → `/noob-plan` |
+| "test the login page at https://app.com" | `/noob-ticket-cache` → `/noob-repos-setup` → `/noob-explore` |
+| "run the test cases for PROJ-123" | `/noob-ticket-cache` → `/noob-repos-setup` → `/noob-explore` (ui/ui_api) + `/noob-api-explore` (api) |
+| "run the API tests for PROJ-123" | `/noob-ticket-cache` → `/noob-repos-setup` → `/noob-api-explore` |
+| "test the endpoints for PROJ-123" | `/noob-ticket-cache` → `/noob-repos-setup` → `/noob-api-explore` |
 | "rerun PROJ-123" / "fresh run" | `/noob-explore` or `/noob-api-explore` (forces new run pack) |
 | "continue testing PROJ-123" | `/noob-explore` or `/noob-api-explore` (resume only) |
 | "why did these tests fail?" | `/noob-rca` |
@@ -32,7 +34,7 @@ Each skill works **standalone** or as part of a pipeline:
 | "check accessibility of PROJ-123" | `/noob-explore` (a11y scans happen automatically on every page) |
 | "what's the coverage for repo X?" | `noob-tester coverage stats <repo>` / `coverage uncovered <repo>` |
 | "generate a report" | `/noob-report` |
-| "full QA test of PROJ-123" | Full pipeline (analyze → testcase → plan → explore + api-explore → rca → report) |
+| "full QA test of PROJ-123" | Full pipeline (ticket-cache → repos-setup → analyze → testcase → plan → explore + api-explore → rca → report) |
 
 ## Before Starting
 
@@ -284,7 +286,7 @@ These commands replace multi-step bash sequences. Use them instead of the indivi
 | `noob-tester capture-page --run X --url Y --action N` | 4× `agent-browser` + 4× `capture store` + `uimap page` + `uimap scan` | Every page load in noob-explore |
 | `noob-tester claim-smart --pack X --ticket Y --session Z` | 20+ lines of claim/retry/done logic | noob-explore claim loop |
 | `noob-tester auth-resolve --pack X` | `runpack meta` + `secrets get-profile` + jq parsing | Login/auth in explore + api-explore |
-| `noob-tester repos setup-for-ticket --ticket X` | `repos discover` + `repos sync` + `repos index` | analyze, plan, testcase, api-explore |
+| `noob-tester repos setup-for-ticket --ticket X` | `repos discover` + `repos sync` + `repos index` | `/noob-repos-setup` |
 | `noob-tester api-request --method POST --url X` | `curl` + parse + `capture store` + `runpack log` + `apimap call` | Every HTTP request in api-explore |
 
 ## Data Reuse Across Skills

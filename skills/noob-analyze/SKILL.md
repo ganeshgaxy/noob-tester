@@ -9,31 +9,7 @@ Analyze a ticket deeply against the codebase. Produces 4 analyses: gap, requirem
 
 **This runs BEFORE dev starts** — analyzing the EXISTING codebase to predict impact.
 
-## 1. Read Ticket (cache every MCP call)
-
-```bash
-# For EACH type: check cache → if miss, fetch via MCP → save to cache
-# Pattern: CACHED=$(noob-tester ticket-context get <TICKET-ID> --type <type>)
-#   If cached: false → fetch via Atlassian MCP → noob-tester ticket-context save <TICKET-ID> --type <type> --content '...' --source atlassian_mcp
-noob-tester ticket-context get <TICKET-ID> --type ticket_info    # miss → getJiraIssue → save
-noob-tester ticket-context get <TICKET-ID> --type remote_links   # miss → getJiraIssueRemoteIssueLinks → save
-noob-tester ticket-context get <TICKET-ID> --type comments       # miss → extract from ticket → save
-noob-tester ticket-context get <TICKET-ID> --type parent_issue   # miss → getJiraIssue on parent key → save
-noob-tester ticket-context get <TICKET-ID> --type linked_tickets
-# miss → getJiraIssue on parent key → extract subtasks/children from parent response → save
-# Do NOT use searchJiraIssuesUsingJql — the parent issue already contains its children.
-noob-tester ticket-context get <TICKET-ID> --type confluence:<pageId>  # miss → getConfluencePage → save
-```
-
-## 2. Find Repos
-
-```bash
-noob-tester repos setup-for-ticket --ticket <TICKET-ID> --url <repo-url-1> <repo-url-2>
-```
-
-**No repos = STOP.** No branch switching — this is pre-dev, analyze default branch.
-
-## 3. Create Session
+## 1. Create Session
 
 ```bash
 INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "<url>" --task "Analyzing: <brief>" --labels "analyze")
@@ -42,7 +18,7 @@ RUN_ID=$(echo "$INIT" | jq -r '.runId')
 noob-tester session heartbeat $SESSION_ID --phase 1 --run-id $RUN_ID
 ```
 
-## 4. Search Codebase
+## 2. Search Codebase
 
 ```bash
 noob-tester query codebase "<requirement keyword>" --expand
@@ -52,7 +28,7 @@ REPO_PATH=$(noob-tester repos path <repo-name>)
 
 Also browse repos via glab/bb (detect provider from URL).
 
-## 5. Produce 4 Analyses
+## 3. Produce 4 Analyses
 
 ### Gap Analysis
 ```bash
@@ -82,7 +58,7 @@ noob-tester save analysis $RUN_ID --type impact \
   --summary "..."
 ```
 
-## 6. Complete
+## 4. Complete
 
 ```bash
 noob-tester log action $RUN_ID --phase 1 --agent analyst --description "4 analyses complete"

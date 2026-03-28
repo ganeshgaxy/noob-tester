@@ -18,62 +18,7 @@ Create a test plan AFTER dev is done. Read wide for context, write narrow from M
 - Plan steps come ONLY from this Jira's description/AC + what the MR diff actually changed
 - Do NOT plan steps for sibling Jira features — those get their own plans
 
-## 1. Gather Context (cache every MCP call)
-
-**NEVER call Jira/Confluence/GitLab MCP tools directly (getJiraIssue, getJiraIssueRemoteIssueLinks, searchJiraIssuesUsingJql, getConfluencePage, etc.). ALWAYS go through `noob-tester ticket-context get` first.** The cache avoids redundant API calls across skills. Only call MCP tools on a cache miss (when `ticket-context get` returns `{cached: false}`), then immediately save the result with `ticket-context save`.
-
-**Cache-first flow for each context type:**
-1. `noob-tester ticket-context get <TICKET-ID> --type <type>` — check cache
-2. If `{cached: true}` → use the returned content, done
-3. If `{cached: false}` → NOW call the MCP tool to fetch data
-4. `noob-tester ticket-context save <TICKET-ID> --type <type> --content '<json>'` — save to cache
-5. Use the fetched content
-
-```bash
-# This ticket
-noob-tester ticket-context get <TICKET-ID> --type ticket_info
-# if miss → getJiraIssue → ticket-context save <TICKET-ID> --type ticket_info --content '<result>'
-
-noob-tester ticket-context get <TICKET-ID> --type remote_links
-# if miss → getJiraIssueRemoteIssueLinks → ticket-context save
-
-noob-tester ticket-context get <TICKET-ID> --type comments
-# if miss → extract from ticket_info → ticket-context save
-
-# Parent issue — for broader context (feature area, user roles, goals)
-noob-tester ticket-context get <TICKET-ID> --type parent_issue
-# if miss → get parent key from ticket_info → getJiraIssue on parent key → ticket-context save
-
-# Grandparent issue — for full feature hierarchy context
-noob-tester ticket-context get <TICKET-ID> --type grandparent_issue
-# if miss → get parent key from parent_issue → getJiraIssue on parent's parent key → ticket-context save
-
-# Sibling Jiras — other children of the same parent (for understanding related work)
-noob-tester ticket-context get <TICKET-ID> --type linked_tickets
-# if miss → get parent key from ticket_info → getJiraIssue on parent key →
-#   extract subtasks/children array from parent's response (fields.subtasks or fields.issuelinks) →
-#   ticket-context save <TICKET-ID> --type linked_tickets --content '<subtasks array JSON>'
-# Do NOT use searchJiraIssuesUsingJql — the parent issue already contains its children.
-# Read each sibling's title + description to understand what else is being built
-
-# MR metadata
-noob-tester ticket-context get <TICKET-ID> --type mr_metadata
-# if miss → parse remote_links → ticket-context save
-```
-
-## 2. Find Repos + Read MR Diffs
-
-```bash
-noob-tester repos setup-for-ticket --ticket <TICKET-ID> --url <repo-url-1> --branch <source-branch>
-REPO_PATH=$(noob-tester repos path <repo-name>)
-
-noob-tester ticket-context get <TICKET-ID> --type mr_diff:!<mr-or-pr-id>
-# If miss: glab mr view <id> --repo <org/repo> OR bb pr diff <id> -R workspace/repo --raw → save
-```
-
-**No repos = STOP.**
-
-## 3. Build Context Block (MANDATORY)
+## 1. Build Context Block (MANDATORY)
 
 ```
 === CONTEXT BLOCK ===
@@ -120,7 +65,7 @@ KEY_COMPONENTS:
 
 **IMPACTED AREAS:** `noob-tester query codebase "<changed file>" --expand` → find files that import the changed files. These are regression risks.
 
-## 4. Create Session
+## 2. Create Session
 
 ```bash
 INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "<url>" --task "Planning: <ticket>" --labels "plan")
@@ -129,14 +74,14 @@ RUN_ID=$(echo "$INIT" | jq -r '.runId')
 noob-tester session heartbeat $SESSION_ID --phase 2 --run-id $RUN_ID
 ```
 
-## 5. Prior Context
+## 3. Prior Context
 
 ```bash
 noob-tester query analysis --ticket <TICKET-ID>   # prior analysis
 noob-tester query failures --limit 20               # known failure patterns
 ```
 
-## 6. Save Plan
+## 4. Save Plan
 
 **Plan sections derive from Context Block:**
 
@@ -216,7 +161,7 @@ noob-tester save step $PLAN_ID --run $RUN_ID --order 1 \
 - Generic steps not tied to a specific changed file
 - Steps with unverified URLs or assumed navigation
 
-## 7. Complete
+## 5. Complete
 
 ```bash
 noob-tester log action $RUN_ID --phase 2 --agent planner --description "Plan: N steps"

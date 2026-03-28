@@ -25,62 +25,7 @@ Read wide for context, write narrow from MR diff + ticket.
 2. **Impact Regression** (priority 2) — tests for code IMPACTED by the MR changes (imports, dependents)
 3. **General Regression** (priority 3) — critical app flows near changed areas
 
-## 1. Gather Context (BEFORE session)
-
-**Repos are mandatory. No repos = no test cases. Stop.**
-
-**NEVER call Jira/Confluence/GitLab MCP tools directly (getJiraIssue, getJiraIssueRemoteIssueLinks, searchJiraIssuesUsingJql, getConfluencePage, etc.). ALWAYS go through `noob-tester ticket-context get` first.** The cache avoids redundant API calls across skills. Only call MCP tools on a cache miss (when `ticket-context get` returns `{cached: false}`), then immediately save the result with `ticket-context save`.
-
-**Cache-first flow for each context type:**
-1. `noob-tester ticket-context get <TICKET-ID> --type <type>` — check cache
-2. If `{cached: true}` → use the returned content, done
-3. If `{cached: false}` → NOW call the MCP tool to fetch data
-4. `noob-tester ticket-context save <TICKET-ID> --type <type> --content '<json>'` — save to cache
-5. Use the fetched content
-
-```bash
-# This ticket
-noob-tester ticket-context get <TICKET-ID> --type ticket_info
-# if miss → getJiraIssue → ticket-context save <TICKET-ID> --type ticket_info --content '<result>'
-
-noob-tester ticket-context get <TICKET-ID> --type remote_links
-# if miss → getJiraIssueRemoteIssueLinks → ticket-context save
-
-noob-tester ticket-context get <TICKET-ID> --type comments
-# if miss → extract from ticket_info → ticket-context save
-
-# Parent issue — for broader context
-noob-tester ticket-context get <TICKET-ID> --type parent_issue
-# if miss → get parent key from ticket_info → getJiraIssue on parent key → ticket-context save
-
-# Grandparent issue — for full feature hierarchy context
-noob-tester ticket-context get <TICKET-ID> --type grandparent_issue
-# if miss → get parent key from parent_issue → getJiraIssue on parent's parent key → ticket-context save
-
-# Sibling Jiras — other children of parent (understand related work, NOT test them)
-noob-tester ticket-context get <TICKET-ID> --type linked_tickets
-# if miss → get parent key from ticket_info → getJiraIssue on parent key →
-#   extract subtasks/children array from parent's response (fields.subtasks or fields.issuelinks) →
-#   ticket-context save <TICKET-ID> --type linked_tickets --content '<subtasks array JSON>'
-# Do NOT use searchJiraIssuesUsingJql — the parent issue already contains its children.
-
-# MR metadata + diffs
-noob-tester ticket-context get <TICKET-ID> --type mr_metadata
-# if miss → parse remote_links → ticket-context save
-
-noob-tester ticket-context get <TICKET-ID> --type mr_diff:!<id>
-# if miss → glab mr view / bb pr diff → ticket-context save
-
-# Confluence pages if linked
-noob-tester ticket-context get <TICKET-ID> --type confluence:<pageId>
-# if miss → getConfluencePage → ticket-context save
-
-# Repos
-noob-tester repos setup-for-ticket --ticket <TICKET-ID> --url <repo-url-1> --branch <source-branch>
-REPO_PATH=$(noob-tester repos path <repo-name>)
-```
-
-## 2. Build Context Block (MANDATORY)
+## 1. Build Context Block (MANDATORY)
 
 ```
 === CONTEXT BLOCK ===
@@ -130,7 +75,7 @@ PRECONDITIONS:
 
 **IMPACTED AREAS:** `noob-tester query codebase "<changed file>" --expand` → files that import changed files = impact regression targets.
 
-## 3. Create Session
+## 2. Create Session
 
 ```bash
 INIT=$(noob-tester init --ticket <TICKET-ID> --task "Test cases: <ticket>" --labels "testcase")
@@ -139,7 +84,7 @@ RUN_ID=$(echo "$INIT" | jq -r '.runId')
 noob-tester session heartbeat $SESSION_ID --phase 3 --run-id $RUN_ID
 ```
 
-## 4. Check Existing Plan
+## 3. Check Existing Plan
 
 ```bash
 noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
@@ -147,7 +92,7 @@ noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
 
 If a plan exists, use it — but still verify against Context Block.
 
-## 5. Write Test Cases (using Context Block)
+## 4. Write Test Cases (using Context Block)
 
 **If a companion skill provides test-writing instructions, follow those instead of the default templates below. However, these rules are NON-NEGOTIABLE regardless of companion skill:**
 - GRANDPARENT + PARENT context MUST appear in every test case's steps (Given, When, Then), not just the title
@@ -237,13 +182,13 @@ noob-tester testcase create $RUN_ID --ticket <TICKET-ID> --type general_regressi
 - Cover features described in ticket but not in MR diff
 - Are **generic enough to apply to multiple flows** — every test case MUST be unambiguous about which flow it belongs to (e.g., "new course creation" not just "course creation"). If GRANDPARENT/PARENT context distinguishes this flow from others, that context MUST appear in the title, preconditions, and Given clause
 
-## 6. Mark Ready
+## 5. Mark Ready
 
 ```bash
 noob-tester testcase ready-all <TICKET-ID>
 ```
 
-## 7. Complete
+## 6. Complete
 
 ```bash
 noob-tester log action $RUN_ID --phase 3 --agent testcase-writer --description "Generated N test cases"

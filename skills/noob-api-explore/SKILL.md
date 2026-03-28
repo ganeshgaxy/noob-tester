@@ -7,32 +7,7 @@ description: Execute ALL api-layer test cases in one invocation using curl/jq. R
 
 Execute ALL `api` layer test cases in one invocation. Reads codebase once, authenticates once, loops through every test.
 
-## 1. Read Ticket + Find Repos (BEFORE session)
-
-```bash
-# For EACH type: check cache → if miss, fetch via MCP → save to cache
-noob-tester ticket-context get <TICKET-ID> --type ticket_info    # miss → getJiraIssue → save
-noob-tester ticket-context get <TICKET-ID> --type remote_links   # miss → getJiraIssueRemoteIssueLinks → save
-noob-tester ticket-context get <TICKET-ID> --type comments       # miss → extract from ticket → save
-noob-tester ticket-context get <TICKET-ID> --type parent_issue   # miss → getJiraIssue on parent → save
-noob-tester ticket-context get <TICKET-ID> --type mr_metadata    # miss → parse remote_links → save
-```
-
-Read ticket description + AC to understand what endpoints are being tested.
-
-```bash
-# Get repos + MR diffs (for root cause analysis on failures)
-noob-tester repos setup-for-ticket --ticket <TICKET-ID> --url <repo-url-1> <repo-url-2> --branch <source-branch>
-REPO_PATH=$(noob-tester repos path <repo-name>)
-
-# Read MR diffs (cache first)
-noob-tester ticket-context get <TICKET-ID> --type mr_diff:!<mr-or-pr-id>
-# If miss: glab mr view <id> --repo <org/repo> OR bb pr diff <id> -R workspace/repo --raw → save
-```
-
-**If 0 repos → STOP. Tell the user. Exit.**
-
-## 2. Deep Codebase Analysis + API Map (ONCE)
+## 1. Deep Codebase Analysis + API Map (ONCE)
 
 Read ALL impacted endpoints before the test loop:
 
@@ -67,7 +42,7 @@ noob-tester apimap response $EP_ID --map $APIMAP_ID --status 400 --description "
 noob-tester apimap chain $APIMAP_ID --from $POST_EP_ID --to $GET_EP_ID --type creates
 ```
 
-## 3. Initialize
+## 2. Initialize
 
 ```bash
 INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "<base-url>" --task "API Testing: <TICKET-ID>" --labels "api-explore" --secret-target <target-name> --secret-role <role>)
@@ -76,7 +51,7 @@ RUN_ID=$(echo "$INIT" | jq -r '.runId')
 RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
 ```
 
-## 4. Populate Run Pack + Authenticate
+## 3. Populate Run Pack + Authenticate
 
 ```bash
 # Add all API test cases at once
@@ -103,7 +78,7 @@ fi
 
 If auth fails → block all entries, log tech issue, exit.
 
-## 5. Execute Loop
+## 4. Execute Loop
 
 For each test case entry:
 
@@ -142,7 +117,7 @@ CLEANUP_STACK+=("DELETE /api/<resource>/$CREATED_ID")
 # After test: delete in reverse order
 ```
 
-## 6. Handle Failures — Trace Root Cause in Code
+## 5. Handle Failures — Trace Root Cause in Code
 
 When an API test fails (wrong status, missing fields, 5xx):
 
@@ -169,7 +144,7 @@ For passing tests:
 noob-tester runpack result $ENTRY_ID --status passed --results '{"runner":"api","summary":"All steps passed"}'
 ```
 
-## 7. Complete
+## 6. Complete
 
 ```bash
 noob-tester log action $RUN_ID --phase 4 --agent api-explorer \
