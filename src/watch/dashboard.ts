@@ -1,250 +1,414 @@
 import { getWireframeScript } from "./wireframe.js";
 import { getCanvasRendererScript } from "./canvas-renderer.js";
 import { getApiCanvasRendererScript } from "./api-canvas-renderer.js";
+import { getDashboardHelpersScript } from "./dashboard-helpers.js";
+import { getCanvasBaseScript } from "./canvas-base.js";
 
 export function getDashboardHtml(port: number, filterSessionId?: string): string {
   const wireframeScript = getWireframeScript();
   const apiCanvasScript = getApiCanvasRendererScript();
   const canvasScript = getCanvasRendererScript();
+  const helpersScript = getDashboardHelpersScript();
+  const canvasBaseScript = getCanvasBaseScript();
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <title>noob-watch${filterSessionId ? ` — ${filterSessionId.slice(0, 8)}` : ""}</title>
 <style>
+  /* ── Design tokens ── */
   :root {
-    --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --dim: #7d8590; --accent: #58a6ff;
-    --green: #3fb950; --yellow: #d29922; --red: #f85149;
-    --orange: #db6d28; --purple: #bc8cff;
+    --bg: #0a0e14; --surface: #12161e; --surface-raised: #1a1f2b;
+    --border: #232a36; --border-light: #2d3545;
+    --text: #e2e8f0; --dim: #64748b; --muted: #475569;
+    --accent: #60a5fa; --accent-dim: rgba(96,165,250,0.12); --accent-glow: rgba(96,165,250,0.25);
+    --green: #34d399; --green-dim: rgba(52,211,153,0.12);
+    --yellow: #fbbf24; --yellow-dim: rgba(251,191,36,0.12);
+    --red: #f87171; --red-dim: rgba(248,113,113,0.12);
+    --orange: #fb923c; --orange-dim: rgba(251,146,60,0.12);
+    --purple: #c084fc; --purple-dim: rgba(192,132,252,0.12);
+    --font-sans: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace;
+    --radius: 10px; --radius-sm: 6px; --radius-xs: 4px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.25);
+    --shadow-lg: 0 12px 40px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3);
+    --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
-  body { font-family: -apple-system, 'Segoe UI', monospace; background: var(--bg); color: var(--text); }
+  body { font-family: var(--font-sans); background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
   .layout { display: flex; height: 100vh; }
 
-  .sidebar { width: 160px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; }
-  .sidebar-logo { padding: 16px 14px 12px; border-bottom: 1px solid var(--border); }
-  .sidebar-logo h1 { font-size: 15px; color: var(--accent); font-weight: 700; }
-  .sidebar-logo .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 5px; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* ── Sidebar ── */
+  .sidebar { width: 200px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .sidebar-logo { padding: 22px 18px 18px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo h1 { font-size: 17px; color: var(--text); font-weight: 800; letter-spacing: -0.5px; font-family: var(--font-mono); }
+  .sidebar-logo h1 .brand-accent { color: var(--accent); }
+  .sidebar-logo .version { font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: 0; margin-left: 6px; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 
   .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
-  .nav-btn { display: block; width: 100%; text-align: left; padding: 6px 14px; font-size: 12px; cursor: pointer; background: none; border: none; border-left: 3px solid transparent; color: var(--dim); transition: all 0.12s; }
-  .nav-btn:hover { color: var(--text); background: rgba(88,166,255,0.05); }
-  .nav-btn.active { color: var(--accent); border-left-color: var(--accent); background: rgba(88,166,255,0.08); font-weight: 600; }
-  .md-content h1 { font-size:16px; color:var(--accent); margin:16px 0 8px; font-weight:700; }
-  .md-content h2 { font-size:14px; color:var(--accent); margin:14px 0 6px; font-weight:700; }
-  .md-content h3 { font-size:13px; color:var(--text); margin:12px 0 4px; font-weight:700; }
-  .md-content h4 { font-size:12px; color:var(--dim); margin:10px 0 4px; font-weight:600; text-transform:uppercase; }
-  .md-content p { margin:6px 0; }
-  .md-content ul, .md-content ol { padding-left:20px; margin:6px 0; }
-  .md-content li { margin:2px 0; }
-  .md-content code { background:rgba(88,166,255,0.1); color:var(--accent); padding:1px 4px; border-radius:3px; font-size:11px; }
-  .md-content pre { background:var(--bg); padding:10px; border-radius:6px; font-size:11px; overflow-x:auto; margin:8px 0; }
-  .md-content pre code { background:none; padding:0; font-size:11px; }
-  .md-content strong { color:var(--text); }
-  .md-content hr { border:none; border-top:1px solid var(--border); margin:12px 0; }
-  .md-content table { width:100%; font-size:12px; border-collapse:collapse; margin:8px 0; }
-  .md-content th, .md-content td { padding:6px 8px; border-bottom:1px solid var(--border); text-align:left; }
-  .md-content th { color:var(--dim); font-size:11px; text-transform:uppercase; }
-  .md-content blockquote { border-left:3px solid var(--accent); padding-left:12px; margin:8px 0; color:var(--dim); }
-  .md-content a { color:var(--accent); }
+  .nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 7px 16px; font-size: 12.5px; font-weight: 450; cursor: pointer; background: none; border: none; border-left: 3px solid transparent; color: var(--dim); transition: all var(--transition); letter-spacing: 0.01em; }
+  .nav-btn .nav-icon { font-size: 14px; width: 20px; text-align: center; opacity: 0.6; transition: opacity var(--transition); }
+  .nav-btn:hover { color: var(--text); background: rgba(96,165,250,0.05); }
+  .nav-btn:hover .nav-icon { opacity: 1; }
+  .nav-btn.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+  .nav-btn.active .nav-icon { opacity: 1; }
 
-  .nav-group-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dim); padding: 14px 14px 5px; font-weight: 600; opacity: 0.45; border-top: 1px solid var(--border); margin-top: 4px; }
+  .nav-group-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 18px 16px 6px; font-weight: 600; border-top: 1px solid var(--border); margin-top: 4px; }
+  .nav-group-label:first-child { border-top: none; margin-top: 0; padding-top: 8px; }
 
-  .sidebar-stats { padding: 12px 14px; border-top: 1px solid var(--border); }
-  .sidebar-stats .stat { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
-  .sidebar-stats .stat-value { font-size: 14px; font-weight: bold; }
-  .sidebar-stats .stat-label { font-size: 10px; color: var(--dim); text-transform: uppercase; }
+  .sidebar-stats { padding: 14px 16px; border-top: 1px solid var(--border); }
+  .sidebar-stats .stat { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+  .sidebar-stats .stat-value { font-size: 15px; font-weight: 700; font-family: var(--font-mono); }
+  .sidebar-stats .stat-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
 
-  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: 12px 16px 0; }
+  /* ── Main content ── */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: 16px 20px 0; }
 
+  /* ── Stats ── */
   .stat { text-align: center; }
-  .stat-value { font-size: 20px; font-weight: bold; }
-  .stat-label { font-size: 10px; color: var(--dim); text-transform: uppercase; }
+  .stat-value { font-size: 22px; font-weight: 700; font-family: var(--font-mono); letter-spacing: -0.5px; }
+  .stat-label { font-size: 9.5px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; margin-top: 2px; }
 
-  .grid { display: grid; grid-template-columns: 2fr 3fr; gap: 12px; overflow: hidden; height: 100%; }
+  /* ── Grid ── */
+  .grid { display: grid; grid-template-columns: 2fr 3fr; gap: 14px; overflow: hidden; height: 100%; }
   .grid > .panel { overflow-y: auto; }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
   .grid.full { grid-template-columns: 1fr; }
   .page-scroll { flex: 1; overflow-y: auto; padding-bottom: 8px; }
   .page-stats { flex-shrink: 0; padding: 8px 0; }
 
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
-  .panel-title { font-size: 11px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  /* ── Panels ── */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+  .panel-title { font-size: 10.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
 
-  .session-card { padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
+  /* ── Session cards ── */
+  .session-card { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer; transition: border-color var(--transition); background: var(--surface); }
   .session-card:hover { border-color: var(--accent); }
   .session-card.active { border-left: 3px solid var(--green); }
   .session-card.stale { border-left: 3px solid var(--yellow); }
   .session-card.completed { border-left: 3px solid var(--dim); }
   .session-card.crashed { border-left: 3px solid var(--red); }
   .session-header { display: flex; justify-content: space-between; align-items: center; }
-  .session-id { font-family: monospace; font-size: 13px; color: var(--accent); }
-  .session-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
-  .session-status.active { background: rgba(63,185,80,0.15); color: var(--green); }
-  .session-status.stale { background: rgba(210,153,34,0.15); color: var(--yellow); }
-  .session-status.completed { background: rgba(125,133,144,0.15); color: var(--dim); }
-  .session-status.crashed { background: rgba(248,81,73,0.15); color: var(--red); }
-  .session-task { font-size: 13px; margin-top: 4px; }
-  .session-meta { font-size: 11px; color: var(--dim); margin-top: 4px; display: flex; gap: 12px; }
+  .session-id { font-family: var(--font-mono); font-size: 13px; color: var(--accent); font-weight: 500; }
+  .session-status { font-size: 10.5px; padding: 3px 10px; border-radius: 12px; font-weight: 600; letter-spacing: 0.3px; }
+  .session-status.active { background: var(--green-dim); color: var(--green); }
+  .session-status.stale { background: var(--yellow-dim); color: var(--yellow); }
+  .session-status.completed { background: rgba(100,116,139,0.15); color: var(--dim); }
+  .session-status.crashed { background: var(--red-dim); color: var(--red); }
+  .session-task { font-size: 13px; margin-top: 6px; color: var(--text); }
+  .session-meta { font-size: 11px; color: var(--dim); margin-top: 5px; display: flex; gap: 12px; flex-wrap: wrap; }
 
-  .issue-row { padding: 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  /* ── Issue rows ── */
+  .issue-row { padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 13px; transition: background var(--transition); border-radius: var(--radius-xs); }
+  .issue-row:hover { background: var(--accent-dim); }
   .issue-row:last-child { border-bottom: none; }
-  .severity { display: inline-block; width: 60px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .severity { display: inline-block; width: 60px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
   .severity.critical { color: var(--red); }
   .severity.high { color: var(--orange); }
   .severity.medium { color: var(--yellow); }
   .severity.low { color: var(--dim); }
   .severity.info { color: var(--purple); }
-  .category { color: var(--accent); font-size: 11px; margin-left: 4px; }
+  .category { color: var(--accent); font-size: 11px; margin-left: 4px; font-weight: 500; }
   .issue-title { margin-left: 8px; }
-  .issue-location { font-size: 11px; color: var(--dim); margin-left: 70px; }
-  .issue-time { font-size: 10px; color: var(--dim); float: right; }
+  .issue-location { font-size: 11px; color: var(--dim); margin-left: 70px; margin-top: 2px; font-family: var(--font-mono); font-size: 10.5px; }
+  .issue-time { font-size: 10px; color: var(--muted); float: right; font-family: var(--font-mono); }
 
-  .action-row { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--dim); }
+  /* ── Action rows ── */
+  .action-row { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--dim); transition: background var(--transition); }
+  .action-row:hover { background: var(--accent-dim); }
   .action-row .agent { color: var(--accent); font-weight: 600; }
-  .action-row .phase { color: var(--yellow); }
+  .action-row .phase { color: var(--yellow); font-weight: 600; font-family: var(--font-mono); }
 
-  .run-card { padding: 8px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
-  .run-status { font-size: 11px; font-weight: 600; }
+  /* ── Run cards ── */
+  .run-card { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; font-size: 13px; transition: border-color var(--transition); }
+  .run-card:hover { border-color: var(--border-light); }
+  .run-status { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
   .run-status.completed { color: var(--green); }
   .run-status.failed { color: var(--red); }
   .run-status.running { color: var(--yellow); }
 
-  .empty { color: var(--dim); font-size: 13px; text-align: center; padding: 24px; }
-  .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
-  .tab { padding: 4px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; background: transparent; border: 1px solid var(--border); color: var(--dim); }
-  .tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  /* ── Empty states ── */
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 32px 24px; line-height: 1.6; }
 
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+  .tab { padding: 6px 14px; font-size: 12px; border-radius: var(--radius-xs); cursor: pointer; background: transparent; border: 1px solid var(--border); color: var(--dim); font-weight: 500; transition: all var(--transition); }
+  .tab:hover { color: var(--text); border-color: var(--border-light); }
+  .tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+
+  /* ── App layout ── */
   #app { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .page-fixed { flex-shrink: 0; }
-  .page-content { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 16px; }
+  .page-content { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 16px; animation: fadeIn 0.2s ease-out; }
   .page-content:has(.split-view), .page-content:has(.grid), .page-content:has(canvas) { overflow: hidden; display: flex; flex-direction: column; }
   .page-content > .split-view, .page-content > .grid { flex: 1; min-height: 0; }
-  .breadcrumb { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 12px; flex-wrap: wrap; }
-  .breadcrumb-item { padding: 3px 10px; border-radius: 4px; background: rgba(88,166,255,0.08); color: var(--accent); cursor: pointer; transition: all 0.12s; }
-  .breadcrumb-item:hover { background: rgba(88,166,255,0.18); }
-  .breadcrumb-item.current { background: none; color: var(--text); cursor: default; font-weight: 600; font-size: 15px; padding: 0; }
-  .breadcrumb-sep { color: var(--border); font-size: 14px; font-weight: 300; }
 
-  .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .data-table th { text-align: left; padding: 6px 10px; border-bottom: 2px solid var(--border); color: var(--dim); font-size: 10px; text-transform: uppercase; cursor: pointer; user-select: none; white-space: nowrap; }
+  /* ── Breadcrumbs ── */
+  .breadcrumb { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12.5px; flex-wrap: wrap; }
+  .breadcrumb-item { padding: 4px 12px; border-radius: var(--radius-xs); background: var(--accent-dim); color: var(--accent); cursor: pointer; transition: all var(--transition); font-weight: 500; }
+  .breadcrumb-item:hover { background: rgba(96,165,250,0.18); }
+  .breadcrumb-item.current { background: none; color: var(--text); cursor: default; font-weight: 700; font-size: 16px; padding: 0; letter-spacing: -0.3px; }
+  .breadcrumb-sep { color: var(--border-light); font-size: 14px; font-weight: 300; }
+
+  /* ── Data tables ── */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .data-table thead { position: sticky; top: 0; z-index: 2; }
+  .data-table th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; cursor: pointer; user-select: none; white-space: nowrap; font-weight: 600; background: var(--surface); }
   .data-table th:hover { color: var(--accent); }
   .data-table th .sort-arrow { margin-left: 4px; font-size: 8px; }
-  .data-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  .data-table tr:hover { background: rgba(88,166,255,0.04); }
+  .data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .data-table tr { transition: background var(--transition); }
+  .data-table tbody tr:nth-child(even) { background: rgba(96,165,250,0.02); }
+  .data-table tbody tr:hover { background: var(--accent-dim); }
 
+  /* ── Secrets ── */
   .secret-profile { margin-bottom: 16px; }
   .secret-profile-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .secret-profile-name { font-size: 14px; font-weight: 600; color: var(--accent); }
-  .secret-row { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid var(--border); font-size: 13px; gap: 12px; }
-  .secret-key { font-family: monospace; color: var(--text); min-width: 180px; }
-  .secret-source { font-size: 10px; padding: 2px 6px; border-radius: 8px; font-weight: 600; }
-  .secret-source.literal { background: rgba(125,133,144,0.15); color: var(--dim); }
-  .secret-source.env { background: rgba(210,153,34,0.15); color: var(--yellow); }
-  .secret-source.op { background: rgba(88,166,255,0.15); color: var(--accent); }
-  .secret-value { color: var(--dim); font-family: monospace; flex: 1; }
-  .secret-reveal { font-size: 11px; color: var(--accent); cursor: pointer; padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; background: none; }
+  .secret-row { display: flex; align-items: center; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 13px; gap: 12px; transition: background var(--transition); }
+  .secret-row:hover { background: var(--accent-dim); }
+  .secret-key { font-family: var(--font-mono); color: var(--text); min-width: 180px; font-weight: 500; }
+  .secret-source { font-size: 10px; padding: 3px 8px; border-radius: 10px; font-weight: 600; }
+  .secret-source.literal { background: rgba(100,116,139,0.15); color: var(--dim); }
+  .secret-source.env { background: var(--yellow-dim); color: var(--yellow); }
+  .secret-source.op { background: var(--accent-dim); color: var(--accent); }
+  .secret-value { color: var(--dim); font-family: var(--font-mono); flex: 1; }
+  .secret-reveal { font-size: 11px; color: var(--accent); cursor: pointer; padding: 3px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: none; transition: all var(--transition); }
   .secret-reveal:hover { border-color: var(--accent); }
-  .secret-delete { font-size: 11px; color: var(--red); cursor: pointer; padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; background: none; }
+  .secret-delete { font-size: 11px; color: var(--red); cursor: pointer; padding: 3px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: none; transition: border-color var(--transition); }
   .secret-delete:hover { border-color: var(--red); }
 
-  .add-form { display: flex; gap: 8px; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; margin-top: 12px; flex-wrap: wrap; }
-  .add-form input, .add-form select { padding: 6px 10px; font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text); }
+  /* ── Forms ── */
+  .add-form { display: flex; gap: 8px; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-top: 12px; flex-wrap: wrap; }
+  .add-form input, .add-form select { padding: 7px 12px; font-size: 12.5px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); font-family: var(--font-sans); transition: border-color var(--transition); outline: none; }
+  .add-form input:focus, .add-form select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
   .add-form input { flex: 1; min-width: 120px; }
-  .add-form button { padding: 6px 14px; font-size: 12px; background: var(--accent); color: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+  .add-form button { padding: 7px 16px; font-size: 12.5px; background: var(--accent); color: var(--bg); border: none; border-radius: var(--radius-xs); cursor: pointer; font-weight: 600; font-family: var(--font-sans); transition: all var(--transition); }
   .add-form button:hover { opacity: 0.9; }
 
-  .split-view { display: grid; grid-template-columns: 380px 1fr; gap: 12px; overflow: hidden; flex: 1; min-height: 0; }
+  /* ── Split view ── */
+  .split-view { display: grid; grid-template-columns: 380px 1fr; gap: 14px; overflow: hidden; flex: 1; min-height: 0; }
   .split-view.wide-left { grid-template-columns: 1fr 340px; }
   @media (max-width: 900px) { .split-view, .split-view.wide-left { grid-template-columns: 1fr; } }
   .split-left { overflow-y: auto; min-height: 0; }
   .split-right { overflow-y: auto; min-height: 0; }
 
-  .suite-header { padding: 8px 12px; cursor: pointer; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; transition: border-color 0.15s; }
+  /* ── Suite / test headers ── */
+  .suite-header { padding: 10px 14px; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 6px; transition: all var(--transition); }
   .suite-header:hover { border-color: var(--accent); }
-  .suite-header.active { border-color: var(--accent); background: rgba(88,166,255,0.05); }
+  .suite-header.active { border-color: var(--accent); background: var(--accent-dim); }
   .suite-name { font-size: 14px; font-weight: 600; color: var(--accent); }
-  .suite-meta { font-size: 11px; color: var(--dim); display: flex; gap: 10px; margin-top: 2px; }
-  .suite-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
-  .suite-badge.passed { background: rgba(63,185,80,0.15); color: var(--green); }
-  .suite-badge.failed { background: rgba(248,81,73,0.15); color: var(--red); }
-  .suite-badge.pending { background: rgba(125,133,144,0.15); color: var(--dim); }
-  .suite-badge.claimed { background: rgba(210,153,34,0.15); color: var(--yellow); }
+  .suite-meta { font-size: 11px; color: var(--dim); display: flex; gap: 10px; margin-top: 3px; }
+  .suite-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; letter-spacing: 0.2px; }
+  .suite-badge.passed { background: var(--green-dim); color: var(--green); }
+  .suite-badge.failed { background: var(--red-dim); color: var(--red); }
+  .suite-badge.pending { background: rgba(100,116,139,0.15); color: var(--dim); }
+  .suite-badge.claimed { background: var(--yellow-dim); color: var(--yellow); }
 
+  /* ── Type groups ── */
   .type-group { margin-bottom: 16px; }
-  .type-group-header { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 0; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
-  .type-group-header.direct_functional { color: var(--green); }
-  .type-group-header.impact_regression { color: var(--yellow); }
-  .type-group-header.general_regression { color: var(--accent); }
+  .type-group-header { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 8px 0; border-bottom: 2px solid var(--border); margin-bottom: 8px; }
+  .type-group-header.direct_functional { color: var(--green); border-bottom-color: var(--green-dim); }
+  .type-group-header.impact_regression { color: var(--yellow); border-bottom-color: var(--yellow-dim); }
+  .type-group-header.general_regression { color: var(--accent); border-bottom-color: var(--accent-dim); }
 
-  .tc-item { padding: 8px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 4px; cursor: pointer; font-size: 13px; transition: border-color 0.15s; }
+  /* ── Test case items ── */
+  .tc-item { padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); margin-bottom: 4px; cursor: pointer; font-size: 13px; transition: all var(--transition); }
   .tc-item:hover { border-color: var(--accent); }
-  .tc-item.selected { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+  .tc-item.selected { border-color: var(--accent); background: var(--accent-dim); }
   .tc-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-  .tc-status-dot.passed { background: var(--green); }
-  .tc-status-dot.failed { background: var(--red); }
-  .tc-status-dot.pending { background: var(--dim); }
-  .tc-status-dot.claimed, .tc-status-dot.running { background: var(--yellow); }
-  .tc-status-dot.skipped { background: var(--purple); }
-  .tc-status-dot.blocked { background: var(--orange); }
+  .tc-status-dot.passed { background: var(--green); color: var(--green); }
+  .tc-status-dot.failed { background: var(--red); color: var(--red); }
+  .tc-status-dot.pending { background: var(--dim); color: var(--dim); }
+  .tc-status-dot.claimed, .tc-status-dot.running { background: var(--yellow); color: var(--yellow); }
+  .tc-status-dot.skipped { background: var(--purple); color: var(--purple); }
+  .tc-status-dot.blocked { background: var(--orange); color: var(--orange); }
 
-  .tc-detail-panel { padding: 16px; }
-  .tc-detail-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
-  .tc-detail-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-  .tc-detail-badge { font-size: 11px; padding: 2px 10px; border-radius: 10px; font-weight: 600; }
-  .tc-detail-section { margin-bottom: 16px; }
-  .tc-detail-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--dim); letter-spacing: 0.5px; margin-bottom: 6px; }
-  .bdd-step { padding: 3px 0; font-size: 13px; font-family: monospace; }
+  /* ── Test case detail ── */
+  .tc-detail-panel { padding: 18px; }
+  .tc-detail-title { font-size: 17px; font-weight: 700; margin-bottom: 14px; letter-spacing: -0.3px; }
+  .tc-detail-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .tc-detail-badge { font-size: 10.5px; padding: 3px 12px; border-radius: 12px; font-weight: 600; letter-spacing: 0.2px; }
+  .tc-detail-section { margin-bottom: 18px; }
+  .tc-detail-section-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: 0.6px; margin-bottom: 8px; }
+  .bdd-step { padding: 4px 0; font-size: 13px; font-family: var(--font-mono); }
   .bdd-given { color: var(--green); }
   .bdd-when { color: var(--yellow); }
   .bdd-then { color: var(--accent); }
-  .trad-step { padding: 4px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .trad-step { padding: 5px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
   .trad-step:last-child { border-bottom: none; }
-  .trad-step-num { color: var(--accent); font-weight: 600; margin-right: 8px; }
+  .trad-step-num { color: var(--accent); font-weight: 600; margin-right: 8px; font-family: var(--font-mono); }
   .trad-expected { color: var(--dim); margin-left: 20px; font-style: italic; }
+
+  /* ── Markdown content ── */
+  .md-content h1 { font-size: 18px; color: var(--text); margin: 20px 0 10px; font-weight: 700; letter-spacing: -0.3px; }
+  .md-content h2 { font-size: 15px; color: var(--text); margin: 16px 0 8px; font-weight: 700; }
+  .md-content h3 { font-size: 13.5px; color: var(--text); margin: 14px 0 6px; font-weight: 600; }
+  .md-content h4 { font-size: 12px; color: var(--muted); margin: 10px 0 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .md-content p { margin: 8px 0; line-height: 1.6; }
+  .md-content ul, .md-content ol { padding-left: 20px; margin: 8px 0; }
+  .md-content li { margin: 3px 0; }
+  .md-content code { background: var(--accent-dim); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 11.5px; font-family: var(--font-mono); }
+  .md-content pre { background: var(--bg); padding: 12px; border-radius: var(--radius-sm); font-size: 12px; overflow-x: auto; margin: 10px 0; border: 1px solid var(--border); }
+  .md-content pre code { background: none; padding: 0; font-size: 12px; }
+  .md-content strong { color: var(--text); font-weight: 600; }
+  .md-content hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .md-content table { width: 100%; font-size: 12.5px; border-collapse: collapse; margin: 10px 0; }
+  .md-content th, .md-content td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  .md-content th { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .md-content blockquote { border-left: 3px solid var(--accent); padding-left: 14px; margin: 10px 0; color: var(--dim); font-style: italic; }
+  .md-content a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-dim); transition: border-color var(--transition); }
+  .md-content a:hover { border-bottom-color: var(--accent); }
+
+  /* ── Modal overlay ── */
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 200; cursor: pointer; }
+  .modal-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 90vw; max-width: 1200px; max-height: 90vh; border-radius: 14px; border: 1px solid var(--border-light); box-shadow: var(--shadow-lg), 0 0 0 1px rgba(96,165,250,0.1); cursor: default; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
+  .modal-close { cursor: pointer; color: var(--muted); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 18px; line-height: 1; transition: all var(--transition); border: 1px solid transparent; }
+  .modal-close:hover { background: var(--red-dim); color: var(--red); border-color: var(--red-dim); }
+
+  /* ── Shared utility classes ── */
+  .section-header { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .detail-section { margin-bottom: 18px; }
+  .detail-card { margin-bottom: 16px; padding: 14px; background: var(--bg); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+  .pre-block { font-size: 12px; color: var(--dim); background: var(--bg); padding: 10px; border-radius: var(--radius-sm); overflow-x: auto; white-space: pre-wrap; font-family: var(--font-mono); border: 1px solid var(--border); }
+  .stats-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .stats-row.wide { gap: 24px; }
+  .inline-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; letter-spacing: 0.2px; }
+  .action-btn { font-size: 10.5px; background: none; border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 4px 10px; cursor: pointer; transition: all var(--transition); font-family: var(--font-sans); font-weight: 500; }
+  .action-btn:hover { background: var(--accent-dim); }
+  .mono { font-family: var(--font-mono); }
+  .text-xs { font-size: 10px; }
+  .text-sm { font-size: 11px; }
+  .text-md { font-size: 12px; }
+  .text-dim { color: var(--dim); }
+  .text-accent { color: var(--accent); }
+  .text-green { color: var(--green); }
+  .text-red { color: var(--red); }
+  .text-yellow { color: var(--yellow); }
+  .text-purple { color: var(--purple); }
+  .text-bold { font-weight: 600; }
+  .flex-row { display: flex; gap: 8px; align-items: center; }
+  .flex-wrap { flex-wrap: wrap; }
+  .mt-4 { margin-top: 4px; }
+  .mt-8 { margin-top: 8px; }
+  .mb-8 { margin-bottom: 8px; }
+  .mb-16 { margin-bottom: 16px; }
+
+  /* ── Skeleton loading ── */
+  .skeleton { background: linear-gradient(90deg, var(--border) 25%, var(--border-light) 50%, var(--border) 75%); background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite; border-radius: var(--radius-xs); height: 14px; }
+
+  /* ── Artifact gallery — horizontal filmstrip ── */
+  .artifact-gallery { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0 10px; margin-bottom: 8px; scroll-snap-type: x mandatory; }
+  .artifact-gallery::-webkit-scrollbar { height: 4px; }
+  .artifact-gallery::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+  .artifact-thumb { min-width: 240px; max-width: 320px; flex-shrink: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; cursor: pointer; transition: border-color var(--transition); background: var(--bg); scroll-snap-align: start; }
+  .artifact-thumb:hover { border-color: var(--accent); }
+  .artifact-thumb.broken { display: none; }
+  .artifact-thumb img { width: 100%; height: 180px; object-fit: cover; display: block; background: var(--bg); }
+  .artifact-thumb-label { padding: 6px 10px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
+
+  /* ── Artifact video ── */
+  .artifact-videos { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+  .artifact-video { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; max-width: 520px; background: #000; }
+  .artifact-video video { width: 100%; max-height: 320px; display: block; }
+  .artifact-video-label { padding: 6px 10px; font-size: 11px; color: var(--dim); background: var(--surface); display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--border); }
+
+  /* ── Artifact chips — colored file links ── */
+  .artifact-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; margin-top: 4px; }
+  .artifact-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: var(--radius-xs); font-size: 11.5px; text-decoration: none; border: 1px solid var(--border); color: var(--text); background: var(--surface); transition: border-color var(--transition), color var(--transition); font-family: var(--font-mono); }
+  .artifact-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .artifact-chip-icon { font-size: 15px; line-height: 1; }
+  .artifact-chip-label { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .artifact-chip-action { color: var(--muted); font-size: 12px; }
+  .artifact-chip[data-type="console"] { border-left: 3px solid var(--yellow); }
+  .artifact-chip[data-type="console"] .artifact-chip-icon { color: var(--yellow); }
+  .artifact-chip[data-type="console"]:hover { color: var(--yellow); border-color: var(--yellow); }
+  .artifact-chip[data-type="har"] { border-left: 3px solid var(--purple); }
+  .artifact-chip[data-type="har"] .artifact-chip-icon { color: var(--purple); }
+  .artifact-chip[data-type="har"]:hover { color: var(--purple); border-color: var(--purple); }
+  .artifact-chip[data-type="trace"] { border-left: 3px solid var(--orange); }
+  .artifact-chip[data-type="trace"] .artifact-chip-icon { color: var(--orange); }
+  .artifact-chip[data-type="trace"]:hover { color: var(--orange); border-color: var(--orange); }
+  .artifact-chip[data-type="snapshot"] { border-left: 3px solid var(--accent); }
+  .artifact-chip[data-type="snapshot"] .artifact-chip-icon { color: var(--accent); }
+
+  /* ── Artifact timeline — vertical track ── */
+  .artifact-timeline { display: flex; flex-direction: column; gap: 0; padding-left: 4px; }
+  .timeline-step { display: flex; gap: 14px; min-height: 60px; }
+  .timeline-marker { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 32px; }
+  .timeline-dot { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--bg); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: var(--font-mono); z-index: 1; }
+  .timeline-line { flex: 1; width: 2px; background: var(--border); margin: 4px 0; min-height: 16px; }
+  .timeline-step:last-child .timeline-line { display: none; }
+  .timeline-content { flex: 1; min-width: 0; padding-bottom: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 4px; }
+  .timeline-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .timeline-step-num { font-size: 11px; font-weight: 700; color: var(--accent); font-family: var(--font-mono); }
+  .timeline-desc { font-size: 12.5px; color: var(--text); }
+  .timeline-url { font-size: 10.5px; color: var(--muted); margin-bottom: 8px; word-break: break-all; font-family: var(--font-mono); }
+
+  /* ── Lightbox ── */
+  .lightbox-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 300; justify-content: center; align-items: center; flex-direction: column; cursor: pointer; }
+  .lightbox-img { max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); cursor: default; animation: fadeIn 0.15s ease-out; }
+  .lightbox-controls { display: flex; align-items: center; gap: 20px; margin-top: 16px; cursor: default; }
+  .lightbox-arrow { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all var(--transition); }
+  .lightbox-arrow:hover { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.3); }
+  .lightbox-counter { font-size: 13px; color: rgba(255,255,255,0.6); font-family: var(--font-mono); min-width: 60px; text-align: center; }
+  .lightbox-caption { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 8px; text-align: center; max-width: 600px; font-family: var(--font-mono); }
+  .lightbox-close { position: absolute; top: 16px; right: 20px; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all var(--transition); }
+  .lightbox-close:hover { background: rgba(248,113,113,0.3); border-color: rgba(248,113,113,0.4); }
 </style>
 </head>
 <body>
 <div class="layout">
   <div class="sidebar">
     <div class="sidebar-logo">
-      <h1><span class="live-dot"></span>noob-tester</h1>
+      <h1>noob<span class="brand-accent">.</span>tester<span class="version">v0.1</span></h1>
     </div>
     <div class="sidebar-nav">
-      <div class="nav-btn active" data-page="dashboard" onclick="switchPage('dashboard')">Dashboard</div>
+      <div class="nav-btn active" data-page="dashboard" onclick="switchPage('dashboard')"><span class="nav-icon">&#9632;</span>Dashboard</div>
 
       <div class="nav-group-label">Testing</div>
-      <div class="nav-btn" data-page="runs" onclick="switchPage('runs')">Explore</div>
-      <div class="nav-btn" data-page="issues" onclick="switchPage('issues')">Issues</div>
+      <div class="nav-btn" data-page="runs" onclick="switchPage('runs')"><span class="nav-icon">&#9654;</span>Explore</div>
+      <div class="nav-btn" data-page="issues" onclick="switchPage('issues')"><span class="nav-icon">&#9888;</span>Issues</div>
 
       <div class="nav-group-label">Planning</div>
-      <div class="nav-btn" data-page="analyses" onclick="switchPage('analyses')">Analyses</div>
-      <div class="nav-btn" data-page="testcases" onclick="switchPage('testcases')">Test Cases</div>
-      <div class="nav-btn" data-page="plans" onclick="switchPage('plans')">Plans</div>
-      <div class="nav-btn" data-page="blockers" onclick="switchPage('blockers')">Blockers</div>
+      <div class="nav-btn" data-page="analyses" onclick="switchPage('analyses')"><span class="nav-icon">&#9673;</span>Analyses</div>
+      <div class="nav-btn" data-page="testcases" onclick="switchPage('testcases')"><span class="nav-icon">&#10003;</span>Test Cases</div>
+      <div class="nav-btn" data-page="plans" onclick="switchPage('plans')"><span class="nav-icon">&#9776;</span>Plans</div>
+      <div class="nav-btn" data-page="blockers" onclick="switchPage('blockers')"><span class="nav-icon">&#9940;</span>Blockers</div>
 
       <div class="nav-group-label">Infrastructure</div>
-      <div class="nav-btn" data-page="coverage" onclick="switchPage('coverage')">Coverage</div>
-      <div class="nav-btn" data-page="a11y" onclick="switchPage('a11y')">Accessibility</div>
-      <div class="nav-btn" data-page="audit" onclick="switchPage('audit')">Test Audit</div>
-      <div class="nav-btn" data-page="repos" onclick="switchPage('repos')">Repos</div>
-      <div class="nav-btn" data-page="uimaps" onclick="switchPage('uimaps')">UI Maps</div>
-      <div class="nav-btn" data-page="apimaps" onclick="switchPage('apimaps')">API Maps</div>
-      <div class="nav-btn" data-page="secrets" onclick="switchPage('secrets')">Secrets</div>
+      <div class="nav-btn" data-page="coverage" onclick="switchPage('coverage')"><span class="nav-icon">&#9635;</span>Coverage</div>
+      <div class="nav-btn" data-page="a11y" onclick="switchPage('a11y')"><span class="nav-icon">&#9855;</span>Accessibility</div>
+      <div class="nav-btn" data-page="audit" onclick="switchPage('audit')"><span class="nav-icon">&#9998;</span>Test Audit</div>
+      <div class="nav-btn" data-page="repos" onclick="switchPage('repos')"><span class="nav-icon">&#9731;</span>Repos</div>
+      <div class="nav-btn" data-page="uimaps" onclick="switchPage('uimaps')"><span class="nav-icon">&#9638;</span>UI Maps</div>
+      <div class="nav-btn" data-page="apimaps" onclick="switchPage('apimaps')"><span class="nav-icon">&#10562;</span>API Maps</div>
+      <div class="nav-btn" data-page="secrets" onclick="switchPage('secrets')"><span class="nav-icon">&#9919;</span>Secrets</div>
 
       <div class="nav-group-label">Reporting</div>
-      <div class="nav-btn" data-page="reports" onclick="switchPage('reports')">Reports</div>
+      <div class="nav-btn" data-page="reports" onclick="switchPage('reports')"><span class="nav-icon">&#9783;</span>Reports</div>
 
       <div class="nav-group-label">System</div>
-      <div class="nav-btn" data-page="context" onclick="switchPage('context')">Context Cache</div>
-      <div class="nav-btn" data-page="metrics" onclick="switchPage('metrics')">Metrics</div>
-      <div class="nav-btn" data-page="settings" onclick="switchPage('settings')">Settings</div>
-      <div class="nav-btn" data-page="docs" onclick="switchPage('docs')">Docs</div>
+      <div class="nav-btn" data-page="context" onclick="switchPage('context')"><span class="nav-icon">&#9881;</span>Context Cache</div>
+      <div class="nav-btn" data-page="metrics" onclick="switchPage('metrics')"><span class="nav-icon">&#9636;</span>Metrics</div>
+      <div class="nav-btn" data-page="settings" onclick="switchPage('settings')"><span class="nav-icon">&#9881;</span>Settings</div>
+      <div class="nav-btn" data-page="docs" onclick="switchPage('docs')"><span class="nav-icon">&#9782;</span>Docs</div>
     </div>
     <div class="sidebar-stats">
       <div class="stat"><span class="stat-label">Sessions</span><span class="stat-value" style="color:var(--green)" id="stat-sessions">-</span></div>
@@ -258,11 +422,25 @@ export function getDashboardHtml(port: number, filterSessionId?: string): string
 </div>
 
 <!-- Issue detail modal -->
-<div id="issue-modal-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;cursor:pointer" onclick="if(event.target===this){this.style.display='none'}">
-  <div id="issue-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90vw;max-width:1200px;max-height:90vh;border-radius:12px;border:1px solid var(--accent);box-shadow:0 20px 60px rgba(0,0,0,0.6);cursor:default;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)"></div>
+<div id="issue-modal-overlay" class="modal-overlay" onclick="if(event.target===this){this.style.display='none'}">
+  <div id="issue-modal" class="modal-box"></div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox-overlay" class="lightbox-overlay" onclick="if(event.target===this)closeLightbox()">
+  <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+  <img id="lightbox-img" class="lightbox-img" />
+  <div class="lightbox-controls">
+    <span id="lightbox-prev" class="lightbox-arrow" onclick="event.stopPropagation();lbPrev()">&#8592;</span>
+    <span id="lightbox-counter" class="lightbox-counter"></span>
+    <span id="lightbox-next" class="lightbox-arrow" onclick="event.stopPropagation();lbNext()">&#8594;</span>
+  </div>
+  <div id="lightbox-caption" class="lightbox-caption"></div>
 </div>
 
 <script>
+${helpersScript}
+${canvasBaseScript}
 ${wireframeScript}
 ${canvasScript}
 ${apiCanvasScript}
@@ -493,8 +671,7 @@ async function renderDashboardTicketDetail() {
   let issues = [];
   if (dashSelectedTicket !== "__none__") {
     try {
-      const res = await fetch(API + "/api/issues/by-ticket?ticket=" + encodeURIComponent(dashSelectedTicket));
-      issues = await res.json();
+      issues = await fetchJson("/api/issues/by-ticket?ticket=" + encodeURIComponent(dashSelectedTicket));
     } catch {}
   }
 
@@ -610,14 +787,9 @@ function sessionCard(s) {
 
 async function deleteSession(sessionId) {
   if (!confirm("Delete session " + sessionId.slice(0,8) + " and all its linked data (runs, issues, actions)?")) return;
-  await fetch(API + "/api/session/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: sessionId }),
-  });
+  await postJson("/api/session/delete", { id: sessionId });
   // Force fresh state from server (SSE cache is stale)
-  const freshRes = await fetch(API + "/api/state");
-  state = await freshRes.json();
+  state = await fetchJson("/api/state");
   viewingSession = null;
   render();
 }
@@ -658,10 +830,9 @@ async function showIssueDetail(issueId) {
   const modal = document.getElementById("issue-modal");
   if (!overlay || !modal) return;
   overlay.style.display = "block";
-  modal.innerHTML = '<div style="padding:40px;text-align:center;color:var(--dim)">Loading...</div>';
+  modal.innerHTML = '<div style="padding:48px;text-align:center"><div class="skeleton" style="width:200px;height:16px;margin:0 auto 12px"></div><div class="skeleton" style="width:300px;height:12px;margin:0 auto"></div></div>';
 
-  const res = await fetch(API + "/api/issues/detail?id=" + encodeURIComponent(issueId));
-  const data = await res.json();
+  const data = await fetchJson("/api/issues/detail?id=" + encodeURIComponent(issueId));
   const i = data.issue;
   const run = data.run;
   const rpe = data.runpackEntry;
@@ -670,21 +841,19 @@ async function showIssueDetail(issueId) {
   const uimapPage = data.uimapPage;
   const uimapElements = data.uimapElements || [];
 
-  const sevColor = { critical: "var(--red)", high: "var(--orange)", medium: "var(--yellow)", low: "var(--dim)", info: "var(--purple)" };
-
   let h = '';
 
-  // ── Sticky header ──
-  h += '<div style="flex-shrink:0;padding:16px 20px 12px;border-bottom:1px solid var(--border)">';
+  // ── Sticky header with gradient ──
+  h += '<div style="flex-shrink:0;padding:18px 24px 14px;border-bottom:1px solid var(--border);background:linear-gradient(135deg, rgba(96,165,250,0.06) 0%, transparent 60%)">';
   h += '<div style="display:flex;justify-content:space-between;align-items:start">';
   h += '<div style="flex:1">';
-  h += \`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-    <span style="color:\${sevColor[i.severity] || "var(--dim)"};font-weight:700;font-size:12px;text-transform:uppercase;padding:3px 10px;border-radius:4px;background:rgba(255,255,255,0.05)">\${esc(i.severity)}</span>
-    <span style="color:var(--accent);font-size:12px;padding:3px 10px;border-radius:4px;background:rgba(88,166,255,0.08)">\${esc(i.category)}</span>
+  h += \`<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <span class="tc-detail-badge" style="color:\${severityColor(i.severity)};background:\${severityColor(i.severity).replace('var(','rgba(').replace(')',',0.12)')}">\${esc(i.severity).toUpperCase()}</span>
+    <span class="tc-detail-badge" style="color:var(--accent);background:var(--accent-dim)">\${esc(i.category)}</span>
   </div>\`;
-  h += \`<div style="font-size:16px;font-weight:600">\${esc(i.title)}</div>\`;
+  h += \`<div style="font-size:17px;font-weight:700;letter-spacing:-0.3px">\${esc(i.title)}</div>\`;
   h += '</div>';
-  h += '<span style="cursor:pointer;color:var(--dim);font-size:20px;padding:2px 8px;line-height:1" onclick="document.getElementById(\\'issue-modal-overlay\\').style.display=\\'none\\'">&times;</span>';
+  h += '<span class="modal-close" onclick="document.getElementById(\\'issue-modal-overlay\\').style.display=\\'none\\'">&times;</span>';
   h += '</div></div>';
 
   // ── Two columns, each scrolls independently ──
@@ -696,7 +865,7 @@ async function showIssueDetail(issueId) {
   // Description
   if (i.description) {
     h += '<div style="margin-bottom:16px">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Description</div>';
+    h += '<div class="section-header">Description</div>';
     h += \`<div style="font-size:13px;color:var(--text);line-height:1.5">\${esc(i.description)}</div>\`;
     h += '</div>';
   }
@@ -704,106 +873,48 @@ async function showIssueDetail(issueId) {
   // Location
   if (i.location) {
     h += '<div style="margin-bottom:16px">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Location</div>';
+    h += '<div class="section-header">Location</div>';
     h += \`<div style="font-size:12px;color:var(--accent);word-break:break-all">\${esc(i.location)}</div>\`;
     h += '</div>';
   }
 
-  // Screenshot
+  // Screenshot (single issue screenshot)
   if (i.screenshot_path) {
-    h += '<div style="margin-bottom:16px">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Screenshot</div>';
-    const imgUrl = API + "/api/artifact?path=" + encodeURIComponent(i.screenshot_path);
-    h += \`<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer" onclick="window.open('\${imgUrl}','_blank')">
-      <img src="\${imgUrl}" style="width:100%;max-height:300px;object-fit:contain;display:block;background:var(--bg)" onerror="this.parentElement.style.display='none'" />
-    </div>\`;
+    h += '<div class="detail-section">';
+    h += '<div class="section-header">Screenshot</div>';
+    h += renderScreenshotGallery([{ path: i.screenshot_path, label: "Issue screenshot" }], "issue-ss-" + i.id);
     h += '</div>';
   }
 
-  // Console log (from issue or artifacts)
+  // Console log
   if (i.console_log) {
-    h += '<div style="margin-bottom:16px">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Console Output</div>';
-    h += \`<pre style="font-size:11px;color:var(--dim);background:var(--bg);padding:8px;border-radius:4px;overflow-x:auto;max-height:150px;white-space:pre-wrap">\${esc(i.console_log)}</pre>\`;
+    h += '<div class="detail-section">';
+    h += '<div class="section-header">Console Output</div>';
+    h += '<pre class="pre-block" style="max-height:150px">' + esc(i.console_log) + '</pre>';
     h += '</div>';
   }
 
   // Network data
   if (i.network_data) {
-    h += '<div style="margin-bottom:16px">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Network Data</div>';
-    h += \`<pre style="font-size:11px;color:var(--dim);background:var(--bg);padding:8px;border-radius:4px;overflow-x:auto;max-height:150px;white-space:pre-wrap">\${esc(i.network_data)}</pre>\`;
+    h += '<div class="detail-section">';
+    h += '<div class="section-header">Network Data</div>';
+    h += '<pre class="pre-block" style="max-height:150px">' + esc(i.network_data) + '</pre>';
     h += '</div>';
   }
 
   // Runpack artifacts (screenshots, videos, HAR, console, traces)
   const allArtifacts = data.artifacts || [];
   if (allArtifacts.length > 0) {
-    const byType = {};
-    for (const a of allArtifacts) { if (!byType[a.type]) byType[a.type] = []; byType[a.type].push(a); }
-
-    h += '<div style="margin-bottom:16px">';
-    h += \`<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Artifacts (\${allArtifacts.length})</div>\`;
-
-    // Screenshots
-    if (byType.screenshot) {
-      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
-      for (const a of byType.screenshot.slice(0, 6)) {
-        const url = API + "/api/artifact?path=" + encodeURIComponent(a.path);
-        h += \`<div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;width:120px;cursor:pointer" onclick="window.open('\${url}','_blank')">
-          <img src="\${url}" style="width:100%;height:80px;object-fit:cover;display:block" onerror="this.style.display='none'" />
-          <div style="padding:2px 4px;font-size:9px;color:var(--dim)">\${esc(a.label || "step " + (a.step || ""))}</div>
-        </div>\`;
-      }
-      h += '</div>';
-    }
-
-    // Videos
-    if (byType.video) {
-      for (const a of byType.video.slice(0, 2)) {
-        const url = API + "/api/artifact?path=" + encodeURIComponent(a.path);
-        h += \`<div style="margin-bottom:8px"><video src="\${url}" controls style="width:100%;max-height:200px;border-radius:4px"></video>
-          <div style="font-size:9px;color:var(--dim)">\${esc(a.label || "video")}</div></div>\`;
-      }
-    }
-
-    // Console logs from artifacts
-    if (byType.console) {
-      for (const a of byType.console.slice(0, 2)) {
-        const url = API + "/api/artifact?path=" + encodeURIComponent(a.path);
-        h += \`<div style="margin-bottom:8px">
-          <div style="font-size:10px;color:var(--dim);margin-bottom:2px">Console: <a href="\${url}" target="_blank" style="color:var(--accent)">\${esc(a.label || "log")}</a></div>
-        </div>\`;
-      }
-    }
-
-    // HAR from artifacts
-    if (byType.har) {
-      for (const a of byType.har.slice(0, 2)) {
-        const url = API + "/api/artifact?path=" + encodeURIComponent(a.path);
-        h += \`<div style="margin-bottom:8px">
-          <div style="font-size:10px;color:var(--dim);margin-bottom:2px">HAR: <a href="\${url}" target="_blank" style="color:var(--accent)">\${esc(a.label || "network trace")}</a></div>
-        </div>\`;
-      }
-    }
-
-    // Traces
-    if (byType.trace) {
-      for (const a of byType.trace.slice(0, 2)) {
-        const url = API + "/api/artifact?path=" + encodeURIComponent(a.path);
-        h += \`<div style="margin-bottom:8px">
-          <div style="font-size:10px;color:var(--dim)">Trace: <a href="\${url}" target="_blank" style="color:var(--accent)">\${esc(a.label || "trace")}</a></div>
-        </div>\`;
-      }
-    }
-
+    h += '<div class="detail-section">';
+    h += \`<div class="section-header">Artifacts (\${allArtifacts.length})</div>\`;
+    h += renderArtifactGroup(allArtifacts, "issue-art-" + i.id);
     h += '</div>';
   }
 
   // Raw output
   if (i.raw_output) {
     h += '<div style="margin-bottom:16px">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Raw Output</div>';
+    h += '<div class="section-header">Raw Output</div>';
     h += \`<pre style="font-size:10px;color:var(--dim);background:var(--bg);padding:8px;border-radius:4px;overflow-x:auto;max-height:200px;white-space:pre-wrap">\${esc(i.raw_output.slice(0, 2000))}</pre>\`;
     h += '</div>';
   }
@@ -815,8 +926,8 @@ async function showIssueDetail(issueId) {
 
   // Run info
   if (run) {
-    h += '<div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:6px">Run</div>';
+    h += '<div class="detail-card">';
+    h += '<div class="section-header" style="margin-bottom:6px">Run</div>';
     h += \`<div style="font-size:12px"><span style="color:var(--accent)">\${run.input_ref}</span> <span style="color:var(--dim)">(\${run.input_type})</span></div>\`;
     if (run.target_url) h += \`<div style="font-size:11px;color:var(--dim);margin-top:2px">\${esc(run.target_url)}</div>\`;
     h += \`<div style="font-size:11px;color:var(--dim);margin-top:2px">Status: <span style="color:\${run.status === 'completed' ? 'var(--green)' : run.status === 'failed' ? 'var(--red)' : 'var(--yellow)'}">\${run.status}</span> · Phase \${run.phase} · ID: \${run.id.slice(0,8)}</div>\`;
@@ -825,8 +936,8 @@ async function showIssueDetail(issueId) {
 
   // Test case (from runpack entry)
   if (rpe) {
-    h += '<div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:6px">Test Case</div>';
+    h += '<div class="detail-card">';
+    h += '<div class="section-header" style="margin-bottom:6px">Test Case</div>';
     h += \`<div style="font-size:12px;color:var(--text)">\${esc(rpe.tc_title || "Untitled")}</div>\`;
     h += \`<div style="font-size:11px;color:var(--dim);margin-top:2px">\${esc(rpe.tc_type || "")} · \${esc(rpe.tc_format || "")} · \${esc((rpe.tc_layer || "ui").toUpperCase())} · Status: <span style="color:\${rpe.status === 'passed' ? 'var(--green)' : rpe.status === 'failed' ? 'var(--red)' : 'var(--yellow)'}">\${rpe.status}</span></div>\`;
     h += '</div>';
@@ -834,8 +945,8 @@ async function showIssueDetail(issueId) {
 
   // Analyses
   if (analyses.length > 0) {
-    h += '<div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:6px">Analyses</div>';
+    h += '<div class="detail-card">';
+    h += '<div class="section-header" style="margin-bottom:6px">Analyses</div>';
     for (const a of analyses) {
       h += \`<div style="font-size:11px;padding:2px 0;border-bottom:1px solid var(--border)">
         <span style="color:var(--accent)">\${esc(a.analysis_type)}</span>
@@ -847,8 +958,8 @@ async function showIssueDetail(issueId) {
 
   // Tech issues
   if (techIssues.length > 0) {
-    h += '<div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
-    h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:6px">Technical Issues</div>';
+    h += '<div class="detail-card">';
+    h += '<div class="section-header" style="margin-bottom:6px">Technical Issues</div>';
     for (const t of techIssues) {
       const tStatusColor = t.status === "resolved" ? "var(--green)" : t.status === "workaround_found" ? "var(--yellow)" : "var(--red)";
       h += \`<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)">
@@ -862,8 +973,8 @@ async function showIssueDetail(issueId) {
 
   // UI Map — mini sitemap canvas with affected page highlighted
   if (data.uimapFull) {
-    h += '<div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
-    h += \`<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">UI Map — \${esc(uimapPage?.map_name || "")}</div>\`;
+    h += '<div class="detail-card">';
+    h += \`<div class="section-header">UI Map — \${esc(uimapPage?.map_name || "")}</div>\`;
     h += \`<div style="font-size:11px;color:var(--accent);margin-bottom:6px">Affected: \${esc(uimapPage?.url_pattern || "")} \${uimapPage?.page_title ? "· " + esc(uimapPage.page_title) : ""}</div>\`;
     h += '<canvas id="issue-uimap-canvas" style="width:100%;height:280px;display:block;border-radius:4px;border:1px solid var(--border);cursor:grab"></canvas>';
     if (uimapElements.length > 0) {
@@ -884,8 +995,8 @@ async function showIssueDetail(issueId) {
   }
 
   // Metadata
-  h += '<div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
-  h += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:6px">Metadata</div>';
+  h += '<div class="detail-card">';
+  h += '<div class="section-header" style="margin-bottom:6px">Metadata</div>';
   h += \`<div style="font-size:11px;color:var(--dim)">Issue ID: \${i.id}</div>\`;
   h += \`<div style="font-size:11px;color:var(--dim)">Run ID: \${i.run_id}</div>\`;
   if (i.step_id) h += \`<div style="font-size:11px;color:var(--dim)">Step ID: \${i.step_id}</div>\`;
@@ -914,8 +1025,7 @@ async function showIssueDetail(issueId) {
 }
 
 async function renderSessionDetail(sessionId) {
-  const res = await fetch(API + "/api/session?id=" + sessionId);
-  const detail = await res.json();
+  const detail = await fetchJson("/api/session?id=" + sessionId);
   const app = document.getElementById("app");
 
   if (!detail.session) {
@@ -1069,20 +1179,8 @@ async function renderSessionDetail(sessionId) {
   renderTab();
 }
 
-function timeAgo(dateStr) {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr + "Z");
-  const diff = (Date.now() - d.getTime()) / 1000;
-  if (diff < 5) return "just now";
-  if (diff < 60) return Math.floor(diff) + "s ago";
-  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
-  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
-  return Math.floor(diff / 86400) + "d ago";
-}
-
 async function renderSettingsPage() {
-  const res = await fetch(API + "/api/settings");
-  const settings = await res.json();
+  const settings = await fetchJson("/api/settings");
   const app = document.getElementById("app");
 
   const providers = ["github", "gitlab", "bitbucket"];
@@ -1129,16 +1227,12 @@ async function renderSettingsPage() {
 }
 
 window.saveRepoProvider = async function(provider) {
-  await fetch(API + "/api/settings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: "repo_provider", value: provider })
-  });
+  await postJson("/api/settings", { key: "repo_provider", value: provider });
   renderSettingsPage();
 };
 
 async function renderDocsPage() {
-  const res = await fetch(API + "/api/docs");
+  const res = await fetchApi("/api/docs");
   const html = await res.text();
   const app = document.getElementById("app");
   app.style.display = "flex";
@@ -1147,109 +1241,8 @@ async function renderDocsPage() {
   app.innerHTML = html;
 }
 
-function esc(s) {
-  if (!s) return "";
-  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-
-// ── JSON repair for truncated LLM output ──
-function repairJson(raw) {
-  const trimmed = raw.trim();
-  try { JSON.parse(trimmed); return trimmed; } catch {}
-  let braces = 0, brackets = 0, inString = false, esc2 = false;
-  for (const ch of trimmed) {
-    if (esc2) { esc2 = false; continue; }
-    if (ch === "\\\\") { esc2 = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") braces++; else if (ch === "}") braces--;
-    else if (ch === "[") brackets++; else if (ch === "]") brackets--;
-  }
-  let repaired = trimmed;
-  if (inString) repaired += '"';
-  while (brackets-- > 0) repaired += "]";
-  while (braces-- > 0) repaired += "}";
-  try { JSON.parse(repaired); return repaired; } catch { return trimmed; }
-}
-
-// ── Cost calculation (mirrors server-side logic) ──
-const MODEL_PRICING = {
-  "claude-opus-4-6":   { input: 5,  output: 25, cacheRead: 0.5,  cacheCreate: 6.25 },
-  "claude-opus-4":     { input: 15, output: 75, cacheRead: 1.5,  cacheCreate: 18.75 },
-  "claude-sonnet-4-6": { input: 3,  output: 15, cacheRead: 0.3,  cacheCreate: 3.75 },
-  "claude-sonnet-4":   { input: 3,  output: 15, cacheRead: 0.3,  cacheCreate: 3.75 },
-  "claude-haiku-4-5":  { input: 1,  output: 5,  cacheRead: 0.1,  cacheCreate: 1.25 },
-  opus:   { input: 5,  output: 25, cacheRead: 0.5,  cacheCreate: 6.25 },
-  sonnet: { input: 3,  output: 15, cacheRead: 0.3,  cacheCreate: 3.75 },
-  haiku:  { input: 1,  output: 5,  cacheRead: 0.1,  cacheCreate: 1.25 },
-};
-
-function lookupPricing(model) {
-  if (!model) return MODEL_PRICING.sonnet;
-  return MODEL_PRICING[model]
-    || Object.entries(MODEL_PRICING).find(([k]) => model.startsWith(k))?.[1]
-    || MODEL_PRICING.sonnet;
-}
-
-function calcCost(s) {
-  // Use DB cost if already calculated
-  if (s.estimated_cost_usd) return s.estimated_cost_usd;
-  // Recalculate from tokens + model if available
-  if (!s.model || !s.estimated_tokens) return 0;
-  const p = lookupPricing(s.model);
-  if (s.input_tokens || s.output_tokens || s.cache_read_tokens || s.cache_create_tokens) {
-    return ((s.input_tokens || 0) / 1e6) * p.input
-         + ((s.output_tokens || 0) / 1e6) * p.output
-         + ((s.cache_read_tokens || 0) / 1e6) * p.cacheRead
-         + ((s.cache_create_tokens || 0) / 1e6) * p.cacheCreate;
-  }
-  // Fallback: blended from total
-  return (s.estimated_tokens / 1e6) * (p.input * 0.3 + p.output * 0.7);
-}
-
-function fmtCost(v) { return v > 0 ? "$" + v.toFixed(2) : "-"; }
-
-function renderMd(s) {
-  if (!s) return "";
-  if (typeof marked !== "undefined" && marked.parse) return marked.parse(s);
-  return '<pre style="white-space:pre-wrap">' + esc(s) + '</pre>';
-}
-
-/** Set #app content. Splits into fixed header (breadcrumb + stats) and scrollable content. */
-function setPage(html) {
-  const app = document.getElementById("app");
-  // Reset any inline styles from special pages (docs)
-  app.style.display = "";
-  app.style.flexDirection = "";
-  app.style.overflow = "";
-  // Parse into a temp container to split fixed vs scrollable
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  const children = Array.from(tmp.children);
-
-  let fixedHtml = "";
-  let contentHtml = "";
-  let fixedDone = false;
-
-  for (const child of children) {
-    if (!fixedDone) {
-      const isBack = child.classList && child.classList.contains("detail-back");
-      const isStatsPanel = child.classList && child.classList.contains("panel") && child.querySelector(".stat, .stat-value, .breadcrumb");
-      if (isBack || isStatsPanel) {
-        fixedHtml += child.outerHTML;
-        fixedDone = true;
-        continue;
-      }
-    }
-    contentHtml += child.outerHTML;
-  }
-
-  if (fixedHtml) {
-    app.innerHTML = '<div class="page-fixed">' + fixedHtml + '</div><div class="page-content">' + contentHtml + '</div>';
-  } else {
-    app.innerHTML = '<div class="page-content">' + html + '</div>';
-  }
-}
+// ── esc, timeAgo, repairJson, calcCost, fmtCost, renderMd, setPage, formatBytes ──
+// These functions are now provided by the shared helpers script (dashboard-helpers.ts).
 
 // ── Issues Page ──
 
@@ -1261,8 +1254,7 @@ let issuesData = [];
 async function renderIssuesPage() {
   const app = document.getElementById("app");
 
-  const ticketsRes = await fetch(API + "/api/issues/tickets");
-  const tickets = await ticketsRes.json();
+  const tickets = await fetchJson("/api/issues/tickets");
 
   if (tickets.length === 0 && !issuesSelectedTicket) {
     app.innerHTML = '<div class="panel"><div class="empty">No issues found yet. Run /noob-explore (UI tests) or /noob-api-explore (API tests) to find issues.</div></div>';
@@ -1309,8 +1301,7 @@ async function renderIssuesPage() {
   }
 
   // ── Level 2: Issues for a ticket — sortable table ──
-  const issuesRes = await fetch(API + "/api/issues/by-ticket?ticket=" + encodeURIComponent(issuesSelectedTicket));
-  issuesData = await issuesRes.json();
+  issuesData = await fetchJson("/api/issues/by-ticket?ticket=" + encodeURIComponent(issuesSelectedTicket));
 
   renderIssuesTable();
 }
@@ -1348,7 +1339,7 @@ function renderIssuesTable() {
   const high = issuesData.filter(i => i.severity === "high").length;
   const medium = issuesData.filter(i => i.severity === "medium").length;
 
-  const sevColor = (s) => s === "critical" ? "var(--red)" : s === "high" ? "var(--orange)" : s === "medium" ? "var(--yellow)" : s === "low" ? "var(--dim)" : "var(--purple)";
+  const sevColor = severityColor;
   const arrow = (col) => issuesSortCol === col ? (issuesSortDir === 1 ? " ▲" : " ▼") : "";
 
   let html = '';
@@ -1409,7 +1400,7 @@ function sortIssues(col) {
 
 function deleteIssue(issueId) {
   if (!confirm("Delete this issue? This cannot be undone.")) return;
-  fetch(API + "/api/issues/delete?id=" + encodeURIComponent(issueId), { method: "DELETE" })
+  fetchApi("/api/issues/delete?id=" + encodeURIComponent(issueId), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
       if (data.deleted) {
@@ -1425,8 +1416,7 @@ let analysisSelectedRun = "";
 let analysisSelectedId = "";
 
 async function renderAnalysesPage() {
-  const res = await fetch(API + "/api/analyses");
-  const allAnalyses = await res.json();
+  const allAnalyses = await fetchJson("/api/analyses");
   const app = document.getElementById("app");
 
   // Group by run
@@ -1580,16 +1570,14 @@ async function renderAnalysesPage() {
   // Async-load normalized impact areas if viewing impact analysis
   if (selected && selected.analysis_type === "impact") {
     try {
-      const iaRes = await fetch(API + "/api/impact-areas?analysis=" + selected.id);
-      const impactAreas = await iaRes.json();
+      const impactAreas = await fetchJson("/api/impact-areas?analysis=" + selected.id);
       const container = document.getElementById("impact-areas-container");
       if (container && impactAreas.length > 0) {
-        const sevColors = { critical: "var(--red)", high: "var(--orange)", medium: "var(--yellow)", low: "var(--dim)" };
         let iaHtml = '<div class="tc-detail-section" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">';
         iaHtml += '<div class="tc-detail-section-title" style="color:var(--accent)">Normalized Impact Areas (' + impactAreas.length + ')</div>';
         iaHtml += '<table class="data-table" style="font-size:12px"><thead><tr><th>Type</th><th>Severity</th><th>Description</th></tr></thead><tbody>';
         for (const ia of impactAreas) {
-          const sc = sevColors[ia.severity] || "var(--dim)";
+          const sc = severityColor(ia.severity);
           iaHtml += '<tr><td style="color:var(--accent);white-space:nowrap">' + esc(ia.area_type) + '</td>';
           iaHtml += '<td style="color:' + sc + ';font-weight:600;white-space:nowrap">' + esc(ia.severity || "-") + '</td>';
           iaHtml += '<td>' + esc(ia.description) + '</td></tr>';
@@ -1779,8 +1767,7 @@ function downloadFile(filename, content, mimeType) {
 }
 
 async function exportAnalysisMd(id) {
-  const res = await fetch(API + "/api/analyses");
-  const all = await res.json();
+  const all = await fetchJson("/api/analyses");
   const analysis = all.find(a => a.id === id);
   if (!analysis) { alert("Analysis not found"); return; }
   try {
@@ -1796,8 +1783,7 @@ async function exportAnalysisMd(id) {
 }
 
 async function exportAnalysisPdf(id) {
-  const res = await fetch(API + "/api/analyses");
-  const all = await res.json();
+  const all = await fetchJson("/api/analyses");
   const analysis = all.find(a => a.id === id);
   if (!analysis) { alert("Analysis not found"); return; }
   try {
@@ -1819,15 +1805,14 @@ async function exportAnalysisPdf(id) {
 
 async function deleteAnalysesForRun(runId, ref) {
   if (!confirm("Delete all analyses for " + ref + "?")) return;
-  await fetch(API + "/api/analyses/delete?run=" + encodeURIComponent(runId), { method: "DELETE" });
+  await fetchApi("/api/analyses/delete?run=" + encodeURIComponent(runId), { method: "DELETE" });
   analysisSelectedRun = "";
   analysisSelectedId = "";
   renderAnalysesPage();
 }
 
 async function exportAllAnalysesMd(runId) {
-  const res = await fetch(API + "/api/analyses");
-  const all = await res.json();
+  const all = await fetchJson("/api/analyses");
   const runAnalyses = all.filter(a => a.run_id === runId);
   if (runAnalyses.length === 0) { alert("No analyses found for this run"); return; }
 
@@ -1854,8 +1839,7 @@ async function exportAllAnalysesMd(runId) {
 }
 
 async function exportAllAnalysesPdf(runId) {
-  const res = await fetch(API + "/api/analyses");
-  const all = await res.json();
+  const all = await fetchJson("/api/analyses");
   const runAnalyses = all.filter(a => a.run_id === runId);
   if (runAnalyses.length === 0) { alert("No analyses found for this run"); return; }
 
@@ -1978,10 +1962,9 @@ function renderAnalysisContent(type, content) {
           const title = item.risk || item.area || item.description || item.reason || "";
           const detail = item.description && item.description !== title ? item.description : "";
           const sev = item.severity || "";
-          const sevColor = sev === "high" || sev === "critical" ? "var(--red)" : sev === "medium" ? "var(--yellow)" : sev === "low" ? "var(--dim)" : "";
           html += \`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
             \${title ? \`<span style="color:var(--accent);font-weight:600">\${esc(title)}</span>\` : ""}
-            \${sev ? \`<span style="font-size:10px;padding:1px 5px;border-radius:3px;margin-left:6px;background:rgba(125,133,144,0.1);color:\${sevColor}">\${esc(sev)}</span>\` : ""}
+            \${sev ? \`<span style="font-size:10px;padding:1px 5px;border-radius:3px;margin-left:6px;background:rgba(125,133,144,0.1);color:\${severityColor(sev)}">\${esc(sev)}</span>\` : ""}
             \${detail ? \`<br>\${esc(detail)}\` : ""}
             \${item.mitigation ? \`<div style="font-size:11px;color:var(--green);margin-top:2px">→ \${esc(item.mitigation)}</div>\` : ""}
           </div>\`;
@@ -2015,12 +1998,11 @@ function renderAnalysisContent(type, content) {
           const title = item.area || item.risk || item.concern || item.file || item.description || item.reason || "";
           const detail = item.details || item.impact || item.changes || item.scope || item.description || item.mitigation || "";
           const sev = item.severity || "";
-          const sevColor = sev === "high" || sev === "critical" ? "var(--red)" : sev === "medium" ? "var(--yellow)" : sev === "low" ? "var(--dim)" : "";
           const files = item.files || item.affected || item.dependencies || null;
           const extra = item.change_type || item.mitigation || null;
 
           html += \`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
-            \${sev ? \`<span style="color:\${sevColor};font-size:10px;font-weight:600;margin-right:6px">[\${sev.toUpperCase()}]</span>\` : ""}
+            \${sev ? \`<span style="color:\${severityColor(sev)};font-size:10px;font-weight:600;margin-right:6px">[\${sev.toUpperCase()}]</span>\` : ""}
             \${title ? \`<span style="font-weight:600;color:var(--accent)">\${esc(title)}</span>\` : ""}
             \${detail && detail !== title ? \`<div style="font-size:12px;color:var(--text);margin-top:2px">\${esc(detail)}</div>\` : ""}
             \${extra ? \`<div style="font-size:11px;color:var(--green);margin-top:2px">→ \${esc(extra)}</div>\` : ""}
@@ -2046,8 +2028,7 @@ let plansSelectedPlan = "";
 async function renderPlansPage() {
   const app = document.getElementById("app");
 
-  const ticketsRes = await fetch(API + "/api/plans/tickets");
-  const tickets = await ticketsRes.json();
+  const tickets = await fetchJson("/api/plans/tickets");
 
   if (tickets.length === 0 && !plansSelectedTicket) {
     app.innerHTML = '<div class="panel"><div class="empty">No plans yet. Use /noob-plan when a ticket is ready for QA.</div></div>';
@@ -2091,8 +2072,7 @@ async function renderPlansPage() {
 
   // ── Level 2: Plans for a Ticket ──
   if (!plansSelectedPlan) {
-    const plansRes = await fetch(API + "/api/plans?ticket=" + encodeURIComponent(plansSelectedTicket));
-    const plans = await plansRes.json();
+    const plans = await fetchJson("/api/plans?ticket=" + encodeURIComponent(plansSelectedTicket));
 
     html += '<div class="panel" style="margin-bottom:8px">';
     html += \`<div class="breadcrumb">
@@ -2125,8 +2105,7 @@ async function renderPlansPage() {
   }
 
   // ── Level 3: Plan detail — steps table ──
-  const detailRes = await fetch(API + "/api/plans?id=" + encodeURIComponent(plansSelectedPlan));
-  const detail = await detailRes.json();
+  const detail = await fetchJson("/api/plans?id=" + encodeURIComponent(plansSelectedPlan));
   const plan = detail.plan;
   const steps = detail.steps || [];
 
@@ -2285,7 +2264,7 @@ async function renderPlansPage() {
 
   for (const s of steps) {
     const confColor = s.confidence === "confident" ? "var(--green)" : "var(--yellow)";
-    const statusColor = s.status === "passed" ? "var(--green)" : s.status === "failed" ? "var(--red)" : "var(--dim)";
+    const stColor = statusColor(s.status);
     html += \`<tr>
       <td style="color:var(--dim)">\${s.step_order}</td>
       <td>
@@ -2296,7 +2275,7 @@ async function renderPlansPage() {
       <td><span style="color:\${confColor};font-size:10px;font-weight:600">\${esc(s.confidence)}</span></td>
       <td><span style="color:var(--accent);font-size:10px">\${esc(s.category || "—")}</span></td>
       <td><span style="font-size:10px;color:var(--dim)">\${s.priority || "—"}</span></td>
-      <td><span style="color:\${statusColor};font-size:10px;font-weight:600">\${esc(s.status).toUpperCase()}</span></td>
+      <td><span style="color:\${stColor};font-size:10px;font-weight:600">\${esc(s.status).toUpperCase()}</span></td>
       <td style="font-size:10px">
         \${s.tc_title ? \`<div style="color:var(--green)">TC: \${esc(s.tc_title.slice(0, 35))}</div>\` : '<div style="color:var(--dim)">No test case</div>'}
         \${s.mr_ref ? \`<div style="color:var(--accent)">MR: \${esc(s.mr_ref)}</div>\` : ""}
@@ -2401,8 +2380,7 @@ async function renderPlansPage() {
 // ── Plan Export ──
 
 async function exportPlanMd(planId) {
-  const planRes = await fetch(API + "/api/plans?id=" + encodeURIComponent(planId));
-  const planData = await planRes.json();
+  const planData = await fetchJson("/api/plans?id=" + encodeURIComponent(planId));
   if (!planData || !planData.plan) { alert("Plan not found"); return; }
   const plan = planData.plan;
   const steps = planData.steps || [];
@@ -2480,8 +2458,7 @@ async function exportPlanMd(planId) {
 }
 
 async function exportPlanPdf(planId) {
-  const planRes = await fetch(API + "/api/plans?id=" + encodeURIComponent(planId));
-  const planData = await planRes.json();
+  const planData = await fetchJson("/api/plans?id=" + encodeURIComponent(planId));
   if (!planData || !planData.plan) { alert("Plan not found"); return; }
   const plan = planData.plan;
   const ticket = plan.ticket_id || planId.slice(0, 8);
@@ -2622,16 +2599,14 @@ function getPlanTabMd(planData, tab) {
 }
 
 async function exportPlanTabMd(planId) {
-  const planRes = await fetch(API + "/api/plans?id=" + encodeURIComponent(planId));
-  const planData = await planRes.json();
+  const planData = await fetchJson("/api/plans?id=" + encodeURIComponent(planId));
   if (!planData || !planData.plan) { alert("Plan not found"); return; }
   const result = getPlanTabMd(planData, _activePlanTab);
   downloadFile(result.filename + ".md", result.md, "text/markdown");
 }
 
 async function exportPlanTabPdf(planId) {
-  const planRes = await fetch(API + "/api/plans?id=" + encodeURIComponent(planId));
-  const planData = await planRes.json();
+  const planData = await fetchJson("/api/plans?id=" + encodeURIComponent(planId));
   if (!planData || !planData.plan) { alert("Plan not found"); return; }
   const result = getPlanTabMd(planData, _activePlanTab);
   const printHtml = '<!DOCTYPE html><html><head><title>' + result.filename + '</title><style>' + printCss + '</style></head><body>' + mdToHtml(result.md) + '</body></html>';
@@ -2653,7 +2628,7 @@ function switchPlanTab(el, tab) {
 
 function deletePlan(planId) {
   if (!confirm("Delete this plan and all its steps? This cannot be undone.")) return;
-  fetch(API + "/api/plans/delete?id=" + encodeURIComponent(planId), { method: "DELETE" })
+  fetchApi("/api/plans/delete?id=" + encodeURIComponent(planId), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
       if (data.deleted) { plansSelectedPlan = ""; renderPlansPage(); }
@@ -2663,11 +2638,7 @@ function deletePlan(planId) {
 function resolveBlocker(blockerId) {
   const resolution = prompt("Resolution (what unblocked this?):");
   if (resolution === null) return;
-  fetch(API + "/api/blockers/resolve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: blockerId, resolution })
-  })
+  postJson("/api/blockers/resolve", { id: blockerId, resolution })
     .then(r => r.json())
     .then(() => {
       if (currentPage === "blockers") renderBlockersPage();
@@ -2681,8 +2652,7 @@ let blockersShowOpen = true;
 
 async function renderBlockersPage() {
   const url = blockersShowOpen ? "/api/blockers?open=true" : "/api/blockers";
-  const res = await fetch(API + url);
-  const allBlockers = await res.json();
+  const allBlockers = await fetchJson(url);
 
   const openCount = allBlockers.filter(b => b.status === "open").length;
   const resolvedCount = allBlockers.filter(b => b.status === "resolved").length;
@@ -2756,8 +2726,7 @@ let contextSelectedTicket = "";
 async function renderContextCachePage() {
   if (!contextSelectedTicket) {
     // Level 1: All tickets with cached context
-    const res = await fetch(API + "/api/ticket-context/tickets");
-    const tickets = await res.json();
+    const tickets = await fetchJson("/api/ticket-context/tickets");
 
     const totalBytes = tickets.reduce((s, t) => s + (t.total_bytes || 0), 0);
     const totalEntries = tickets.reduce((s, t) => s + (t.entry_count || 0), 0);
@@ -2801,8 +2770,7 @@ async function renderContextCachePage() {
   }
 
   // Level 2: Entries for a specific ticket
-  const res = await fetch(API + "/api/ticket-context?ticket=" + encodeURIComponent(contextSelectedTicket));
-  const entries = await res.json();
+  const entries = await fetchJson("/api/ticket-context?ticket=" + encodeURIComponent(contextSelectedTicket));
 
   let html = '<div class="panel" style="margin-bottom:8px">';
   html += '<div class="breadcrumb">';
@@ -2843,25 +2811,20 @@ async function renderContextCachePage() {
   setPage(html);
 }
 
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return "0 B";
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / 1048576).toFixed(1) + " MB";
-}
+// formatBytes is now in shared helpers
 
 function invalidateTicketContext(ticketId, type) {
   const msg = type ? "Invalidate " + type + " for " + ticketId + "?" : "Invalidate ALL cached context for " + ticketId + "?";
   if (!confirm(msg)) return;
   const params = "ticket=" + encodeURIComponent(ticketId) + (type ? "&type=" + encodeURIComponent(type) : "");
-  fetch(API + "/api/ticket-context/invalidate?" + params, { method: "DELETE" })
+  fetchApi("/api/ticket-context/invalidate?" + params, { method: "DELETE" })
     .then(r => r.json())
     .then(() => renderContextCachePage());
 }
 
 function purgeContextCache() {
   if (!confirm("Remove all stale entries?")) return;
-  fetch(API + "/api/ticket-context/purge", { method: "POST" })
+  fetchApi("/api/ticket-context/purge", { method: "POST" })
     .then(r => r.json())
     .then(data => { alert("Purged " + data.purged + " stale entries"); renderContextCachePage(); });
 }
@@ -2874,8 +2837,7 @@ let apimapSelectedEndpoint = "";
 async function renderApiMapsPage() {
   if (!apimapSelectedId) {
     // Level 1: List all API maps
-    const res = await fetch(API + "/api/apimaps");
-    const maps = await res.json();
+    const maps = await fetchJson("/api/apimaps");
 
     if (maps.length === 0) {
       setPage('<div class="panel"><div class="panel-title">API Maps</div><div class="empty">No API maps yet. Use /noob-api-explore to populate them.</div></div>');
@@ -2920,8 +2882,7 @@ async function renderApiMapsPage() {
   }
 
   // Level 2: API map detail — canvas + endpoint list/detail
-  const res = await fetch(API + "/api/apimaps?id=" + encodeURIComponent(apimapSelectedId));
-  const data = await res.json();
+  const data = await fetchJson("/api/apimaps?id=" + encodeURIComponent(apimapSelectedId));
   if (!data.map) { apimapSelectedId = ""; renderApiMapsPage(); return; }
 
   const map = data.map;
@@ -2994,7 +2955,7 @@ async function renderApiMapsPage() {
 
       // Params
       if (epParams.length > 0) {
-        html += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Parameters (' + epParams.length + ')</div>';
+        html += '<div class="section-header">Parameters (' + epParams.length + ')</div>';
         html += '<table class="data-table" style="font-size:11px;margin-bottom:12px"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>Req</th></tr></thead><tbody>';
         for (const p of epParams) {
           html += '<tr><td style="color:var(--accent)">' + esc(p.name) + '</td>';
@@ -3007,7 +2968,7 @@ async function renderApiMapsPage() {
 
       // Responses
       if (epResponses.length > 0) {
-        html += '<div style="font-size:10px;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:4px">Responses (' + epResponses.length + ')</div>';
+        html += '<div class="section-header">Responses (' + epResponses.length + ')</div>';
         for (const r of epResponses) {
           const sc = r.status_code >= 200 && r.status_code < 300 ? "var(--green)" : r.status_code >= 400 ? "var(--red)" : "var(--yellow)";
           html += '<div style="margin-bottom:6px"><span style="color:' + sc + ';font-weight:600;font-size:12px">' + r.status_code + '</span>';
@@ -3065,8 +3026,7 @@ async function renderApiMapsPage() {
 // ── Repos Page ──
 
 async function renderReposPage() {
-  const res = await fetch(API + "/api/repos");
-  const data = await res.json();
+  const data = await fetchJson("/api/repos");
   const app = document.getElementById("app");
 
   // Stats
@@ -3210,11 +3170,7 @@ function exportTestCasesCsv(ticket) {
 
 async function deleteRunPacksByTicket(ticket) {
   if (!confirm("Delete ALL run packs and entries for " + ticket + "? This cannot be undone.")) return;
-  await fetch(API + "/api/runpacks/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ticket }),
-  });
+  await postJson("/api/runpacks/delete", { ticket });
   rpSelectedTicket = "";
   rpSelectedPack = "";
   rpSelectedEntry = "";
@@ -3223,7 +3179,7 @@ async function deleteRunPacksByTicket(ticket) {
 
 function deleteTestCasesByTicket(ticket) {
   if (!confirm("Delete ALL test cases for " + ticket + "? This cannot be undone.")) return;
-  fetch(API + "/api/testcases/delete?ticket=" + encodeURIComponent(ticket), { method: "DELETE" })
+  fetchApi("/api/testcases/delete?ticket=" + encodeURIComponent(ticket), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
       if (data.deleted > 0) { tcSelectedSuite = ""; tcSelectedId = ""; renderTestCasesPage(); }
@@ -3231,7 +3187,7 @@ function deleteTestCasesByTicket(ticket) {
 }
 
 function deleteRepoEntry(name) {
-  fetch(API + "/api/repos/delete?name=" + encodeURIComponent(name), { method: "DELETE" })
+  fetchApi("/api/repos/delete?name=" + encodeURIComponent(name), { method: "DELETE" })
     .then(r => r.json())
     .then(data => { if (data.deleted) renderReposPage(); });
 }
@@ -3243,7 +3199,7 @@ let uimapSelectedPageId = "";
 
 async function deleteUiMap(mapId, mapName) {
   if (!confirm('Delete UI map "' + mapName + '" and ALL its pages, elements, navigations, and forms? This cannot be undone.')) return;
-  await fetch(API + "/api/uimaps/delete?id=" + encodeURIComponent(mapId), { method: "DELETE" });
+  await fetchApi("/api/uimaps/delete?id=" + encodeURIComponent(mapId), { method: "DELETE" });
   uimapSelectedId = "";
   uimapSelectedPageId = "";
   renderUiMapsPage();
@@ -3252,8 +3208,7 @@ async function deleteUiMap(mapId, mapName) {
 async function renderUiMapsPage() {
   const app = document.getElementById("app");
 
-  const mapsRes = await fetch(API + "/api/uimaps");
-  const maps = await mapsRes.json();
+  const maps = await fetchJson("/api/uimaps");
 
   if (maps.length === 0 && !uimapSelectedId) {
     app.innerHTML = '<div class="panel"><div class="empty">No UI maps yet. Use <code>noob-tester uimap create --name "My App" --repos repo1,repo2 --targets url1,url2</code> to create one.</div></div>';
@@ -3308,8 +3263,7 @@ async function renderUiMapsPage() {
   }
 
   // ── Level 2: Canvas tree + sidebar ──
-  const detailRes = await fetch(API + "/api/uimaps/detail?id=" + encodeURIComponent(uimapSelectedId));
-  const detail = await detailRes.json();
+  const detail = await fetchJson("/api/uimaps/detail?id=" + encodeURIComponent(uimapSelectedId));
   const map = detail.map;
   const pages = detail.pages || [];
   const elements = detail.elements || [];
@@ -3361,8 +3315,8 @@ async function renderUiMapsPage() {
 
   // ── RIGHT: Page detail panel (shown when a node is clicked) ──
   // Modal overlay for page detail (positioned over the canvas)
-  html += '<div id="uimap-detail-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100;cursor:pointer" onclick="if(event.target===this){this.style.display=\\'none\\'}">';
-  html += '<div id="uimap-detail" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:85vw;max-width:1100px;max-height:90vh;border-radius:12px;border:1px solid var(--accent);box-shadow:0 20px 60px rgba(0,0,0,0.6);cursor:default;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)"></div>';
+  html += '<div id="uimap-detail-overlay" class="modal-overlay" onclick="if(event.target===this){this.style.display=\\'none\\'}">';
+  html += '<div id="uimap-detail" class="modal-box" style="max-width:1100px"></div>';
   html += '</div>';
 
   html += '</div>'; // end flex layout
@@ -3382,8 +3336,7 @@ async function renderUiMapsPage() {
 let metricsTab = "metrics";
 
 async function renderMetricsPage() {
-  const res = await fetch(API + "/api/metrics");
-  const data = await res.json();
+  const data = await fetchJson("/api/metrics");
   const agg = data.aggregate;
   const sessions = data.sessions;
 
@@ -3447,7 +3400,7 @@ async function renderMetricsPage() {
       html += '</tr>';
 
       for (const s of sessions) {
-        const statusColor = s.status === "active" ? "var(--green)" : s.status === "stale" ? "var(--yellow)" : "var(--dim)";
+        const stColor = statusColor(s.status);
         const dur = s.total_duration_ms ? Math.round(s.total_duration_ms / 1000) + "s" : "-";
         const cost = fmtCost(calcCost(s));
         const model = s.model ? s.model.replace("claude-", "") : "-";
@@ -3465,7 +3418,7 @@ async function renderMetricsPage() {
           <td style="padding:6px;text-align:right;color:var(--red)">\${cost}</td>
           <td style="padding:6px;text-align:right;color:var(--yellow)">\${s.tool_calls || 0}</td>
           <td style="padding:6px;text-align:right;color:var(--green)">\${dur}</td>
-          <td style="padding:6px;text-align:center;color:\${statusColor}">\${s.status}</td>
+          <td style="padding:6px;text-align:center;color:\${stColor}">\${s.status}</td>
         </tr>\`;
       }
       html += '</table>';
@@ -3475,8 +3428,7 @@ async function renderMetricsPage() {
 
   // ── TAB: Resources ──
   if (metricsTab === "resources") {
-    const rRes = await fetch(API + "/api/metrics/resources");
-    const r = await rRes.json();
+    const r = await fetchJson("/api/metrics/resources");
 
     function fmtBytes(b) {
       if (b < 1024) return b + " B";
@@ -3592,8 +3544,7 @@ async function renderRunsPage() {
   const app = document.getElementById("app");
 
   // Fetch ticket IDs
-  const ticketsRes = await fetch(API + "/api/runpacks/tickets");
-  const tickets = await ticketsRes.json();
+  const tickets = await fetchJson("/api/runpacks/tickets");
 
   if (tickets.length === 0) {
     app.innerHTML = '<div class="panel"><div class="empty">No run packs yet. Run <code>/noob-explore</code> (UI tests) or <code>/noob-api-explore</code> (API tests) to create one automatically via <code>runpack resolve</code>.</div></div>';
@@ -3646,8 +3597,7 @@ async function renderRunsPage() {
 
   // ── Level 2: Run packs for a ticket ──
   if (!rpSelectedPack) {
-    const packsRes = await fetch(API + "/api/runpacks?ticket=" + encodeURIComponent(rpSelectedTicket));
-    const packs = await packsRes.json();
+    const packs = await fetchJson("/api/runpacks?ticket=" + encodeURIComponent(rpSelectedTicket));
 
     // Stats for this ticket — breadcrumb inside the stats panel below
     const totalTests = packs.reduce((s, p) => s + p.total, 0);
@@ -3729,8 +3679,7 @@ async function renderRunsPage() {
   }
 
   // ── Level 3: Run pack detail — split view: test cases left, detail right ──
-  const entriesRes = await fetch(API + "/api/runpacks?pack=" + encodeURIComponent(rpSelectedPack));
-  const packData = await entriesRes.json();
+  const packData = await fetchJson("/api/runpacks?pack=" + encodeURIComponent(rpSelectedPack));
   const entries = packData.entries || packData;
   const packMeta = packData.meta || null;
 
@@ -3772,8 +3721,7 @@ async function renderRunsPage() {
 
   // RCA stats (if available)
   try {
-    const rcaRes = await fetch(API + "/api/rca/summary?pack=" + encodeURIComponent(rpSelectedPack));
-    const rca = await rcaRes.json();
+    const rca = await fetchJson("/api/rca/summary?pack=" + encodeURIComponent(rpSelectedPack));
     if (rca.total > 0) {
       const classColors = { actual_bug: "var(--red)", env_issue: "var(--yellow)", flaky_selector: "var(--purple)", test_data_issue: "var(--orange, #d2992a)", network: "var(--accent)", auth_issue: "var(--yellow)", timeout: "var(--dim)", unknown: "var(--dim)" };
       html += '<span style="margin-left:16px;border-left:1px solid var(--border);padding-left:16px"></span>';
@@ -3787,8 +3735,7 @@ async function renderRunsPage() {
 
   // False positive stats (if available)
   try {
-    const fpRes = await fetch(API + "/api/false-positives/stats?pack=" + encodeURIComponent(rpSelectedPack));
-    const fp = await fpRes.json();
+    const fp = await fetchJson("/api/false-positives/stats?pack=" + encodeURIComponent(rpSelectedPack));
     if (fp.retried > 0) {
       html += '<span style="margin-left:16px;border-left:1px solid var(--border);padding-left:16px"></span>';
       html += \`<div class="stat"><div class="stat-value" style="color:var(--yellow)">\${fp.falsePositives}</div><div class="stat-label">False Pos</div></div>\`;
@@ -3872,8 +3819,7 @@ async function renderRunsPage() {
   } else {
     let entryRca = [];
     try {
-      const rcaEntryRes = await fetch(API + "/api/rca/entry?entry=" + encodeURIComponent(selEntry.id));
-      entryRca = await rcaEntryRes.json();
+      entryRca = await fetchJson("/api/rca/entry?entry=" + encodeURIComponent(selEntry.id));
     } catch {}
     html += renderRunPackEntryDetail(selEntry, entryRca);
   }
@@ -3884,57 +3830,14 @@ async function renderRunsPage() {
 
   // Fetch and render run_artifacts for selected entry — grouped by step as cards in column layout
   if (rpSelectedEntry) {
-    fetch(API + "/api/run-artifacts?entry=" + encodeURIComponent(rpSelectedEntry))
+    fetchApi("/api/run-artifacts?entry=" + encodeURIComponent(rpSelectedEntry))
       .then(r => r.json())
       .then(artifacts => {
         if (!artifacts || artifacts.length === 0) return;
         const container = document.getElementById("entry-run-artifacts");
         if (!container) return;
         let h = '<div class="tc-detail-section"><div class="tc-detail-section-title">Captured Artifacts (' + artifacts.length + ')</div>';
-        // Group by action_index to show step-based cards
-        const byStep = {};
-        for (const a of artifacts) {
-          const key = a.action_index ?? 0;
-          if (!byStep[key]) byStep[key] = { desc: a.action_desc || "", pageUrl: a.page_url || "", items: [] };
-          byStep[key].items.push(a);
-          if (a.action_desc && !byStep[key].desc) byStep[key].desc = a.action_desc;
-          if (a.page_url && !byStep[key].pageUrl) byStep[key].pageUrl = a.page_url;
-        }
-        const stepKeys = Object.keys(byStep).sort((a, b) => Number(a) - Number(b));
-        h += '<div style="display:flex;flex-direction:column;gap:10px">';
-        for (const key of stepKeys) {
-          const step = byStep[key];
-          h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px">';
-          // Step header
-          h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
-          h += '<span style="background:var(--accent);color:var(--bg);font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">Step ' + esc(String(Number(key) + 1)) + '</span>';
-          if (step.desc) h += '<span style="font-size:12px;color:var(--fg)">' + esc(step.desc) + '</span>';
-          h += '</div>';
-          if (step.pageUrl) h += '<div style="font-size:10px;color:var(--dim);margin-bottom:8px;word-break:break-all">@ ' + esc(step.pageUrl) + '</div>';
-          // Screenshot for this step
-          const screenshots = step.items.filter(a => a.artifact_type === "screenshot" && a.file_path);
-          for (const a of screenshots) {
-            const url = API + "/api/artifact?path=" + encodeURIComponent(a.file_path);
-            h += '<div style="margin-bottom:6px"><img src="' + url + '" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid var(--border);cursor:pointer" onclick="window.open(this.src,&quot;_blank&quot;)" onerror="this.style.display=&quot;none&quot;" /></div>';
-          }
-          // Other artifacts for this step (snapshot, console, har, etc.)
-          const others = step.items.filter(a => a.artifact_type !== "screenshot");
-          if (others.length > 0) {
-            h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">';
-            for (const a of others) {
-              if (a.file_path) {
-                const url = API + "/api/artifact?path=" + encodeURIComponent(a.file_path);
-                const typeIcon = a.artifact_type === "snapshot" ? "doc" : a.artifact_type === "console" ? "terminal" : a.artifact_type === "har" ? "network" : "file";
-                h += '<a href="' + url + '" target="_blank" style="font-size:10px;color:var(--accent);background:rgba(88,166,255,0.08);padding:3px 8px;border-radius:3px;text-decoration:none;border:1px solid rgba(88,166,255,0.15)">' + esc(a.artifact_type) + '</a>';
-              } else if (a.content) {
-                h += '<pre style="font-size:9px;color:var(--dim);background:var(--bg);padding:4px;border-radius:3px;max-height:60px;overflow:auto;white-space:pre-wrap;width:100%">' + esc(a.content.slice(0, 500)) + '</pre>';
-              }
-            }
-            h += '</div>';
-          }
-          h += '</div>';
-        }
-        h += '</div>';
+        h += renderArtifactTimeline(artifacts);
         h += '</div>';
         container.innerHTML = h;
       }).catch(() => {});
@@ -3947,8 +3850,8 @@ function renderRunPackEntryDetail(entry, entryRca = []) {
   // Title + status badges
   html += \`<div class="tc-detail-title">\${esc(entry.tc_title || "Untitled")}</div>\`;
   html += '<div class="tc-detail-meta">';
-  const statusColor = entry.status === "passed" ? "var(--green)" : entry.status === "failed" ? "var(--red)" : entry.status === "claimed" ? "var(--yellow)" : "var(--dim)";
-  html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:\${statusColor}">\${entry.status.toUpperCase()}</span>\`;
+  const stColor = statusColor(entry.status);
+  html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:\${stColor}">\${entry.status.toUpperCase()}</span>\`;
   html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:var(--accent)">\${(entry.tc_format || "").toUpperCase()}</span>\`;
   const typeColor = entry.tc_type === "direct_functional" ? "var(--green)" : entry.tc_type === "impact_regression" ? "var(--yellow)" : "var(--accent)";
   const typeLabel = entry.tc_type === "direct_functional" ? "Direct Functional" : entry.tc_type === "impact_regression" ? "Impact Regression" : "General Regression";
@@ -4060,9 +3963,8 @@ function renderRunPackEntryDetail(entry, entryRca = []) {
       if (Array.isArray(issues)) {
         for (const issue of issues) {
           const sev = issue.severity || "info";
-          const sevColor = sev === "critical" ? "var(--red)" : sev === "high" ? "var(--orange)" : sev === "medium" ? "var(--yellow)" : "var(--dim)";
           html += \`<div style="padding:4px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:10px;font-weight:700;color:\${sevColor};text-transform:uppercase">\${esc(sev)}</span>
+            <span style="font-size:10px;font-weight:700;color:\${severityColor(sev)};text-transform:uppercase">\${esc(sev)}</span>
             <span style="font-size:12px;margin-left:6px">\${esc(issue.title || issue)}</span>
           </div>\`;
         }
@@ -4115,95 +4017,7 @@ function renderRunPackEntryDetail(entry, entryRca = []) {
         html += '</div>'; // close the 2-column grid early
         html += '<div class="tc-detail-section" style="margin-top:12px">';
         html += \`<div class="tc-detail-section-title">Artifacts (\${artifacts.length})</div>\`;
-
-        // Group by type
-        const byType = {};
-        for (const a of artifacts) { if (!byType[a.type]) byType[a.type] = []; byType[a.type].push(a); }
-
-        // Screenshots — render as thumbnails
-        if (byType.screenshot) {
-          html += '<div style="margin-bottom:12px">';
-          html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:600">Screenshots</div>';
-          html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
-          for (const a of byType.screenshot) {
-            const imgUrl = API + "/api/artifact?path=" + encodeURIComponent(a.path);
-            const label = a.label || a.path.split("/").pop() || "screenshot";
-            html += \`<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;max-width:280px;cursor:pointer" onclick="window.open('\${imgUrl}','_blank')">
-              <img src="\${imgUrl}" style="width:100%;max-height:180px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextSibling.style.display='block'" />
-              <div style="display:none;padding:12px;color:var(--dim);font-size:11px">Image not available</div>
-              <div style="padding:4px 8px;font-size:10px;color:var(--dim);border-top:1px solid var(--border);display:flex;justify-content:space-between">
-                <span>\${esc(label)}</span>
-                \${a.step !== undefined ? \`<span>Step \${a.step}</span>\` : ""}
-              </div>
-            </div>\`;
-          }
-          html += '</div></div>';
-        }
-
-        // Videos — render as playable video elements
-        if (byType.video) {
-          html += '<div style="margin-bottom:12px">';
-          html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:600">Videos</div>';
-          for (const a of byType.video) {
-            const vidUrl = API + "/api/artifact?path=" + encodeURIComponent(a.path);
-            const label = a.label || a.path.split("/").pop() || "video";
-            html += \`<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;max-width:480px;margin-bottom:8px">
-              <video src="\${vidUrl}" controls style="width:100%;max-height:300px;display:block">
-                <a href="\${vidUrl}" target="_blank">Download video</a>
-              </video>
-              <div style="padding:4px 8px;font-size:10px;color:var(--dim);border-top:1px solid var(--border)">\${esc(label)}</div>
-            </div>\`;
-          }
-          html += '</div>';
-        }
-
-        // Snapshots (accessibility trees) — collapsible JSON
-        if (byType.snapshot) {
-          html += '<div style="margin-bottom:12px">';
-          html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:600">Snapshots (\${byType.snapshot.length})</div>';
-          for (const a of byType.snapshot) {
-            const label = a.label || a.path.split("/").pop() || "snapshot";
-            html += \`<div style="border:1px solid var(--border);border-radius:4px;margin-bottom:4px;padding:6px 8px;font-size:11px">
-              <span style="color:var(--accent);cursor:pointer" onclick="window.open(API+'/api/artifact?path='+encodeURIComponent('\${esc(a.path)}'),'_blank')">\${esc(label)}</span>
-              \${a.step !== undefined ? \`<span style="color:var(--dim);margin-left:8px">Step \${a.step}</span>\` : ""}
-            </div>\`;
-          }
-          html += '</div>';
-        }
-
-        // HAR files — link
-        if (byType.har) {
-          html += '<div style="margin-bottom:12px">';
-          html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:600">Network Traces</div>';
-          for (const a of byType.har) {
-            const label = a.label || a.path.split("/").pop() || "network.har";
-            html += \`<div style="font-size:12px"><a href="\${API}/api/artifact?path=\${encodeURIComponent(a.path)}" target="_blank" style="color:var(--accent)">\${esc(label)}</a></div>\`;
-          }
-          html += '</div>';
-        }
-
-        // Console logs — link
-        if (byType.console) {
-          html += '<div style="margin-bottom:12px">';
-          html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:600">Console Logs</div>';
-          for (const a of byType.console) {
-            const label = a.label || a.path.split("/").pop() || "console.log";
-            html += \`<div style="font-size:12px"><a href="\${API}/api/artifact?path=\${encodeURIComponent(a.path)}" target="_blank" style="color:var(--accent)">\${esc(label)}</a></div>\`;
-          }
-          html += '</div>';
-        }
-
-        // Traces — link
-        if (byType.trace) {
-          html += '<div style="margin-bottom:12px">';
-          html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:600">Traces</div>';
-          for (const a of byType.trace) {
-            const label = a.label || a.path.split("/").pop() || "trace";
-            html += \`<div style="font-size:12px"><a href="\${API}/api/artifact?path=\${encodeURIComponent(a.path)}" target="_blank" style="color:var(--accent)">\${esc(label)}</a></div>\`;
-          }
-          html += '</div>';
-        }
-
+        html += renderArtifactGroup(artifacts, "rpe-art-" + entry.id);
         html += '</div>';
         // Re-open a dummy div so the closing tags balance
         html += '<div>';
@@ -4283,10 +4097,8 @@ let tcAllCases = [];
 async function renderTestCasesPage() {
   const app = document.getElementById("app");
 
-  const statsRes = await fetch(API + "/api/testcases/stats");
-  const stats = await statsRes.json();
-  const casesRes = await fetch(API + "/api/testcases");
-  tcAllCases = await casesRes.json();
+  const stats = await fetchJson("/api/testcases/stats");
+  tcAllCases = await fetchJson("/api/testcases");
 
   // Group by ticket (suite)
   const suites = {};
@@ -4444,12 +4256,12 @@ function renderTcDetail(tc) {
 
   // Badges
   html += '<div class="tc-detail-meta">';
-  const statusColor = tc.status === "passed" ? "var(--green)" : tc.status === "failed" ? "var(--red)" : tc.status === "claimed" ? "var(--yellow)" : "var(--dim)";
+  const stColor = statusColor(tc.status);
   const readyColor = tc.ready ? "var(--green)" : "var(--dim)";
   const readyLabel = tc.ready ? "READY" : "DRAFT";
   html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:\${readyColor}">\${readyLabel}</span>\`;
   html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:var(--accent)">\${tc.format.toUpperCase()}</span>\`;
-  html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:\${statusColor}">\${tc.status.toUpperCase()}</span>\`;
+  html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:\${stColor}">\${tc.status.toUpperCase()}</span>\`;
   const typeColor = tc.type === "direct_functional" ? "var(--green)" : tc.type === "impact_regression" ? "var(--yellow)" : "var(--accent)";
   const typeLabel = tc.type === "direct_functional" ? "Direct Functional" : tc.type === "impact_regression" ? "Impact Regression" : "General Regression";
   html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:\${typeColor}">\${typeLabel}</span>\`;
@@ -4629,8 +4441,7 @@ async function renderReportsPage() {
 
   if (!reportSelectedTicket) {
     // Level 1: Ticket list
-    const res = await fetch(API + "/api/report/tickets");
-    const tickets = await res.json();
+    const tickets = await fetchJson("/api/report/tickets");
 
     let html = '<div class="panel" style="margin-bottom:16px"><div class="panel-title">Reports</div>';
     html += '<div style="font-size:12px;color:var(--dim);margin-bottom:8px">Select a ticket to generate a comprehensive report with insights, patterns, and improvement plan.</div>';
@@ -4660,13 +4471,11 @@ async function renderReportsPage() {
   // Level 2: Full report for a ticket
   if (!reportData) {
     setPage('<div class="panel"><div class="empty">Loading report for ' + esc(reportSelectedTicket) + '...</div></div>');
-    const res = await fetch(API + "/api/report?ticket=" + encodeURIComponent(reportSelectedTicket));
-    reportData = await res.json();
+    reportData = await fetchJson("/api/report?ticket=" + encodeURIComponent(reportSelectedTicket));
   }
 
   // Fetch saved Claude analysis
-  const savedRes = await fetch(API + "/api/report/saved?ticket=" + encodeURIComponent(reportSelectedTicket));
-  const savedReports = await savedRes.json();
+  const savedReports = await fetchJson("/api/report/saved?ticket=" + encodeURIComponent(reportSelectedTicket));
   const latestSaved = Array.isArray(savedReports) && savedReports.length > 0 ? savedReports[0] : null;
 
   const r = reportData;
@@ -4739,8 +4548,7 @@ async function renderReportsPage() {
   // ── TAB: Test Runs ──
   if (reportTab === "runs") {
     try {
-      const packsRes = await fetch(API + "/api/runpacks?ticket=" + encodeURIComponent(reportSelectedTicket));
-      const packs = await packsRes.json();
+      const packs = await fetchJson("/api/runpacks?ticket=" + encodeURIComponent(reportSelectedTicket));
 
       if (!packs || packs.length === 0) {
         html += '<div class="panel"><div class="empty">No run packs for this ticket yet.</div></div>';
@@ -4772,8 +4580,7 @@ async function renderReportsPage() {
 
           // Fetch entries for this pack
           try {
-            const entriesRes = await fetch(API + "/api/runpacks?pack=" + encodeURIComponent(p.run_pack_id));
-            const packData = await entriesRes.json();
+            const packData = await fetchJson("/api/runpacks?pack=" + encodeURIComponent(p.run_pack_id));
             const entries = packData.entries || packData;
 
             if (entries.length > 0) {
@@ -4840,9 +4647,8 @@ async function renderReportsPage() {
       html += '<div class="panel" style="margin-bottom:12px"><div class="panel-title">Top Issues (' + r.issues.length + ')</div>';
       html += '<table class="data-table"><thead><tr><th>Severity</th><th>Category</th><th>Title</th><th>Location</th></tr></thead><tbody>';
       for (const i of r.issues.slice(0, 15)) {
-        const sevColor = i.severity === "critical" ? "var(--red)" : i.severity === "high" ? "var(--red)" : i.severity === "medium" ? "var(--yellow)" : "var(--dim)";
         html += \`<tr>
-          <td style="color:\${sevColor};font-weight:600;font-size:11px">\${(i.severity || "").toUpperCase()}</td>
+          <td style="color:\${severityColor(i.severity)};font-weight:600;font-size:11px">\${(i.severity || "").toUpperCase()}</td>
           <td style="color:var(--accent);font-size:11px">\${esc(i.category || "")}</td>
           <td>\${esc(i.title || "")}</td>
           <td style="font-family:monospace;font-size:10px;color:var(--dim)">\${esc(i.location || "")}</td>
@@ -4895,8 +4701,7 @@ let secretsSelectedTarget = "";
 let secretsSelectedRole = "";
 
 async function renderSecretsPage() {
-  const res = await fetch(API + "/api/secrets");
-  const data = await res.json();
+  const data = await fetchJson("/api/secrets");
   const targetNames = Object.keys(data);
   const app = document.getElementById("app");
 
@@ -5085,11 +4890,7 @@ async function addTargetUI() {
   const url = document.getElementById("add-target-url").value;
   const desc = document.getElementById("add-target-desc").value;
   if (!name) { alert("Target name required"); return; }
-  await fetch(API + "/api/secrets/target", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, url: url || undefined, description: desc || undefined }),
-  });
+  await postJson("/api/secrets/target", { name, url: url || undefined, description: desc || undefined });
   renderSecretsPage();
 }
 
@@ -5102,43 +4903,27 @@ async function addSecretUI() {
   if (!target || !key || !value) { alert("Key and value required"); return; }
   if (source === "env") value = "env:" + value;
   if (source === "op") value = "op:" + value;
-  await fetch(API + "/api/secrets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target, role, key, value }),
-  });
+  await postJson("/api/secrets", { target, role, key, value });
   secretsSelectedRole = role;
   renderSecretsPage();
 }
 
 async function deleteSecretUI(target, role, key) {
   if (!confirm("Delete " + key + "?")) return;
-  await fetch(API + "/api/secrets", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target, role, key }),
-  });
+  await fetchApi("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, role, key }) });
   renderSecretsPage();
 }
 
 async function deleteRoleUI(target, role) {
   if (!confirm("Delete role " + role + " from " + target + "?")) return;
-  await fetch(API + "/api/secrets", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target, role }),
-  });
+  await fetchApi("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, role }) });
   secretsSelectedRole = "";
   renderSecretsPage();
 }
 
 async function deleteTargetUI(target) {
   if (!confirm("Delete target " + target + " and ALL its secrets?")) return;
-  await fetch(API + "/api/secrets", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target }),
-  });
+  await fetchApi("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target }) });
   secretsSelectedTarget = "";
   secretsSelectedRole = "";
   renderSecretsPage();
@@ -5153,12 +4938,7 @@ async function importOpUI() {
   if (!opRef || !target) { alert("1Password ref required"); return; }
   resultEl.innerHTML = '<span style="color:var(--dim)">Importing...</span>';
   try {
-    const res = await fetch(API + "/api/secrets/import-op", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ opRef, target, role, live }),
-    });
-    const data = await res.json();
+    const data = await postJson("/api/secrets/import-op", { opRef, target, role, live });
     if (data.error) {
       resultEl.innerHTML = '<span style="color:var(--red)">' + esc(data.error) + '</span>';
       return;
@@ -5172,8 +4952,7 @@ async function importOpUI() {
 
 async function revealSecret(target, role, key) {
   try {
-    const res = await fetch(API + "/api/secrets?resolve=true&target=" + encodeURIComponent(target) + "&role=" + encodeURIComponent(role));
-    const data = await res.json();
+    const data = await fetchJson("/api/secrets?resolve=true&target=" + encodeURIComponent(target) + "&role=" + encodeURIComponent(role));
     const el = document.getElementById("sv-" + target + "-" + role + "-" + key);
     if (el && data[key]) {
       el.textContent = data[key];
@@ -5196,8 +4975,7 @@ let covUncoveredCache = [];
 let covTotalUncovered = 0;
 
 async function renderCoveragePage() {
-  const reposRes = await fetch(API + "/api/coverage/repos");
-  const repos = await reposRes.json();
+  const repos = await fetchJson("/api/coverage/repos");
 
   let html = '<div class="panel" style="margin-bottom:16px">';
   if (covSelectedRepo) {
@@ -5246,8 +5024,7 @@ async function renderCoveragePage() {
   }
 
   // Repo selected — show uncovered files + file detail
-  const uncovRes = await fetch(API + "/api/coverage/uncovered?repo=" + encodeURIComponent(covSelectedRepo) + "&limit=" + covPageSize + "&offset=" + covOffset + (covSearch ? "&search=" + encodeURIComponent(covSearch) : ""));
-  const uncovData = await uncovRes.json();
+  const uncovData = await fetchJson("/api/coverage/uncovered?repo=" + encodeURIComponent(covSelectedRepo) + "&limit=" + covPageSize + "&offset=" + covOffset + (covSearch ? "&search=" + encodeURIComponent(covSearch) : ""));
   const uncovered = uncovData.files || [];
   covTotalUncovered = uncovData.total || 0;
   covUncoveredCache = uncovered;
@@ -5306,8 +5083,7 @@ async function renderCoveragePage() {
 
   html += '<div class="split-right panel">';
   if (covSelectedFile) {
-    const byFileRes = await fetch(API + "/api/coverage/by-file?repo=" + encodeURIComponent(covSelectedRepo) + "&file=" + encodeURIComponent(covSelectedFile));
-    const links = await byFileRes.json();
+    const links = await fetchJson("/api/coverage/by-file?repo=" + encodeURIComponent(covSelectedRepo) + "&file=" + encodeURIComponent(covSelectedFile));
     html += \`<div class="panel-title" style="font-family:monospace;font-size:12px">\${esc(covSelectedFile)}</div>\`;
     if (links.length === 0) {
       html += '<div class="empty">No test cases cover this file</div>';
@@ -5337,8 +5113,7 @@ async function renderA11yPage() {
   const queryParam = a11ySelectedPack ? "?pack=" + encodeURIComponent(a11ySelectedPack)
     : a11ySelectedTicket ? "?ticket=" + encodeURIComponent(a11ySelectedTicket)
     : "";
-  const summaryRes = await fetch(API + "/api/a11y/summary" + queryParam);
-  const summary = await summaryRes.json();
+  const summary = await fetchJson("/api/a11y/summary" + queryParam);
 
   let html = '<div class="panel" style="margin-bottom:16px">';
 
@@ -5445,8 +5220,7 @@ async function renderA11yPage() {
 
   // ── Level 3: Pages list for a run pack ──
   if (a11ySelectedPack && !a11ySelectedPage) {
-    const issuesRes = await fetch(API + "/api/a11y/issues?pack=" + encodeURIComponent(a11ySelectedPack));
-    const issues = await issuesRes.json();
+    const issues = await fetchJson("/api/a11y/issues?pack=" + encodeURIComponent(a11ySelectedPack));
 
     // Rules summary
     if (summary.byRule && summary.byRule.length > 0) {
@@ -5495,8 +5269,7 @@ async function renderA11yPage() {
 
   // ── Level 4: Issues for a specific page ──
   if (a11ySelectedPage) {
-    const issuesRes = await fetch(API + "/api/a11y/issues?pack=" + encodeURIComponent(a11ySelectedPack) + "&page=" + encodeURIComponent(a11ySelectedPage));
-    const issues = await issuesRes.json();
+    const issues = await fetchJson("/api/a11y/issues?pack=" + encodeURIComponent(a11ySelectedPack) + "&page=" + encodeURIComponent(a11ySelectedPage));
 
     html += \`<div class="panel" style="margin-bottom:12px">
       <div style="font-size:12px;color:var(--accent);font-family:monospace;word-break:break-all;margin-bottom:8px">\${esc(a11ySelectedPage)}</div>
@@ -5530,8 +5303,7 @@ let auditTab = "overview";
 
 
 async function renderTestAuditPage() {
-  const auditRes = await fetch(API + "/api/test-audit" + (auditTicket ? "?ticket=" + encodeURIComponent(auditTicket) : ""));
-  const audit = await auditRes.json();
+  const audit = await fetchJson("/api/test-audit" + (auditTicket ? "?ticket=" + encodeURIComponent(auditTicket) : ""));
   const s = audit.stats;
 
   let html = '<div class="panel" style="margin-bottom:16px">';

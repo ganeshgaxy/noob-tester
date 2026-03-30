@@ -634,7 +634,7 @@ function drawUiMapCanvas(pages, elements, navs, forms, canvasId, highlightPageId
 }
 
 function deleteUiMapPage(pageId) {
-  fetch(API + "/api/uimaps/page/delete?id=" + encodeURIComponent(pageId), { method: "DELETE" })
+  fetchApi("/api/uimaps/page/delete?id=" + encodeURIComponent(pageId), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
       if (data.deleted) {
@@ -667,7 +667,7 @@ function showUiMapPageDetail(page, elements, forms, navs, pages) {
   h += \`<div style="font-size:16px;font-weight:bold">\${esc(page.url_pattern)}</div>\`;
   h += '<div style="display:flex;gap:8px;align-items:center">';
   h += \`<button onclick="if(confirm('Delete this page and all its elements, forms, and navigations?')){deleteUiMapPage('\${page.id}')}" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">Delete Page</button>\`;
-  h += '<span style="cursor:pointer;color:var(--dim);font-size:20px;padding:2px 8px;line-height:1" onclick="document.getElementById(\\'uimap-detail-overlay\\').style.display=\\'none\\'">&times;</span>';
+  h += '<span class="modal-close" onclick="document.getElementById(\\'uimap-detail-overlay\\').style.display=\\'none\\'">&times;</span>';
   h += '</div></div>';
   if (page.page_title) h += \`<div style="font-size:12px;color:var(--dim);margin-bottom:8px">\${esc(page.page_title)}</div>\`;
   // Badges

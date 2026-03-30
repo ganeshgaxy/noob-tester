@@ -1,12 +1,12 @@
 export function getApiCanvasRendererScript(): string {
   return `
 // ── API Map force-directed canvas ──
+// Uses shared utilities from canvas-base.ts: initCanvas, roundRect, runForceSimulation,
+// hitTestNodes, screenToWorld, setupPanZoom, drawArrowhead
+
 let _apiCanvasData = null;
 let _apiPan = { x: 0, y: 0 };
-let _apiZoom = 1;
-let _apiDragging = false;
-let _apiDragStart = { x: 0, y: 0 };
-let _apiDragNode = null;
+let _apiZoom = { value: 1 };
 let _apiHover = null;
 let _apiAnimFrame = null;
 let _apiSearch = "";
@@ -18,17 +18,9 @@ const METHOD_COLORS = {
 };
 
 function drawApiMapCanvas(endpoints, params, responses, chains, canvasId) {
-  const canvas = document.getElementById(canvasId || "apimap-canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  ctx.scale(dpr, dpr);
-
-  const W = rect.width;
-  const H = rect.height;
+  const init = initCanvas(canvasId || "apimap-canvas");
+  if (!init) return;
+  const { canvas, ctx, W, H } = init;
 
   // ── Build nodes from endpoints ──
   const nodes = {};
@@ -42,10 +34,8 @@ function drawApiMapCanvas(endpoints, params, responses, chains, canvasId) {
     const w = minW + t * (maxW - minW);
     const h = minH + t * (maxH - minH);
 
-    // Cluster by resource: /api/users/:id → /api/users
     const pathParts = ep.path.split("/").filter(Boolean);
     const cluster = pathParts.length >= 2 ? "/" + pathParts[0] + "/" + pathParts[1] : "/" + (pathParts[0] || "");
-
     const successRate = ep.times_called > 0 ? ep.times_succeeded / ep.times_called : 1;
 
     nodes[ep.id] = {
@@ -100,80 +90,17 @@ function drawApiMapCanvas(endpoints, params, responses, chains, canvasId) {
 
   _apiCanvasData = { nodes, endpoints, params, responses, chains, edges };
 
-  // ── Force simulation ──
+  // ── Force simulation using shared utility ──
   let simRunning = forceIds.length > 0;
   let simTick = 0;
   const SIM_TICKS = 200;
-
-  function simulate() {
-    const ids = forceIds;
-    if (ids.length === 0) return;
-    const REPULSION = 6000;
-    const ATTRACTION = 0.006;
-    const CLUSTER_FORCE = 0.025;
-    const DAMPING = 0.85;
-
-    for (const id of ids) { nodes[id].vx = 0; nodes[id].vy = 0; }
-
-    // Repulsion
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        const a = nodes[ids[i]], b = nodes[ids[j]];
-        let dx = b.x - a.x, dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = REPULSION / (dist * dist);
-        const fx = (dx / dist) * force, fy = (dy / dist) * force;
-        a.vx -= fx; a.vy -= fy;
-        b.vx += fx; b.vy += fy;
-      }
-    }
-
-    // Attraction along edges
-    for (const e of edges) {
-      const a = nodes[e.from], b = nodes[e.to];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = dist * ATTRACTION;
-      const fx = (dx / dist) * force, fy = (dy / dist) * force;
-      a.vx += fx; a.vy += fy;
-      b.vx -= fx; b.vy -= fy;
-    }
-
-    // Cluster attraction
-    const cc = {};
-    for (const id of ids) {
-      const c = nodes[id].cluster;
-      if (!cc[c]) cc[c] = { x: 0, y: 0, count: 0 };
-      cc[c].x += nodes[id].x; cc[c].y += nodes[id].y; cc[c].count++;
-    }
-    for (const c of Object.keys(cc)) { cc[c].x /= cc[c].count; cc[c].y /= cc[c].count; }
-    for (const id of ids) {
-      const center = cc[nodes[id].cluster];
-      nodes[id].vx += (center.x - nodes[id].x) * CLUSTER_FORCE;
-      nodes[id].vy += (center.y - nodes[id].y) * CLUSTER_FORCE;
-    }
-
-    // Center gravity
-    for (const id of ids) {
-      nodes[id].vx += (W / 2 - nodes[id].x) * 0.001;
-      nodes[id].vy += (H / 2 - nodes[id].y) * 0.001;
-    }
-
-    // Apply
-    for (const id of ids) {
-      nodes[id].vx *= DAMPING; nodes[id].vy *= DAMPING;
-      nodes[id].x += nodes[id].vx; nodes[id].y += nodes[id].vy;
-      nodes[id].x = Math.max(20, Math.min(W - 20, nodes[id].x));
-      nodes[id].y = Math.max(20, Math.min(H - 20, nodes[id].y));
-    }
-  }
 
   // ── Draw ──
   function draw() {
     ctx.save();
     ctx.clearRect(0, 0, W, H);
     ctx.translate(_apiPan.x, _apiPan.y);
-    ctx.scale(_apiZoom, _apiZoom);
+    ctx.scale(_apiZoom.value, _apiZoom.value);
 
     // Draw edges (chains) with arrows
     for (const e of edges) {
@@ -189,17 +116,11 @@ function drawApiMapCanvas(endpoints, params, responses, chains, canvasId) {
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
 
-      // Arrow head
+      // Arrow head using shared utility
       const angle = Math.atan2(b.y - a.y, b.x - a.x);
       const arrowX = b.x - Math.cos(angle) * (b.w / 2 + 5);
       const arrowY = b.y - Math.sin(angle) * (b.h / 2 + 5);
-      ctx.fillStyle = chainColor;
-      ctx.beginPath();
-      ctx.moveTo(arrowX, arrowY);
-      ctx.lineTo(arrowX - Math.cos(angle - 0.4) * 10, arrowY - Math.sin(angle - 0.4) * 10);
-      ctx.lineTo(arrowX - Math.cos(angle + 0.4) * 10, arrowY - Math.sin(angle + 0.4) * 10);
-      ctx.closePath();
-      ctx.fill();
+      drawArrowhead(ctx, a.x, a.y, arrowX, arrowY, 10, chainColor);
       ctx.globalAlpha = 1;
     }
 
@@ -212,9 +133,9 @@ function drawApiMapCanvas(endpoints, params, responses, chains, canvasId) {
       const mc = METHOD_COLORS[ep.method] || "#7d8590";
 
       // Node background
-      const statusColor = ep.status === "failing" ? "rgba(248,81,73,0.15)" :
-                          ep.status === "flaky" ? "rgba(210,153,34,0.15)" : "rgba(22,27,34,0.9)";
-      ctx.fillStyle = statusColor;
+      const bgColor = ep.status === "failing" ? "rgba(248,81,73,0.15)" :
+                      ep.status === "flaky" ? "rgba(210,153,34,0.15)" : "rgba(22,27,34,0.9)";
+      ctx.fillStyle = bgColor;
       ctx.strokeStyle = isSelected ? "#58a6ff" : isHover ? "#58a6ff" : "#30363d";
       ctx.lineWidth = isSelected ? 2.5 : isHover ? 2 : 1;
       const rx = n.x - n.w / 2, ry = n.y - n.h / 2;
@@ -296,26 +217,12 @@ function drawApiMapCanvas(endpoints, params, responses, chains, canvasId) {
     ctx.restore();
   }
 
-  function roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
-
   // ── Animation loop ──
+  let _apiDragNode = null;
+
   function tick() {
     if (simRunning && simTick < SIM_TICKS) {
-      simulate();
+      runForceSimulation(nodes, forceIds, edges, { W, H });
       simTick++;
       if (simTick >= SIM_TICKS) simRunning = false;
     }
@@ -325,75 +232,23 @@ function drawApiMapCanvas(endpoints, params, responses, chains, canvasId) {
   if (_apiAnimFrame) cancelAnimationFrame(_apiAnimFrame);
   tick();
 
-  // ── Mouse interaction ──
-  function screenToWorld(sx, sy) {
-    return { x: (sx - _apiPan.x) / _apiZoom, y: (sy - _apiPan.y) / _apiZoom };
-  }
+  // ── Mouse interaction using shared pan/zoom ──
+  const pz = setupPanZoom(canvas, _apiPan, _apiZoom, {
+    centered: true,
+    nodes: () => nodes,
+    onDragStart: () => { simRunning = false; },
+    onHover: (id) => { _apiHover = id; },
+    onClick: (id) => {
+      apiSelectedEndpointId = id;
+      if (typeof onApiEndpointSelect === "function") onApiEndpointSelect(id);
+    },
+  });
 
-  function hitTest(mx, my) {
-    for (const id of Object.keys(nodes)) {
-      const n = nodes[id];
-      if (mx >= n.x - n.w / 2 && mx <= n.x + n.w / 2 && my >= n.y - n.h / 2 && my <= n.y + n.h / 2) return id;
-    }
-    return null;
-  }
-
-  canvas.onmousedown = (e) => {
-    const r = canvas.getBoundingClientRect();
-    const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
-    const hit = hitTest(w.x, w.y);
-    if (hit) {
-      _apiDragNode = hit;
-      simRunning = false;
-    } else {
-      _apiDragging = true;
-      _apiDragStart = { x: e.clientX - _apiPan.x, y: e.clientY - _apiPan.y };
-    }
-  };
-
-  canvas.onmousemove = (e) => {
-    const r = canvas.getBoundingClientRect();
-    if (_apiDragNode) {
-      const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
-      nodes[_apiDragNode].x = w.x;
-      nodes[_apiDragNode].y = w.y;
-    } else if (_apiDragging) {
-      _apiPan.x = e.clientX - _apiDragStart.x;
-      _apiPan.y = e.clientY - _apiDragStart.y;
-    } else {
-      const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
-      _apiHover = hitTest(w.x, w.y);
-      canvas.style.cursor = _apiHover ? "pointer" : "grab";
-    }
-  };
-
-  canvas.onmouseup = () => {
-    if (_apiDragNode) {
-      _apiDragNode = null;
-    }
-    _apiDragging = false;
-  };
-
-  canvas.onclick = (e) => {
-    const r = canvas.getBoundingClientRect();
-    const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
-    const hit = hitTest(w.x, w.y);
-    if (hit && !_apiDragNode) {
-      apiSelectedEndpointId = hit;
-      if (typeof onApiEndpointSelect === "function") onApiEndpointSelect(hit);
-    }
-  };
-
-  canvas.onwheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const r = canvas.getBoundingClientRect();
-    const mx = e.clientX - r.left, my = e.clientY - r.top;
-    _apiPan.x = mx - (mx - _apiPan.x) * delta;
-    _apiPan.y = my - (my - _apiPan.y) * delta;
-    _apiZoom *= delta;
-    _apiZoom = Math.max(0.2, Math.min(3, _apiZoom));
-  };
+  // Expose drag node for tooltip suppression
+  Object.defineProperty(window, '_apiDragNode', {
+    get: () => pz.getDragNode(),
+    configurable: true,
+  });
 }
 `;
 }
