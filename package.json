@@ -1,6 +1,6 @@
 {
   "name": "@ganeshgaxy/noob-tester",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Automated manual QA tester — CLI data layer + Claude Code skills",
   "type": "module",
   "bin": {
