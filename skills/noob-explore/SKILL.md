@@ -7,7 +7,20 @@ description: Execute UI test cases via browser automation. Uses run packs for tr
 
 Execute ONE test case per invocation via browser automation. Invoke repeatedly for all cases.
 
-## 1. Resolve Target URL + Initialize + UI Map + Claim
+## JSON Output Shapes (jq reference)
+
+```bash
+# runpack list --pack returns ARRAY (not {entries: [...]})
+noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.tc_title != null) | {id, status, tc_title}'
+
+# Find specific entry (always null-check tc_title)
+noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.tc_title != null and (.tc_title | test("keyword"; "i"))) | {id, status}'
+
+# query plan returns SINGLE OBJECT: {plan, steps}
+noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
+```
+
+## 1. Resolve Target URL + Initialize + UI Map + Claim or Retry
 
 **Before init, resolve the target URL from the secret target name.** Do NOT guess or hardcode URLs.
 
@@ -31,8 +44,15 @@ MAP_ID=$(noob-tester uimap resolve --ticket <TICKET-ID> --target <TARGET_URL> | 
 if [ -z "$MAP_ID" ]; then
   MAP_ID=$(noob-tester uimap create --name "<App Name>" --targets "<url>" --tickets "<TICKET-ID>" | jq -r '.uiMapId')
 fi
+```
 
-# Claim BEFORE login so login captures get --entry
+### Claim Next OR Retry
+
+Decide which test case to run **before** login. There are two modes:
+
+**Mode A: Claim next unclaimed test case (default)**
+
+```bash
 ENTRY=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk)
 
 DONE=$(echo "$ENTRY" | jq -r '.done // empty')
@@ -40,20 +60,48 @@ if [ "$DONE" = "true" ]; then
   noob-tester finish --run $RUN_ID --session $SESSION_ID --summary "All test cases executed"
   exit 0
 fi
+```
 
+**Mode B: Retry a specific test case by name**
+
+Use when the user asks to rerun a previously failed/passed/blocked test.
+
+```bash
+# Retry in a specific run pack
+noob-tester runpack retry --name "<test-case-name>" --pack $RUNPACK_ID
+
+# Retry in the latest run pack for the ticket (no --pack needed)
+noob-tester runpack retry --name "<test-case-name>"
+```
+
+`retry` resets the entry status so `claim-smart` picks it up. Then claim it:
+
+```bash
+ENTRY=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk)
+```
+
+### Continue with claimed entry
+
+```bash
 ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
 
 agent-browser open $TARGET_URL
 noob-tester session heartbeat $SESSION_ID --phase 4 --run-id $RUN_ID
 ```
 
-## 2. Login — Auto-select Target
+## 2. Login
+
+The user provides the `--secret-target` and `--secret-role` in the init command (Step 1). Use those to resolve credentials.
 
 ```bash
-CREDS=$(noob-tester auth-resolve --pack $RUNPACK_ID)
-# If error (no target found), match URL against stored targets:
-# noob-tester secrets target list --json → find target whose URL matches
-# Then: noob-tester auth-resolve --target <matched-target> --role admin
+CREDS=$(noob-tester auth-resolve --target <secret-target> --role <secret-role>)
+
+# If no credentials found → STOP. Do NOT guess or try other targets.
+if [ -z "$CREDS" ] || echo "$CREDS" | jq -e '.error' > /dev/null 2>&1; then
+  echo "ERROR: No credentials found for target '<secret-target>' with role '<secret-role>'."
+  noob-tester session end $SESSION_ID --status failed
+  exit 1
+fi
 
 EMAIL=$(echo "$CREDS" | jq -r '.email')
 PASSWORD=$(echo "$CREDS" | jq -r '.password')
@@ -106,16 +154,14 @@ noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action
 
 If login fails (URL still on /login, error message visible) → log tech issue, end session, exit. Do NOT guess credentials.
 
-**If no credentials found for any target**, check available targets:
+## 3. Extract Test Case Info
+
 ```bash
-noob-tester secrets target list --json
-# Pick the target whose URL best matches the target-url being tested
-```
 TC_TITLE=$(echo "$ENTRY" | jq -r '.tc_title')
 TC_FORMAT=$(echo "$ENTRY" | jq -r '.tc_format')
 ```
 
-## 5. EVERY Page Load
+## 4. EVERY Page Load
 
 **Run after EVERY navigation/click that changes the page. No exceptions.**
 
@@ -131,7 +177,7 @@ CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "<page-url>" --action $AC
 PREV_PAGE_ID=$(echo "$CAPTURE" | jq -r '.pageId // empty')
 ```
 
-## 6. Execute Test Steps
+## 5. Execute Test Steps
 
 For each step:
 
@@ -139,6 +185,7 @@ For each step:
 2. **Capture page** — `noob-tester capture-page ...` (auto-logs + auto-observes the `--desc`)
 3. **READ the capture output** — the snapshot contains the full accessibility tree. **Analyse it.** Look at what elements are on the page, what's visible, what's missing, what state toggles/fields are in. This is your primary source of truth for the page state.
 4. **Log and observe based on your analysis** — this is NOT optional:
+
 ```bash
 # After EVERY capture, read the snapshot and log what you found:
 noob-tester runpack log $ENTRY_ID --text "Notification Settings: 3 toggles visible — Visit Summary (ON), Joiner Updates (ON), Comments (ON)"
@@ -148,17 +195,21 @@ noob-tester runpack log $ENTRY_ID --text "No External Participants tab or sectio
 noob-tester runpack observe $ENTRY_ID --text "Modal has toggles for internal participants only — no external participant controls"
 noob-tester runpack observe $ENTRY_ID --text "Done button is disabled until title is filled"
 ```
+
 5. **Track elements** — `noob-tester uimap hit $ELEMENT_ID` or `uimap miss $ELEMENT_ID`
 6. **Check for issues** — console errors, network failures, visual problems
 
 **IMPORTANT: Every `capture-page` call MUST be followed by analysis.** The output contains:
+
 - `captured` — what was recorded (snapshot, screenshot, console, har)
 - `a11yIssues` — count of accessibility violations found by axe-core
 - `a11yViolations` — array of `{rule, impact, description, nodes}` for each violation
 
 **After EVERY capture, you MUST:**
+
 1. Read the snapshot output — check what elements are on the page, their states
 2. Check `a11yViolations` — if any exist, log them and file issues for serious/critical ones:
+
 ```bash
 # If capture returned a11y violations:
 noob-tester runpack log $ENTRY_ID --text "a11y: color-contrast violation (serious) on 3 elements"
@@ -167,12 +218,14 @@ noob-tester runpack observe $ENTRY_ID --text "Accessibility: 2 serious violation
 noob-tester log issue $RUN_ID --category accessibility --severity high \
   --title "Color contrast fails WCAG AA" --description "3 elements fail color-contrast check" --location "<url>"
 ```
+
 3. Check console output for errors/warnings
 4. Log and observe your findings about the page state
 
 A test run with only auto-logs and no agent analysis is incomplete.
 
 **What to log vs observe:**
+
 - **Logs** (`runpack log`): actions taken, decisions made, what you checked, errors found, console/network/a11y findings
 - **Observations** (`runpack observe`): factual statements about page state — what elements exist, their values/states, what's present vs missing, a11y status
 
@@ -184,6 +237,7 @@ A test run with only auto-logs and no agent analysis is incomplete.
 - **Accessibility** — missing labels, no keyboard access, contrast issues
 
 Log anything notable:
+
 ```bash
 noob-tester runpack log $ENTRY_ID --text "Console: 2 warnings about deprecated API calls"
 noob-tester runpack observe $ENTRY_ID --text "Network: GET /api/v3/shares returned 200 in 1.2s"
@@ -198,7 +252,7 @@ noob-tester log issue $RUN_ID \
   --title "Brief title" --description "Details" --location "<url>"
 ```
 
-## 7. Handle Failures — Trace Root Cause in Code
+## 6. Handle Failures — Trace Root Cause in Code
 
 When a test fails:
 
@@ -219,6 +273,7 @@ noob-tester query codebase "<failing element or URL path>" --expand
 ```
 
 Include the root cause finding in the issue description:
+
 ```bash
 noob-tester log issue $RUN_ID --category functional --severity high \
   --title "File upload missing from course builder" \
@@ -245,7 +300,7 @@ noob-tester runpack result $ENTRY_ID --status failed \
   --issues '[{"severity":"high","title":"...","description":"Root cause: ..."}]'
 ```
 
-## 8. Record Result
+## 7. Record Result
 
 ```bash
 # Passed
@@ -258,13 +313,14 @@ noob-tester runpack result $ENTRY_ID --status failed \
   --issues '[{"severity":"high","title":"...","description":"Root cause traced to src/x.ts"}]'
 ```
 
-**After recording the result, go DIRECTLY to Step 9 (End Session). Do NOT:**
+**After recording the result, go DIRECTLY to Step 8 (End Session). Do NOT:**
+
 - Call `claim-smart` again — this is ONE test case per invocation
 - Call `runpack populate` — entries are added one at a time by `claim-smart`
 - Call `runpack list` to check remaining tests — the next invocation handles that
-- Retry the same test case — use `runpack retry` in a separate invocation if needed
+- Retry in the same invocation — start a new invocation using Step 1 Mode B
 
-## 9. End Session
+## 8. End Session
 
 ```bash
 noob-tester session heartbeat $SESSION_ID --phase 4
@@ -274,25 +330,5 @@ noob-tester session end $SESSION_ID --status completed
 ```
 
 **IMPORTANT: Include the session ID in your final message to the user** (needed for metrics hook):
+
 > Done. Session: $SESSION_ID
-
-## JSON Output Shapes (for jq)
-
-```bash
-# runpack list --pack returns ARRAY (not {entries: [...]})
-noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.tc_title != null) | {id, status, tc_title}'
-
-# Find specific entry (always null-check tc_title)
-noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.tc_title != null and (.tc_title | test("keyword"; "i"))) | {id, status}'
-
-# query plan returns SINGLE OBJECT: {plan, steps}
-noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
-```
-
-## Retrying
-
-```bash
-noob-tester runpack retry --name "login" --pack $RUNPACK_ID  # by name
-noob-tester runpack retry --pack $RUNPACK_ID                 # all failed
-noob-tester runpack retry --all $RUNPACK_ID                  # everything
-```

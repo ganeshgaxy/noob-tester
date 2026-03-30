@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import { readFileSync, existsSync, statSync, rmSync, readdirSync, unlinkSync } from "fs";
 import { extname, resolve as resolvePath, join } from "path";
 import { homedir } from "os";
-import { getDb } from "../db/client.js";
+import { getDb, dataDir } from "../db/client.js";
 import { getDashboardHtml } from "./dashboard.js";
 import { getDocsHtml } from "./docs.js";
 import {
@@ -1410,6 +1410,18 @@ export function startWatchServer(opts: WatchOptions): void {
          FROM rca_results r JOIN test_cases tc ON r.test_case_id = tc.id
          WHERE r.run_pack_id = ? ORDER BY r.confidence DESC`
       ).all(pack);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(results));
+      return;
+    }
+
+    if (url.pathname === "/api/rca/entry" && req.method === "GET") {
+      const entryId = url.searchParams.get("entry");
+      if (!entryId) { res.writeHead(400); res.end(JSON.stringify({ error: "entry required" })); return; }
+      const db = getDb();
+      const results = db.prepare(
+        `SELECT * FROM rca_results WHERE entry_id = ? ORDER BY confidence DESC`
+      ).all(entryId);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(results));
       return;

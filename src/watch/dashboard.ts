@@ -3870,7 +3870,12 @@ async function renderRunsPage() {
   if (!selEntry) {
     html += '<div class="empty">Select a test case to view execution details</div>';
   } else {
-    html += renderRunPackEntryDetail(selEntry);
+    let entryRca = [];
+    try {
+      const rcaEntryRes = await fetch(API + "/api/rca/entry?entry=" + encodeURIComponent(selEntry.id));
+      entryRca = await rcaEntryRes.json();
+    } catch {}
+    html += renderRunPackEntryDetail(selEntry, entryRca);
   }
   html += '</div>';
 
@@ -3936,7 +3941,7 @@ async function renderRunsPage() {
   }
 }
 
-function renderRunPackEntryDetail(entry) {
+function renderRunPackEntryDetail(entry, entryRca = []) {
   let html = '<div class="tc-detail-panel">';
 
   // Title + status badges
@@ -4066,6 +4071,36 @@ function renderRunPackEntryDetail(entry) {
       }
     } catch {
       html += \`<pre style="font-size:11px;color:var(--text);white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:4px">\${esc(entry.issues)}</pre>\`;
+    }
+    html += '</div>';
+  }
+
+  // RCA (Root Cause Analysis)
+  if (entryRca.length > 0) {
+    html += '<div class="tc-detail-section">';
+    html += '<div class="tc-detail-section-title">Root Cause Analysis</div>';
+    const classColors = { actual_bug: "var(--red)", env_issue: "var(--yellow)", flaky_selector: "var(--purple)", test_data_issue: "var(--orange, #d2992a)", network: "var(--accent)", auth_issue: "var(--yellow)", timeout: "var(--dim)", unknown: "var(--dim)" };
+    const actionColors = { retry: "var(--accent)", fix_test: "var(--yellow)", fix_app: "var(--red)", fix_env: "var(--orange, #d2992a)", investigate: "var(--purple)", skip: "var(--dim)" };
+    for (const rca of entryRca) {
+      const classColor = classColors[rca.classification] || "var(--dim)";
+      const classLabel = (rca.classification || "unknown").replace(/_/g, " ");
+      const confPct = Math.round((rca.confidence || 0) * 100);
+      const confColor = confPct >= 80 ? "var(--green)" : confPct >= 50 ? "var(--yellow)" : "var(--red)";
+      html += \`<div style="padding:8px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">\`;
+      html += \`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">\`;
+      html += \`<span style="font-size:10px;font-weight:700;color:\${classColor};text-transform:uppercase;padding:2px 6px;border-radius:3px;background:rgba(0,0,0,0.2)">\${esc(classLabel)}</span>\`;
+      html += \`<span style="font-size:10px;color:\${confColor};font-weight:600">\${confPct}% confidence</span>\`;
+      if (rca.suggested_action) {
+        const actColor = actionColors[rca.suggested_action] || "var(--dim)";
+        const actLabel = rca.suggested_action.replace(/_/g, " ");
+        html += \`<span style="font-size:10px;color:\${actColor};font-weight:600;margin-left:auto">\${esc(actLabel)}</span>\`;
+      }
+      html += \`</div>\`;
+      html += \`<div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:4px">\${esc(rca.root_cause)}</div>\`;
+      if (rca.evidence_summary) {
+        html += \`<div style="font-size:11px;color:var(--dim);line-height:1.4;border-top:1px solid var(--border);padding-top:4px;margin-top:4px">\${esc(rca.evidence_summary)}</div>\`;
+      }
+      html += \`</div>\`;
     }
     html += '</div>';
   }

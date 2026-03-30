@@ -26,35 +26,40 @@ REPO_PATH=$(noob-tester repos path <repo-name>)
 # Use Glob, Grep, Read on $REPO_PATH for deep analysis
 ```
 
-Also browse repos via glab/bb (detect provider from URL).
+Also browse repos via glab/bb/gh (detect provider from URL).
 
 ## 3. Produce 4 Analyses
 
-### Gap Analysis
+1. **Gap analysis** — known facts, unknowns, assumptions, blocked items
+2. **Requirements analysis** — explicit, implicit, missing, ambiguous
+3. **Feasibility analysis** — testability, blockers, risks
+4. **Impact analysis (DEEP DIVE — spend most time here):**
+    - Impacted areas (files, modules, API endpoints, call chains)
+    - Dependency risks (shared utilities, tight coupling, circular deps)
+    - Configuration concerns (env vars, feature flags, build configs)
+    - Compatibility issues (API contracts, DB migrations, browser compat)
+    - Infrastructure concerns (new services, migrations, CI/CD changes)
+    - Hidden edge cases (race conditions, i18n, permissions)
+    - Existing test coverage gaps
+    - Regression risks (shared code paths, silent breakage)
+
+### Save format
+
 ```bash
 noob-tester save analysis $RUN_ID --type gap \
   --content '{"known_facts":[...],"unknowns":[...],"assumptions":[...],"blocked_items":[...]}' \
   --summary "..."
-```
 
-### Requirements Analysis
-```bash
 noob-tester save analysis $RUN_ID --type requirements \
   --content '{"explicit_requirements":[...],"implicit_requirements":[...],"missing_requirements":[...],"ambiguous_requirements":[...]}' \
   --summary "..."
-```
 
-### Feasibility Analysis
-```bash
 noob-tester save analysis $RUN_ID --type feasibility \
   --content '{"testable":true,"recommended_approach":{...},"blockers":[...],"risks":[...]}' \
   --summary "..."
-```
 
-### Impact Analysis
-```bash
 noob-tester save analysis $RUN_ID --type impact \
-  --content '{"impacted_areas":[...],"dependency_risks":[...],"config_concerns":[...],"hidden_edge_cases":[...],"test_gaps":[...],"regression_risks":[...]}' \
+  --content '{"impacted_areas":[...],"dependency_risks":[...],"config_concerns":[...],"compatibility_issues":[...],"infrastructure_concerns":[...],"hidden_edge_cases":[...],"test_gaps":[...],"regression_risks":[...]}' \
   --summary "..."
 ```
 
@@ -66,4 +71,5 @@ noob-tester finish --run $RUN_ID --session $SESSION_ID --summary "Analysis compl
 ```
 
 **IMPORTANT: Include the session ID in your final message to the user** (needed for metrics hook):
+
 > Done. Session: $SESSION_ID
