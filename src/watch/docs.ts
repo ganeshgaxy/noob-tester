@@ -1,6 +1,6 @@
 export function getDocsHtml(): string {
   return `
-<div id="docs-header" class="panel" style="margin-bottom:0;border-radius:8px 8px 0 0;border-bottom:none">
+<div id="docs-header" class="panel" style="margin-bottom:0;border-radius:var(--radius) var(--radius) 0 0">
 <div class="panel-title" style="margin-bottom:8px">Documentation</div>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
   <a href="#cli" class="tab active" onclick="document.querySelectorAll('.doc-section').forEach(s=>s.style.display='none');document.getElementById('doc-cli').style.display='block';document.querySelectorAll('#docs-header a').forEach(a=>a.classList.remove('active'));this.classList.add('active');return false">CLI Commands</a>
@@ -8,12 +8,12 @@ export function getDocsHtml(): string {
   <a href="#concepts" class="tab" onclick="document.querySelectorAll('.doc-section').forEach(s=>s.style.display='none');document.getElementById('doc-concepts').style.display='block';document.querySelectorAll('#docs-header a').forEach(a=>a.classList.remove('active'));this.classList.add('active');return false">Concepts</a>
 </div>
 </div>
-<div id="docs-content" class="panel" style="border-radius:0 0 8px 8px;overflow-y:auto;flex:1;min-height:0">
+<div id="docs-content" class="panel" style="border-radius:0 0 var(--radius) var(--radius);overflow-y:auto;flex:1;min-height:0">
 
 <!-- CLI COMMANDS -->
 <div id="doc-cli" class="doc-section">
 
-<h2 style="color:var(--accent);margin-bottom:16px">CLI Commands</h2>
+<h2 style="margin-bottom:16px">CLI Commands</h2>
 
 <div class="doc-cmd">
 <h3>noob-tester repos</h3>
@@ -474,7 +474,7 @@ export function getDocsHtml(): string {
 <!-- SKILLS -->
 <div id="doc-skills" class="doc-section" style="display:none">
 
-<h2 style="color:var(--accent);margin-bottom:16px">Skills</h2>
+<h2 style="margin-bottom:16px">Skills</h2>
 
 <p style="color:var(--dim);margin-bottom:16px">Each skill works <strong>standalone</strong> or as part of a pipeline. Every skill MUST start by creating a session and run.</p>
 <p style="color:var(--dim);margin-bottom:16px"><strong>Full pipeline:</strong> <code>/noob-analyze</code> → <code>/noob-testcase</code> → <code>/noob-plan</code> → <code>/noob-explore</code> + <code>/noob-api-explore</code> (with a11y + risk ordering) → <code>/noob-rca</code> (classify failures + detect false positives) → <code>/noob-report</code></p>
@@ -641,7 +641,7 @@ export function getDocsHtml(): string {
 <!-- CONCEPTS -->
 <div id="doc-concepts" class="doc-section" style="display:none">
 
-<h2 style="color:var(--accent);margin-bottom:16px">Concepts</h2>
+<h2 style="margin-bottom:16px">Concepts</h2>
 
 <div class="doc-cmd">
 <h3>Architecture</h3>
@@ -710,18 +710,20 @@ Target (prod)    → Role (admin) → Keys (...)</pre>
 </div>
 
 <style>
-.doc-cmd { margin-bottom:24px; padding:16px; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
-.doc-cmd h3 { font-size:15px; margin-bottom:8px; }
-.doc-cmd h4 { font-size:12px; color:var(--dim); text-transform:uppercase; margin:12px 0 6px; }
-.doc-cmd p { font-size:13px; color:var(--dim); margin-bottom:8px; line-height:1.5; }
-.doc-cmd table { width:100%; font-size:12px; border-collapse:collapse; }
-.doc-cmd td { padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
-.doc-cmd td:first-child { white-space:nowrap; color:var(--text); font-family:monospace; min-width:250px; }
+.doc-cmd { margin-bottom:16px; padding:16px; background:var(--surface-raised); border-radius:var(--radius-sm); }
+.doc-cmd h3 { font-size:14px; font-weight:500; margin-bottom:8px; color:var(--text); }
+.doc-cmd h4 { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.4px; margin:14px 0 6px; font-weight:500; }
+.doc-cmd p { font-size:13px; color:var(--dim); margin-bottom:8px; line-height:1.6; }
+.doc-cmd table { width:100%; font-size:13px; border-collapse:collapse; }
+.doc-cmd td { padding:8px 10px; vertical-align:top; }
+.doc-cmd tr:hover { background:var(--border); border-radius:var(--radius-xs); }
+.doc-cmd td:first-child { white-space:nowrap; color:var(--text); font-family:var(--font-mono); min-width:250px; font-size:12px; }
 .doc-cmd td:last-child { color:var(--dim); }
-.doc-cmd code { background:rgba(88,166,255,0.1); color:var(--accent); padding:1px 4px; border-radius:3px; font-size:11px; }
-.doc-cmd pre { background:var(--surface); padding:12px; border-radius:6px; margin:8px 0; overflow-x:auto; }
+.doc-cmd code { background:var(--surface); color:var(--text); padding:2px 6px; border-radius:3px; font-size:11.5px; font-family:var(--font-mono); }
+.doc-cmd pre { background:var(--surface); padding:12px; border-radius:var(--radius-sm); margin:8px 0; overflow-x:auto; font-family:var(--font-mono); font-size:12px; color:var(--dim); }
 .doc-cmd ul, .doc-cmd ol { font-size:13px; color:var(--dim); padding-left:20px; line-height:1.6; }
 .doc-cmd li { margin-bottom:4px; }
+.doc-section h2 { font-size:16px; font-weight:600; margin-bottom:16px; color:var(--text); }
 </style>
 </div>`;
 }
