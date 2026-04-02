@@ -56,28 +56,38 @@ export function startWatchServer(opts: WatchOptions): void {
         Connection: "keep-alive",
       });
       sseClients.add(res);
-      req.on("close", () => sseClients.delete(res));
 
-      try {
-        // Send initial state immediately
-        const data = gatherState(opts.sessionId);
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      } catch (err) {
-        console.error("SSE gatherState failed:", err);
-        res.write(`data: ${JSON.stringify({ error: "Failed to gather state", sessions: [], runs: [], recentIssues: [], stats: { activeSessions: 0, totalIssues: 0, totalRuns: 0 }, timestamp: new Date().toISOString() })}\n\n`);
-      }
+      let heartbeatInterval: NodeJS.Timeout | null = null;
 
-      // Keep connection alive by sending heartbeats every 45 seconds
-      // This prevents browser connection pool exhaustion while minimizing disruption
-      const heartbeat = setInterval(() => {
+      const sendState = () => {
+        try {
+          const data = gatherState(opts.sessionId);
+          const jsonStr = JSON.stringify(data);
+          res.write(`data: ${jsonStr}\n\n`);
+        } catch (err) {
+          console.error("SSE gatherState failed:", err);
+          // Send minimal fallback state on error
+          res.write(`data: {"sessions":[],"runs":[],"recentIssues":[],"stats":{"activeSessions":0,"totalIssues":0,"totalRuns":0},"timestamp":"${new Date().toISOString()}"}\n\n`);
+        }
+      };
+
+      // Send initial state
+      sendState();
+
+      // Send heartbeats every 45 seconds
+      heartbeatInterval = setInterval(() => {
         try {
           res.write(`: heartbeat\n\n`);
         } catch {
-          clearInterval(heartbeat);
+          if (heartbeatInterval) clearInterval(heartbeatInterval);
         }
       }, 45000);
 
-      req.on("close", () => clearInterval(heartbeat));
+      req.on("close", () => {
+        sseClients.delete(res);
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+      });
+
       return;
     }
 
