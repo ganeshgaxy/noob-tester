@@ -49,30 +49,30 @@ export function startWatchServer(opts: WatchOptions): void {
     }
 
     if (url.pathname === "/api/stream") {
-      // SSE endpoint - send periodic updates instead of keeping connection open indefinitely
+      // SSE endpoint
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       });
       sseClients.add(res);
+      req.on("close", () => sseClients.delete(res));
 
-      // Send initial state
+      // Send initial state immediately
       const data = gatherState(opts.sessionId);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
 
-      // Send periodic updates every 30 seconds to keep connection fresh
-      // but allow it to close naturally if client disconnects
-      const interval = setInterval(() => {
-        const updatedData = gatherState(opts.sessionId);
-        res.write(`data: ${JSON.stringify(updatedData)}\n\n`);
-      }, 30000);
+      // Keep connection alive by sending heartbeats every 45 seconds
+      // This prevents browser connection pool exhaustion while minimizing disruption
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(`: heartbeat\n\n`);
+        } catch {
+          clearInterval(heartbeat);
+        }
+      }, 45000);
 
-      req.on("close", () => {
-        sseClients.delete(res);
-        clearInterval(interval);
-      });
-
+      req.on("close", () => clearInterval(heartbeat));
       return;
     }
 
