@@ -29,7 +29,7 @@ export function getDb(): Database.Database {
 
   _db.pragma("journal_mode = WAL");
   _db.pragma("foreign_keys = ON");
-  _db.pragma("busy_timeout = 5000");
+  _db.pragma("busy_timeout = 30000"); // 30 seconds - increased from 5s to handle concurrent requests better
 
   runMigrations(_db);
   tryLoadVss(_db);
