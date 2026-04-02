@@ -2017,21 +2017,8 @@ export function startWatchServer(opts: WatchOptions): void {
     res.end("Not found");
   });
 
-  // Poll DB and push updates via SSE every 2 seconds
-  const pollInterval = setInterval(() => {
-    if (sseClients.size === 0) return;
-    const data = gatherState(opts.sessionId);
-    const msg = `data: ${JSON.stringify(data)}\n\n`;
-    for (const client of sseClients) {
-      try {
-        client.write(msg);
-      } catch {
-        sseClients.delete(client);
-      }
-    }
-  }, 2000);
-
-  server.on("close", () => clearInterval(pollInterval));
+  // Don't poll SSE clients - we send updates on initial connection and keep alive with heartbeats
+  // Polling every 2 seconds was causing database lock contention, blocking other API requests
 
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
