@@ -58,9 +58,14 @@ export function startWatchServer(opts: WatchOptions): void {
       sseClients.add(res);
       req.on("close", () => sseClients.delete(res));
 
-      // Send initial state immediately
-      const data = gatherState(opts.sessionId);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      try {
+        // Send initial state immediately
+        const data = gatherState(opts.sessionId);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        console.error("SSE gatherState failed:", err);
+        res.write(`data: ${JSON.stringify({ error: "Failed to gather state", sessions: [], runs: [], recentIssues: [], stats: { activeSessions: 0, totalIssues: 0, totalRuns: 0 }, timestamp: new Date().toISOString() })}\n\n`);
+      }
 
       // Keep connection alive by sending heartbeats every 45 seconds
       // This prevents browser connection pool exhaustion while minimizing disruption
