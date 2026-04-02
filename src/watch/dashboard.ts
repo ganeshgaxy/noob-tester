@@ -1169,21 +1169,46 @@ async function renderSessionDetail(sessionId) {
   renderTab();
 }
 
-async function renderSettingsPage() {
-  const settings = await fetchJson("/api/settings");
-  const app = document.getElementById("app");
+let settingsTab = "settings";
 
+async function renderSettingsPage() {
+  const app = document.getElementById("app");
+  app.style.display = "";
+  app.style.flexDirection = "";
+  app.style.overflow = "";
+
+  // Fixed header with title + tabs
+  let header = '<div style="margin-bottom:16px">';
+  header += '<div style="font-size:16px;font-weight:600;margin-bottom:12px;letter-spacing:-0.3px">Settings</div>';
+  header += '<div class="tabs" style="border-bottom:1px solid var(--border)">';
+  header += '<div class="tab ' + (settingsTab === "settings" ? "active" : "") + '" onclick="settingsTab=\\'settings\\';renderSettingsPage()">General</div>';
+  header += '<div class="tab ' + (settingsTab === "setup" ? "active" : "") + '" onclick="settingsTab=\\'setup\\';renderSettingsPage()">Setup</div>';
+  header += '<div class="tab ' + (settingsTab === "agents" ? "active" : "") + '" onclick="settingsTab=\\'agents\\';renderSettingsPage()">Agents</div>';
+  header += '</div></div>';
+
+  let content = '';
+  if (settingsTab === "settings") {
+    content = await renderSettingsTab();
+  } else if (settingsTab === "setup") {
+    content = await renderSetupTab();
+  } else if (settingsTab === "agents") {
+    content = await renderAgentsTab();
+  }
+
+  app.innerHTML = '<div class="page-fixed">' + header + '</div><div class="page-content">' + content + '</div>';
+}
+
+async function renderSettingsTab() {
+  const settings = await fetchJson("/api/settings");
   const providers = ["github", "gitlab", "bitbucket"];
   const currentProvider = (settings.repo_provider || "").toLowerCase();
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
-  html += '<div class="panel-title">Settings</div>';
-  html += '</div>';
+  let html = '';
 
   // Repository Provider
   html += '<div class="panel">';
-  html += '<div style="margin-bottom:12px;font-weight:600;color:var(--fg)">Repository Provider</div>';
-  html += '<div style="display:flex;gap:12px;margin-bottom:16px">';
+  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Repository Provider</div>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
   for (const p of providers) {
     const selected = currentProvider === p;
     const style = selected
@@ -1195,9 +1220,9 @@ async function renderSettingsPage() {
   }
   html += '</div>';
   if (currentProvider) {
-    html += \`<div style="font-size:12px;color:var(--dim)">Current: <span style="color:var(--green)">\${currentProvider}</span></div>\`;
+    html += \`<div style="font-size:12px;color:var(--muted)">Current: <span style="color:var(--green)">\${currentProvider}</span></div>\`;
   } else {
-    html += '<div style="font-size:12px;color:var(--yellow)">No repository provider selected. Choose one above.</div>';
+    html += '<div style="font-size:12px;color:var(--yellow)">No provider selected.</div>';
   }
   html += '</div>';
 
@@ -1205,16 +1230,190 @@ async function renderSettingsPage() {
   const allKeys = Object.keys(settings);
   if (allKeys.length > 0) {
     html += '<div class="panel" style="margin-top:16px">';
-    html += '<div style="margin-bottom:12px;font-weight:600;color:var(--fg)">All Settings</div>';
+    html += '<div style="margin-bottom:10px;font-weight:500;font-size:14px">All Settings</div>';
     html += '<table class="data-table"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
     for (const key of allKeys) {
-      html += \`<tr><td style="color:var(--accent)">\${esc(key)}</td><td>\${esc(settings[key])}</td></tr>\`;
+      html += \`<tr><td style="color:var(--accent);font-family:var(--font-mono);font-size:12px">\${esc(key)}</td><td>\${esc(settings[key])}</td></tr>\`;
     }
     html += '</tbody></table></div>';
   }
 
-  app.innerHTML = html;
+  return html;
 }
+
+async function renderSetupTab() {
+  let html = '';
+
+  // Loading state
+  html += '<div id="setup-content"><div style="padding:32px;text-align:center;color:var(--muted)">Checking environment...</div></div>';
+
+  // Kick off async check after render
+  setTimeout(async () => {
+    const container = document.getElementById("setup-content");
+    if (!container) return;
+    try {
+      const data = await fetchJson("/api/setup/check");
+      container.innerHTML = renderSetupContent(data);
+    } catch (err) {
+      container.innerHTML = '<div style="padding:24px;color:var(--red)">Failed to check setup: ' + esc(String(err)) + '</div>';
+    }
+  }, 0);
+
+  return html;
+}
+
+async function renderAgentsTab() {
+  return '<div class="panel"><div style="padding:32px;text-align:center;color:var(--muted)">Agents - Coming Soon</div></div>';
+}
+
+function setupRow(icon, iconColor, name, tag, rightHtml) {
+  return '<div style="display:grid;grid-template-columns:250px 1fr;align-items:center;padding:10px 4px;gap:16px">'
+    + '<div style="display:flex;align-items:center;gap:10px">'
+    + '<span style="color:' + iconColor + ';font-size:14px;width:18px;text-align:center;flex-shrink:0">' + icon + '</span>'
+    + '<span style="font-size:13px">' + esc(name) + '</span>'
+    + (tag ? '<span style="font-size:10px;color:var(--muted)">' + esc(tag) + '</span>' : '')
+    + '</div>'
+    + '<div>' + rightHtml + '</div>'
+    + '</div>';
+}
+
+function copyBtn(cmd) {
+  return '<code style="font-size:11px;color:var(--dim);background:var(--surface-raised);padding:4px 10px;border-radius:var(--radius-xs);cursor:pointer;font-family:var(--font-mono);white-space:nowrap" onclick="navigator.clipboard.writeText(\\'' + esc(cmd) + '\\');this.textContent=\\'Copied!\\';setTimeout(()=>this.textContent=\\'' + esc(cmd) + '\\',1500)">' + esc(cmd) + '</code>';
+}
+
+function renderSetupContent(data) {
+  var html = '';
+
+  // ── Dependencies ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Dependencies</div>';
+  for (var i = 0; i < data.deps.length; i++) {
+    var dep = data.deps[i];
+    var icon = dep.installed ? '&#10003;' : '&#10007;';
+    var color = dep.installed ? 'var(--green)' : (dep.required ? 'var(--red)' : 'var(--yellow)');
+    var tag = dep.required ? '' : 'optional';
+    var right = dep.installed
+      ? '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(dep.install) + '</span>'
+      : copyBtn(dep.install);
+    html += setupRow(icon, color, dep.label, tag, right);
+  }
+  html += '</div>';
+
+  // ── Noob-tester Skills ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  html += '<div style="font-weight:500;font-size:14px">Noob-tester Skills</div>';
+  var uninstalled = data.skills.filter(function(s) { return s.srcExists && (!s.installed || !s.upToDate); });
+  if (uninstalled.length > 0) {
+    html += '<div class="action-btn" style="color:var(--accent)" onclick="installAllSkills()">Install All (' + uninstalled.length + ')</div>';
+  }
+  html += '</div>';
+  html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add ganeshgaxy/noob-tester-skills") + '</div>';
+  for (var j = 0; j < data.skills.length; j++) {
+    var skill = data.skills[j];
+    var sIcon, sColor, sRight;
+    if (skill.installed && skill.upToDate) {
+      sIcon = '&#10003;'; sColor = 'var(--green)';
+      sRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(skill.symlinkCmd || "linked") + '</span>';
+    } else if (skill.installed) {
+      sIcon = '&#8635;'; sColor = 'var(--yellow)';
+      sRight = copyBtn(skill.symlinkCmd || skill.installCmd);
+    } else if (skill.pluginInstalled && skill.srcExists) {
+      // Plugin installed but not symlinked
+      sIcon = '&#9675;'; sColor = 'var(--yellow)';
+      sRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(skill.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(\\'' + esc(skill.src) + '\\',\\'' + esc(skill.dest) + '\\',\\'' + esc(skill.id) + '\\')">Link</div></div>';
+    } else {
+      // Plugin not installed
+      sIcon = '&#10007;'; sColor = 'var(--red)';
+      sRight = copyBtn(skill.installCmd);
+    }
+    html += setupRow(sIcon, sColor, skill.label, '', sRight);
+  }
+  html += '</div>';
+
+  // ── External Skills ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="margin-bottom:4px;font-weight:500;font-size:14px">External Skills</div>';
+  html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add nikiforovall/claude-code-rules") + '</div>';
+  for (var k = 0; k < data.externalSkills.length; k++) {
+    var ext = data.externalSkills[k];
+    var eIcon, eColor, eRight;
+    if (ext.installed) {
+      eIcon = '&#10003;'; eColor = 'var(--green)';
+      eRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(ext.symlinkCmd || ext.installCmd) + '</span>';
+    } else if (ext.pluginInstalled && ext.src) {
+      eIcon = '&#9675;'; eColor = 'var(--yellow)';
+      eRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(ext.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(\\'' + esc(ext.src) + '\\',\\'' + esc(ext.dest) + '\\',\\'' + esc(ext.id) + '\\')">Link</div></div>';
+    } else {
+      eIcon = '&#9675;'; eColor = 'var(--muted)';
+      eRight = copyBtn(ext.installCmd);
+    }
+    html += setupRow(eIcon, eColor, ext.label, '', eRight);
+  }
+  html += '</div>';
+
+  // ── Hooks ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Hooks</div>';
+  for (var m = 0; m < data.hooks.length; m++) {
+    var hook = data.hooks[m];
+    var hIcon, hColor, hRight;
+    if (hook.installed) {
+      hIcon = '&#10003;'; hColor = 'var(--green)';
+      hRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(hook.symlinkCmd || hook.installCmd) + '</span>';
+    } else if (hook.pluginInstalled && hook.src) {
+      hIcon = '&#9675;'; hColor = 'var(--yellow)';
+      hRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(hook.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(\\'' + esc(hook.src) + '\\',\\'' + esc(hook.dest) + '\\',\\'' + esc(hook.id) + '\\')">Link</div></div>';
+    } else {
+      hIcon = '&#9675;'; hColor = 'var(--muted)';
+      hRight = copyBtn(hook.installCmd);
+    }
+    html += setupRow(hIcon, hColor, hook.label, '', hRight);
+  }
+  html += '</div>';
+
+  // ── Database ──
+  html += '<div class="panel">';
+  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Database</div>';
+  html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 4px">';
+  html += data.db.ok
+    ? '<span style="color:var(--green);font-size:14px">&#10003;</span><span style="font-size:13px">Initialized</span><span style="font-size:11px;color:var(--muted)">' + data.db.tables + ' tables</span>'
+    : '<span style="color:var(--red);font-size:14px">&#10007;</span><span style="font-size:13px;color:var(--red)">Not initialized</span>';
+  html += '</div></div>';
+
+  return html;
+}
+
+// Skill install actions
+window.installSkill = async function(src, dest, id) {
+  const btn = event.target;
+  btn.textContent = "...";
+  btn.style.pointerEvents = "none";
+  try {
+    await postJson("/api/setup/install-skill", { src: src, dest: dest });
+    btn.textContent = "Done";
+    btn.style.color = "var(--green)";
+    // Refresh after a beat
+    setTimeout(function() { settingsTab = "setup"; renderSettingsPage(); }, 800);
+  } catch (err) {
+    btn.textContent = "Failed";
+    btn.style.color = "var(--red)";
+  }
+};
+
+window.installAllSkills = async function() {
+  try {
+    const data = await fetchJson("/api/setup/check");
+    var pending = data.skills.filter(function(s) { return s.srcExists && (!s.installed || !s.upToDate); });
+    for (var i = 0; i < pending.length; i++) {
+      await postJson("/api/setup/install-skill", { src: pending[i].src, dest: pending[i].dest });
+    }
+    settingsTab = "setup";
+    renderSettingsPage();
+  } catch (err) {
+    alert("Failed: " + String(err));
+  }
+};
 
 window.saveRepoProvider = async function(provider) {
   await postJson("/api/settings", { key: "repo_provider", value: provider });

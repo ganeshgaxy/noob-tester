@@ -174,7 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_code_chunks_repo ON code_chunks(repo_url);
 CREATE INDEX IF NOT EXISTS idx_code_chunks_file ON code_chunks(file_path);
 `,
 
-  "004-reuse.sql": "",  // handled below as ALTER TABLE
+  "004-reuse.sql": "", // handled below as ALTER TABLE
 
   "007-repos-index.sql": `
 CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(
@@ -292,7 +292,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 };
 
 // session_id column on runs — handled separately since ALTER TABLE can't be IF NOT EXISTS
-const ADD_SESSION_COL = "ALTER TABLE runs ADD COLUMN session_id TEXT REFERENCES sessions(id)";
+const ADD_SESSION_COL =
+  "ALTER TABLE runs ADD COLUMN session_id TEXT REFERENCES sessions(id)";
 
 function runMigrations(db: Database.Database): void {
   db.exec(`
@@ -306,7 +307,7 @@ function runMigrations(db: Database.Database): void {
     db
       .prepare("SELECT name FROM _migrations")
       .all()
-      .map((r) => (r as { name: string }).name)
+      .map((r) => (r as { name: string }).name),
   );
 
   for (const [name, sql] of Object.entries(MIGRATIONS)) {
@@ -339,7 +340,9 @@ CREATE INDEX IF NOT EXISTS idx_tech_issues_status ON tech_issues(status);
 CREATE INDEX IF NOT EXISTS idx_tech_issues_category ON tech_issues(category);
 CREATE INDEX IF NOT EXISTS idx_tech_issues_pattern ON tech_issues(pattern_hash);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("011-tech-issues");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "011-tech-issues",
+    );
   }
 
   // Run packs table
@@ -369,20 +372,40 @@ CREATE INDEX IF NOT EXISTS idx_rpe_run ON run_pack_entries(run_id);
 CREATE INDEX IF NOT EXISTS idx_rpe_testcase ON run_pack_entries(test_case_id);
 CREATE INDEX IF NOT EXISTS idx_rpe_status ON run_pack_entries(status);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("012-run-packs");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "012-run-packs",
+    );
   }
 
   // Add ready field to test cases
   if (!applied.has("010-testcase-ready")) {
-    try { db.exec("ALTER TABLE test_cases ADD COLUMN ready INTEGER NOT NULL DEFAULT 0"); } catch { /* exists */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("010-testcase-ready");
+    try {
+      db.exec(
+        "ALTER TABLE test_cases ADD COLUMN ready INTEGER NOT NULL DEFAULT 0",
+      );
+    } catch {
+      /* exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "010-testcase-ready",
+    );
   }
 
   // Add session labels
   if (!applied.has("009-session-labels")) {
-    try { db.exec("ALTER TABLE sessions ADD COLUMN labels TEXT"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE sessions ADD COLUMN ticket_refs TEXT"); } catch { /* exists */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("009-session-labels");
+    try {
+      db.exec("ALTER TABLE sessions ADD COLUMN labels TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec("ALTER TABLE sessions ADD COLUMN ticket_refs TEXT");
+    } catch {
+      /* exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "009-session-labels",
+    );
   }
 
   // Add session metrics columns
@@ -395,9 +418,15 @@ CREATE INDEX IF NOT EXISTS idx_rpe_status ON run_pack_entries(status);
       "ALTER TABLE sessions ADD COLUMN tool_calls INTEGER DEFAULT 0",
     ];
     for (const sql of cols) {
-      try { db.exec(sql); } catch { /* exists */ }
+      try {
+        db.exec(sql);
+      } catch {
+        /* exists */
+      }
     }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("008-metrics-cols");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "008-metrics-cols",
+    );
   }
 
   // Add capture_config, secret_target, secret_role to runs
@@ -408,9 +437,15 @@ CREATE INDEX IF NOT EXISTS idx_rpe_status ON run_pack_entries(status);
       "ALTER TABLE runs ADD COLUMN secret_role TEXT",
     ];
     for (const sql of cols) {
-      try { db.exec(sql); } catch { /* exists */ }
+      try {
+        db.exec(sql);
+      } catch {
+        /* exists */
+      }
     }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("013-run-capture-config");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "013-run-capture-config",
+    );
   }
 
   // Add target_url, secret_target, secret_role, capture_config to run_pack_entries
@@ -422,9 +457,15 @@ CREATE INDEX IF NOT EXISTS idx_rpe_status ON run_pack_entries(status);
       "ALTER TABLE run_pack_entries ADD COLUMN capture_config TEXT",
     ];
     for (const sql of cols) {
-      try { db.exec(sql); } catch { /* exists */ }
+      try {
+        db.exec(sql);
+      } catch {
+        /* exists */
+      }
     }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("014-runpack-target-capture");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "014-runpack-target-capture",
+    );
   }
 
   // Run artifacts — per-action captures (snapshot, console, har, screenshot)
@@ -453,7 +494,9 @@ CREATE INDEX IF NOT EXISTS idx_ra_type ON run_artifacts(artifact_type);
 CREATE INDEX IF NOT EXISTS idx_ra_ticket ON run_artifacts(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_ra_url ON run_artifacts(page_url);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("016-run-artifacts");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "016-run-artifacts",
+    );
   }
 
   // Enrich test_plans and test_steps
@@ -473,10 +516,26 @@ CREATE INDEX IF NOT EXISTS idx_ra_url ON run_artifacts(page_url);
       "ALTER TABLE test_steps ADD COLUMN priority INTEGER DEFAULT 0",
       "ALTER TABLE test_steps ADD COLUMN source TEXT",
     ];
-    for (const sql of cols) { try { db.exec(sql); } catch { /* exists */ } }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_test_plans_ticket ON test_plans(ticket_id)"); } catch {}
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_test_steps_testcase ON test_steps(testcase_id)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("017-plan-enrich");
+    for (const sql of cols) {
+      try {
+        db.exec(sql);
+      } catch {
+        /* exists */
+      }
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_test_plans_ticket ON test_plans(ticket_id)",
+      );
+    } catch {}
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_test_steps_testcase ON test_steps(testcase_id)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "017-plan-enrich",
+    );
   }
 
   // Reports table — stores Claude-generated analysis for tickets
@@ -496,7 +555,9 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS idx_reports_ticket ON reports(ticket_id);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("022-reports");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "022-reports",
+    );
   }
 
   // Rename jira_id → ticket_id, jira_ids → ticket_ids across all tables (for existing DBs)
@@ -515,61 +576,157 @@ CREATE INDEX IF NOT EXISTS idx_reports_ticket ON reports(ticket_id);
       { table: "ui_map_forms", old: "jira_ids", new_: "ticket_ids" },
     ];
     for (const r of renames) {
-      try { db.exec(`ALTER TABLE ${r.table} RENAME COLUMN ${r.old} TO ${r.new_}`); } catch { /* already renamed or doesn't exist */ }
+      try {
+        db.exec(`ALTER TABLE ${r.table} RENAME COLUMN ${r.old} TO ${r.new_}`);
+      } catch {
+        /* already renamed or doesn't exist */
+      }
     }
     // Rename indexes
-    try { db.exec("DROP INDEX IF EXISTS idx_test_plans_jira"); } catch {}
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_test_plans_ticket ON test_plans(ticket_id)"); } catch {}
-    try { db.exec("DROP INDEX IF EXISTS idx_ra_jira"); } catch {}
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_ra_ticket ON run_artifacts(ticket_id)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("024-rename-jira-to-ticket");
+    try {
+      db.exec("DROP INDEX IF EXISTS idx_test_plans_jira");
+    } catch {}
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_test_plans_ticket ON test_plans(ticket_id)",
+      );
+    } catch {}
+    try {
+      db.exec("DROP INDEX IF EXISTS idx_ra_jira");
+    } catch {}
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_ra_ticket ON run_artifacts(ticket_id)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "024-rename-jira-to-ticket",
+    );
   }
 
   // Fix tech_issues: rename ticket_id back to ticket_ref if migration 024 renamed it
   if (!applied.has("025-fix-tech-issues-column")) {
-    try { db.exec("ALTER TABLE tech_issues RENAME COLUMN ticket_id TO ticket_ref"); } catch { /* already ticket_ref */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("025-fix-tech-issues-column");
+    try {
+      db.exec("ALTER TABLE tech_issues RENAME COLUMN ticket_id TO ticket_ref");
+    } catch {
+      /* already ticket_ref */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "025-fix-tech-issues-column",
+    );
   }
 
   // Rename created_by_jira / updated_by_jira audit columns to created_by_ticket / updated_by_ticket
   if (!applied.has("026-rename-jira-audit-columns")) {
     const auditCols = [
-      { table: "ui_map_pages", old: "created_by_jira", new_: "created_by_ticket" },
-      { table: "ui_map_pages", old: "updated_by_jira", new_: "updated_by_ticket" },
-      { table: "ui_map_elements", old: "created_by_jira", new_: "created_by_ticket" },
-      { table: "ui_map_elements", old: "updated_by_jira", new_: "updated_by_ticket" },
-      { table: "ui_map_navigations", old: "created_by_jira", new_: "created_by_ticket" },
-      { table: "ui_map_navigations", old: "updated_by_jira", new_: "updated_by_ticket" },
-      { table: "ui_map_forms", old: "created_by_jira", new_: "created_by_ticket" },
-      { table: "ui_map_forms", old: "updated_by_jira", new_: "updated_by_ticket" },
+      {
+        table: "ui_map_pages",
+        old: "created_by_jira",
+        new_: "created_by_ticket",
+      },
+      {
+        table: "ui_map_pages",
+        old: "updated_by_jira",
+        new_: "updated_by_ticket",
+      },
+      {
+        table: "ui_map_elements",
+        old: "created_by_jira",
+        new_: "created_by_ticket",
+      },
+      {
+        table: "ui_map_elements",
+        old: "updated_by_jira",
+        new_: "updated_by_ticket",
+      },
+      {
+        table: "ui_map_navigations",
+        old: "created_by_jira",
+        new_: "created_by_ticket",
+      },
+      {
+        table: "ui_map_navigations",
+        old: "updated_by_jira",
+        new_: "updated_by_ticket",
+      },
+      {
+        table: "ui_map_forms",
+        old: "created_by_jira",
+        new_: "created_by_ticket",
+      },
+      {
+        table: "ui_map_forms",
+        old: "updated_by_jira",
+        new_: "updated_by_ticket",
+      },
     ];
     for (const col of auditCols) {
-      try { db.exec(`ALTER TABLE ${col.table} RENAME COLUMN ${col.old} TO ${col.new_}`); } catch {}
+      try {
+        db.exec(
+          `ALTER TABLE ${col.table} RENAME COLUMN ${col.old} TO ${col.new_}`,
+        );
+      } catch {}
     }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("026-rename-jira-audit-columns");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "026-rename-jira-audit-columns",
+    );
   }
 
   // Add model and cost tracking to sessions
   if (!applied.has("027-session-model-cost")) {
-    try { db.exec("ALTER TABLE sessions ADD COLUMN model TEXT"); } catch {}
-    try { db.exec("ALTER TABLE sessions ADD COLUMN estimated_cost_usd REAL DEFAULT 0"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("027-session-model-cost");
+    try {
+      db.exec("ALTER TABLE sessions ADD COLUMN model TEXT");
+    } catch {}
+    try {
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN estimated_cost_usd REAL DEFAULT 0",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "027-session-model-cost",
+    );
   }
 
   // Add token breakdown to sessions
   if (!applied.has("028-session-token-breakdown")) {
-    try { db.exec("ALTER TABLE sessions ADD COLUMN input_tokens INTEGER DEFAULT 0"); } catch {}
-    try { db.exec("ALTER TABLE sessions ADD COLUMN output_tokens INTEGER DEFAULT 0"); } catch {}
-    try { db.exec("ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER DEFAULT 0"); } catch {}
-    try { db.exec("ALTER TABLE sessions ADD COLUMN cache_create_tokens INTEGER DEFAULT 0"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("028-session-token-breakdown");
+    try {
+      db.exec("ALTER TABLE sessions ADD COLUMN input_tokens INTEGER DEFAULT 0");
+    } catch {}
+    try {
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN output_tokens INTEGER DEFAULT 0",
+      );
+    } catch {}
+    try {
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER DEFAULT 0",
+      );
+    } catch {}
+    try {
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN cache_create_tokens INTEGER DEFAULT 0",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "028-session-token-breakdown",
+    );
   }
 
   // Add analysis_run_id FK to test_plans
   if (!applied.has("029-plan-analysis-link")) {
-    try { db.exec("ALTER TABLE test_plans ADD COLUMN analysis_run_id TEXT"); } catch { /* exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_test_plans_analysis ON test_plans(analysis_run_id)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("029-plan-analysis-link");
+    try {
+      db.exec("ALTER TABLE test_plans ADD COLUMN analysis_run_id TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_test_plans_analysis ON test_plans(analysis_run_id)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "029-plan-analysis-link",
+    );
   }
 
   // Normalize impact areas from analysis JSON
@@ -590,7 +747,9 @@ CREATE INDEX IF NOT EXISTS idx_impact_areas_run ON impact_areas(run_id);
 CREATE INDEX IF NOT EXISTS idx_impact_areas_type ON impact_areas(area_type);
 CREATE INDEX IF NOT EXISTS idx_impact_areas_severity ON impact_areas(severity);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("030-impact-areas");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "030-impact-areas",
+    );
   }
 
   // Normalize coverage gaps from plan JSON
@@ -609,7 +768,9 @@ CREATE INDEX IF NOT EXISTS idx_coverage_gaps_plan ON coverage_gaps(plan_id);
 CREATE INDEX IF NOT EXISTS idx_coverage_gaps_run ON coverage_gaps(run_id);
 CREATE INDEX IF NOT EXISTS idx_coverage_gaps_category ON coverage_gaps(category);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("031-coverage-gaps");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "031-coverage-gaps",
+    );
   }
 
   // Phase transition history
@@ -626,21 +787,43 @@ CREATE TABLE IF NOT EXISTS phase_transitions (
 CREATE INDEX IF NOT EXISTS idx_phase_trans_run ON phase_transitions(run_id);
 CREATE INDEX IF NOT EXISTS idx_phase_trans_session ON phase_transitions(session_id);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("032-phase-transitions");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "032-phase-transitions",
+    );
   }
 
   // Index action log + outcome_summary
   if (!applied.has("033-action-log-index")) {
-    try { db.exec("ALTER TABLE action_log ADD COLUMN outcome_summary TEXT"); } catch { /* exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_action_log_status ON action_log(status)"); } catch {}
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_action_log_agent ON action_log(agent_name)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("033-action-log-index");
+    try {
+      db.exec("ALTER TABLE action_log ADD COLUMN outcome_summary TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_action_log_status ON action_log(status)",
+      );
+    } catch {}
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_action_log_agent ON action_log(agent_name)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "033-action-log-index",
+    );
   }
 
   // Reverse step lookup index on plan_id
   if (!applied.has("034-test-steps-plan-index")) {
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_test_steps_plan ON test_steps(plan_id)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("034-test-steps-plan-index");
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_test_steps_plan ON test_steps(plan_id)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "034-test-steps-plan-index",
+    );
   }
 
   // Normalize blockers from plan JSON
@@ -663,7 +846,9 @@ CREATE INDEX IF NOT EXISTS idx_blockers_run ON blockers(run_id);
 CREATE INDEX IF NOT EXISTS idx_blockers_ticket ON blockers(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_blockers_status ON blockers(status);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("035-blockers");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "035-blockers",
+    );
   }
 
   // Ticket context cache index (content stored on filesystem)
@@ -684,7 +869,9 @@ CREATE INDEX IF NOT EXISTS idx_tci_ticket ON ticket_context_index(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_tci_type ON ticket_context_index(context_type);
 CREATE INDEX IF NOT EXISTS idx_tci_fetched ON ticket_context_index(fetched_at);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("036-ticket-context");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "036-ticket-context",
+    );
   }
 
   // API Maps — endpoint registry with chains, params, responses, auth
@@ -775,22 +962,50 @@ CREATE INDEX IF NOT EXISTS idx_amc_map ON api_map_chains(api_map_id);
 CREATE INDEX IF NOT EXISTS idx_amc_from ON api_map_chains(from_endpoint_id);
 CREATE INDEX IF NOT EXISTS idx_amc_to ON api_map_chains(to_endpoint_id);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("037-api-maps");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "037-api-maps",
+    );
   }
 
   // Add branch and commit tracking to repos
   if (!applied.has("023-repos-branch")) {
-    try { db.exec("ALTER TABLE repos ADD COLUMN current_branch TEXT"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE repos ADD COLUMN last_commit TEXT"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE repos ADD COLUMN last_indexed TEXT"); } catch { /* exists */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("023-repos-branch");
+    try {
+      db.exec("ALTER TABLE repos ADD COLUMN current_branch TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec("ALTER TABLE repos ADD COLUMN last_commit TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec("ALTER TABLE repos ADD COLUMN last_indexed TEXT");
+    } catch {
+      /* exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "023-repos-branch",
+    );
   }
 
   // Add runner column to run_pack_entries
   if (!applied.has("021-runpack-runner")) {
-    try { db.exec("ALTER TABLE run_pack_entries ADD COLUMN runner TEXT DEFAULT 'ui'"); } catch { /* exists */ }
-    try { db.exec("UPDATE run_pack_entries SET runner = 'ui' WHERE runner IS NULL AND test_case_id != '__header__'"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("021-runpack-runner");
+    try {
+      db.exec(
+        "ALTER TABLE run_pack_entries ADD COLUMN runner TEXT DEFAULT 'ui'",
+      );
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "UPDATE run_pack_entries SET runner = 'ui' WHERE runner IS NULL AND test_case_id != '__header__'",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "021-runpack-runner",
+    );
   }
 
   // Coverage map — link test cases to source files for code-level coverage
@@ -811,7 +1026,9 @@ CREATE INDEX IF NOT EXISTS idx_cm_testcase ON coverage_map(test_case_id);
 CREATE INDEX IF NOT EXISTS idx_cm_repo_file ON coverage_map(repo_name, file_path);
 CREATE INDEX IF NOT EXISTS idx_cm_function ON coverage_map(function_name);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("038-coverage-map");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "038-coverage-map",
+    );
   }
 
   // RCA results — root cause analysis for failed run pack entries
@@ -835,10 +1052,26 @@ CREATE INDEX IF NOT EXISTS idx_rca_entry ON rca_results(entry_id);
 CREATE INDEX IF NOT EXISTS idx_rca_class ON rca_results(classification);
     `);
     // Add classification columns to failure_patterns
-    try { db.exec("ALTER TABLE failure_patterns ADD COLUMN classification TEXT"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE failure_patterns ADD COLUMN classification_confidence REAL"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE failure_patterns ADD COLUMN last_rca_at TEXT"); } catch { /* exists */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("039-rca");
+    try {
+      db.exec("ALTER TABLE failure_patterns ADD COLUMN classification TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "ALTER TABLE failure_patterns ADD COLUMN classification_confidence REAL",
+      );
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec("ALTER TABLE failure_patterns ADD COLUMN last_rca_at TEXT");
+    } catch {
+      /* exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "039-rca",
+    );
   }
 
   // Accessibility issues — WCAG/axe-core audit results
@@ -867,7 +1100,9 @@ CREATE INDEX IF NOT EXISTS idx_a11y_page ON a11y_issues(page_url);
 CREATE INDEX IF NOT EXISTS idx_a11y_impact ON a11y_issues(impact);
 CREATE INDEX IF NOT EXISTS idx_a11y_rule ON a11y_issues(rule_id);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("040-a11y");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "040-a11y",
+    );
   }
 
   // Resource stats cache — pre-computed stats updated during operations
@@ -879,7 +1114,9 @@ CREATE TABLE IF NOT EXISTS resource_stats (
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("044-resource-stats");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "044-resource-stats",
+    );
   }
 
   // Visual regression baselines and diffs
@@ -920,49 +1157,121 @@ CREATE INDEX IF NOT EXISTS idx_vd_run ON visual_diffs(run_id);
 CREATE INDEX IF NOT EXISTS idx_vd_regression ON visual_diffs(is_regression);
 CREATE INDEX IF NOT EXISTS idx_vd_reviewed ON visual_diffs(reviewed);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("043-visual-baselines");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "043-visual-baselines",
+    );
   }
 
   // Risk scoring columns on test_cases
   if (!applied.has("041-risk-scores")) {
-    try { db.exec("ALTER TABLE test_cases ADD COLUMN risk_score REAL DEFAULT 0"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE test_cases ADD COLUMN risk_factors TEXT"); } catch { /* exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_testcases_risk ON test_cases(risk_score DESC)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("041-risk-scores");
+    try {
+      db.exec("ALTER TABLE test_cases ADD COLUMN risk_score REAL DEFAULT 0");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec("ALTER TABLE test_cases ADD COLUMN risk_factors TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_testcases_risk ON test_cases(risk_score DESC)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "041-risk-scores",
+    );
   }
 
   // False positive columns on run_pack_entries
   if (!applied.has("042-false-positives")) {
-    try { db.exec("ALTER TABLE run_pack_entries ADD COLUMN retry_count INTEGER DEFAULT 0"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE run_pack_entries ADD COLUMN is_false_positive INTEGER DEFAULT 0"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE run_pack_entries ADD COLUMN failure_confidence TEXT"); } catch { /* exists */ }
-    try { db.exec("ALTER TABLE run_pack_entries ADD COLUMN original_status TEXT"); } catch { /* exists */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("042-false-positives");
+    try {
+      db.exec(
+        "ALTER TABLE run_pack_entries ADD COLUMN retry_count INTEGER DEFAULT 0",
+      );
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "ALTER TABLE run_pack_entries ADD COLUMN is_false_positive INTEGER DEFAULT 0",
+      );
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "ALTER TABLE run_pack_entries ADD COLUMN failure_confidence TEXT",
+      );
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec("ALTER TABLE run_pack_entries ADD COLUMN original_status TEXT");
+    } catch {
+      /* exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "042-false-positives",
+    );
   }
 
   // Add test_layer column to test_cases
   if (!applied.has("020-testcase-layer")) {
-    try { db.exec("ALTER TABLE test_cases ADD COLUMN test_layer TEXT DEFAULT 'ui'"); } catch { /* exists */ }
+    try {
+      db.exec("ALTER TABLE test_cases ADD COLUMN test_layer TEXT DEFAULT 'ui'");
+    } catch {
+      /* exists */
+    }
     // Backfill existing rows that have NULL
-    try { db.exec("UPDATE test_cases SET test_layer = 'ui' WHERE test_layer IS NULL"); } catch {}
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_testcases_layer ON test_cases(test_layer)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("020-testcase-layer");
+    try {
+      db.exec(
+        "UPDATE test_cases SET test_layer = 'ui' WHERE test_layer IS NULL",
+      );
+    } catch {}
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_testcases_layer ON test_cases(test_layer)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "020-testcase-layer",
+    );
   }
 
   // Backfill NULL test_layer on any rows missed (idempotent, runs every startup)
-  try { db.exec("UPDATE test_cases SET test_layer = 'ui' WHERE test_layer IS NULL"); } catch {}
+  try {
+    db.exec("UPDATE test_cases SET test_layer = 'ui' WHERE test_layer IS NULL");
+  } catch {}
 
   // Add test_notes column to test_plans
   if (!applied.has("019-plan-test-notes")) {
-    try { db.exec("ALTER TABLE test_plans ADD COLUMN test_notes TEXT"); } catch { /* exists */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("019-plan-test-notes");
+    try {
+      db.exec("ALTER TABLE test_plans ADD COLUMN test_notes TEXT");
+    } catch {
+      /* exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "019-plan-test-notes",
+    );
   }
 
   // Link test cases to plan steps
   if (!applied.has("018-testcase-plan-link")) {
-    try { db.exec("ALTER TABLE test_cases ADD COLUMN plan_step_id TEXT"); } catch { /* exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_testcases_plan_step ON test_cases(plan_step_id)"); } catch {}
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("018-testcase-plan-link");
+    try {
+      db.exec("ALTER TABLE test_cases ADD COLUMN plan_step_id TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_testcases_plan_step ON test_cases(plan_step_id)",
+      );
+    } catch {}
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "018-testcase-plan-link",
+    );
   }
 
   // UI Maps
@@ -1097,13 +1406,21 @@ CREATE TABLE IF NOT EXISTS ui_map_forms (
 CREATE INDEX IF NOT EXISTS idx_uimf_page ON ui_map_forms(page_id);
 CREATE INDEX IF NOT EXISTS idx_uimf_map ON ui_map_forms(ui_map_id);
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("015-ui-maps");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "015-ui-maps",
+    );
   }
 
   // Add reuse_run_id to runs if not present
   if (!applied.has("004-reuse-col")) {
-    try { db.exec("ALTER TABLE runs ADD COLUMN reuse_run_id TEXT"); } catch { /* exists */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("004-reuse-col");
+    try {
+      db.exec("ALTER TABLE runs ADD COLUMN reuse_run_id TEXT");
+    } catch {
+      /* exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "004-reuse-col",
+    );
   }
 
   // Add session_id to runs if not present
@@ -1114,25 +1431,43 @@ CREATE INDEX IF NOT EXISTS idx_uimf_map ON ui_map_forms(ui_map_id);
       // Column already exists — ignore
     }
     try {
-      db.exec("CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id)");
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id)",
+      );
     } catch {
       // ignore
     }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("003-sessions-col");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "003-sessions-col",
+    );
   }
 
   // Add ticket_id to a11y_issues for direct ticket-level querying
   if (!applied.has("045-a11y-ticket")) {
-    try { db.exec("ALTER TABLE a11y_issues ADD COLUMN ticket_id TEXT"); } catch { /* exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_a11y_ticket ON a11y_issues(ticket_id)"); } catch { /* exists */ }
+    try {
+      db.exec("ALTER TABLE a11y_issues ADD COLUMN ticket_id TEXT");
+    } catch {
+      /* exists */
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_a11y_ticket ON a11y_issues(ticket_id)",
+      );
+    } catch {
+      /* exists */
+    }
     // Backfill from run_pack_entries
     try {
       db.exec(`UPDATE a11y_issues SET ticket_id = (
         SELECT rpe.ticket_id FROM run_pack_entries rpe
         WHERE rpe.run_pack_id = a11y_issues.run_pack_id AND rpe.test_case_id = '__header__'
       ) WHERE ticket_id IS NULL AND run_pack_id IS NOT NULL`);
-    } catch { /* ok */ }
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("045-a11y-ticket");
+    } catch {
+      /* ok */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "045-a11y-ticket",
+    );
   }
 
   if (!applied.has("046-settings")) {
@@ -1145,7 +1480,112 @@ CREATE INDEX IF NOT EXISTS idx_uimf_map ON ui_map_forms(ui_map_id);
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run("046-settings");
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "046-settings",
+    );
+  }
+
+  // Auth sessions — stores active login state for AntTest cloud sync
+  if (!applied.has("047-auth-sessions")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id              TEXT PRIMARY KEY,
+  user_id         TEXT NOT NULL,
+  user_email      TEXT NOT NULL,
+  user_name       TEXT,
+  org_id          TEXT NOT NULL,
+  org_name        TEXT,
+  access_token    TEXT NOT NULL,
+  refresh_token   TEXT,
+  token_type      TEXT NOT NULL DEFAULT 'bearer',
+  expires_at      TEXT,
+  anttest_url     TEXT NOT NULL DEFAULT 'https://anttest.app',
+  auth_method     TEXT NOT NULL DEFAULT 'token',
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  is_active       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions(is_active);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_org ON auth_sessions(org_id);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "047-auth-sessions",
+    );
+  }
+
+  // Add test_case_id column to run_pack_entries if missing (fixes old DBs)
+  if (!applied.has("048-runpack-testcaseid")) {
+    try {
+      // Check if the column exists by trying to select it
+      db.prepare("SELECT test_case_id FROM run_pack_entries LIMIT 1").get();
+    } catch {
+      // Column doesn't exist, need to recreate the table
+      // SQLite doesn't support adding NOT NULL columns to existing tables
+      // so we need to create a new table and migrate data
+      try {
+        db.exec(`
+          ALTER TABLE run_pack_entries RENAME TO run_pack_entries_old;
+
+          CREATE TABLE run_pack_entries (
+            id              TEXT PRIMARY KEY,
+            run_pack_id     TEXT NOT NULL,
+            ticket_id       TEXT NOT NULL,
+            run_id          TEXT NOT NULL,
+            session_id      TEXT,
+            test_case_id    TEXT NOT NULL DEFAULT '__header__',
+            fresh_or_existing TEXT NOT NULL DEFAULT 'fresh',
+            status          TEXT NOT NULL DEFAULT 'pending',
+            results         TEXT,
+            logs            TEXT,
+            observations    TEXT,
+            issues          TEXT,
+            artifacts       TEXT,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            started_at      TEXT,
+            completed_at    TEXT,
+            target_url      TEXT,
+            secret_target   TEXT,
+            secret_role     TEXT,
+            capture_config  TEXT,
+            runner          TEXT DEFAULT 'ui',
+            retry_count     INTEGER DEFAULT 0,
+            is_false_positive INTEGER DEFAULT 0,
+            failure_confidence TEXT,
+            original_status TEXT
+          );
+
+          INSERT INTO run_pack_entries (
+            id, run_pack_id, ticket_id, run_id, session_id, test_case_id,
+            fresh_or_existing, status, results, logs, observations, issues,
+            artifacts, created_at, started_at, completed_at, target_url,
+            secret_target, secret_role, capture_config, runner,
+            retry_count, is_false_positive, failure_confidence, original_status
+          )
+          SELECT
+            id, run_pack_id, ticket_id, run_id, session_id, '__header__',
+            COALESCE(fresh_or_existing, 'fresh'), COALESCE(status, 'pending'),
+            results, logs, observations, issues, artifacts, created_at,
+            started_at, completed_at, target_url, secret_target, secret_role,
+            capture_config, runner, retry_count, is_false_positive,
+            failure_confidence, original_status
+          FROM run_pack_entries_old;
+
+          DROP TABLE run_pack_entries_old;
+
+          CREATE INDEX IF NOT EXISTS idx_rpe_run_pack ON run_pack_entries(run_pack_id);
+          CREATE INDEX IF NOT EXISTS idx_rpe_ticket ON run_pack_entries(ticket_id);
+          CREATE INDEX IF NOT EXISTS idx_rpe_run ON run_pack_entries(run_id);
+          CREATE INDEX IF NOT EXISTS idx_rpe_testcase ON run_pack_entries(test_case_id);
+          CREATE INDEX IF NOT EXISTS idx_rpe_status ON run_pack_entries(status);
+        `);
+      } catch {
+        /* migration failed, table might already be correct */
+      }
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "048-runpack-testcaseid",
+    );
   }
 }
 
@@ -1153,7 +1593,9 @@ function tryLoadVss(db: Database.Database): void {
   try {
     let sqliteVss: { load: (db: Database.Database) => void } | null = null;
     try {
-      sqliteVss = require("sqlite-vss") as { load: (db: Database.Database) => void };
+      sqliteVss = require("sqlite-vss") as {
+        load: (db: Database.Database) => void;
+      };
     } catch {
       sqliteVss = null;
     }

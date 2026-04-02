@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
-import { readFileSync, existsSync, statSync, rmSync, readdirSync, unlinkSync } from "fs";
+import { execSync } from "child_process";
+import { readFileSync, existsSync, statSync, rmSync, readdirSync, unlinkSync, readlinkSync, mkdirSync, symlinkSync } from "fs";
 import { extname, resolve as resolvePath, join } from "path";
 import { homedir } from "os";
 import { getDb, dataDir } from "../db/client.js";
@@ -48,7 +49,7 @@ export function startWatchServer(opts: WatchOptions): void {
     }
 
     if (url.pathname === "/api/stream") {
-      // SSE endpoint
+      // SSE endpoint with connection timeout to free up HTTP pool
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -60,6 +61,15 @@ export function startWatchServer(opts: WatchOptions): void {
       // Send initial state immediately
       const data = gatherState(opts.sessionId);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+      // Close connection after 30 seconds to free up HTTP connection pool
+      // Browser's EventSource will auto-reconnect
+      const timeout = setTimeout(() => {
+        sseClients.delete(res);
+        res.end();
+      }, 30000);
+
+      req.on("close", () => clearTimeout(timeout));
       return;
     }
 
@@ -1788,6 +1798,188 @@ export function startWatchServer(opts: WatchOptions): void {
           res.end(JSON.stringify({ ok: true }));
         } catch (err) {
           res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── Setup API ──
+
+    if (url.pathname === "/api/setup/check" && req.method === "GET") {
+      const claudeDir = join(homedir(), ".claude");
+      const skillsDir = join(claudeDir, "skills");
+      const pluginsCache = join(claudeDir, "plugins", "cache");
+      const hooksDir = join(claudeDir, "hooks");
+
+      // Package dir = where noob-tester is installed (the skills/ folder is relative to it)
+      const packageDir = join(new URL(".", import.meta.url).pathname, "..", "..");
+
+      const home = homedir();
+      function tilde(p: string): string { return p.replace(home, "~"); }
+      function cmdExists(cmd: string): boolean {
+        try { execSync(`which ${cmd}`, { stdio: "ignore" }); return true; } catch { return false; }
+      }
+      function findPluginVersion(basePath: string): string | null {
+        if (!existsSync(basePath)) return null;
+        try {
+          const entries = readdirSync(basePath).filter((e: string) => !e.startsWith(".")).sort();
+          return entries.length > 0 ? entries[entries.length - 1] : null;
+        } catch { return null; }
+      }
+
+      // Dependencies
+      const deps = [
+        { id: "git", label: "Git", installed: cmdExists("git"), install: "brew install git", required: true },
+        { id: "curl", label: "curl", installed: cmdExists("curl"), install: "brew install curl", required: true },
+        { id: "jq", label: "jq", installed: cmdExists("jq"), install: "brew install jq", required: true },
+        { id: "gh", label: "GitHub CLI (gh)", installed: cmdExists("gh"), install: "brew install gh", required: false },
+        { id: "glab", label: "GitLab CLI (glab)", installed: cmdExists("glab"), install: "brew install glab", required: false },
+        { id: "bb", label: "Bitbucket CLI (bb)", installed: cmdExists("bb"), install: "npm install -g @ganeshgaxy/bb-cli", required: false, source: "github.com/ganeshgaxy/bb-cli" },
+        { id: "agent-browser", label: "Agent Browser", installed: cmdExists("agent-browser"), install: "npm install -g agent-browser", required: false },
+        { id: "op", label: "1Password CLI (op)", installed: cmdExists("op"), install: "brew install 1password-cli", required: false },
+      ];
+
+      // ── Noob-tester skills (from ganeshgaxy/noob-tester-skills plugin) ──
+      const marketplaceCmd = "claude plugin marketplace add ganeshgaxy/noob-tester-skills";
+      const noobTesterPluginBase = join(pluginsCache, "noob-tester-skills");
+
+      // Skills that have a matching plugin name in noob-tester-skills
+      const pluginSkills = [
+        { id: "noob-tester", pluginName: "noob-tester", skillPath: "skills/noob-tester" },
+        { id: "noob-explore", pluginName: "noob-explore", skillPath: "skills/noob-explore" },
+        { id: "noob-api-explore", pluginName: "noob-api-explore", skillPath: "skills/noob-api-explore" },
+        { id: "noob-analyze", pluginName: "noob-analyze", skillPath: "skills/noob-analyze" },
+        { id: "noob-plan", pluginName: "noob-plan", skillPath: "skills/noob-plan" },
+        { id: "noob-testcase", pluginName: "noob-testcase", skillPath: "skills/noob-testcase" },
+        { id: "noob-report", pluginName: "noob-report", skillPath: "skills/noob-report" },
+        { id: "noob-rca", pluginName: "noob-rca", skillPath: "skills/noob-rca" },
+        { id: "noob-mr-pr", pluginName: "noob-mr-pr", skillPath: "skills/noob-mr-pr" },
+        { id: "noob-repos-setup", pluginName: "noob-repos-setup", skillPath: "skills/noob-repos-setup" },
+        { id: "noob-ticket-cache", pluginName: "noob-ticket-cache", skillPath: "skills/noob-ticket-cache" },
+      ];
+
+      const skillItems = pluginSkills.map(s => {
+        const pkgDir = join(noobTesterPluginBase, s.pluginName);
+        const ver = findPluginVersion(pkgDir);
+        const src = ver ? join(pkgDir, ver, s.skillPath) : null;
+        const dest = join(skillsDir, s.id);
+        const destExists = existsSync(dest);
+        const srcExists = src ? existsSync(src) : false;
+        let upToDate = false;
+        if (destExists && srcExists && src) {
+          try {
+            const target = readlinkSync(dest);
+            upToDate = target === src;
+          } catch {
+            try {
+              const srcContent = readFileSync(join(src!, "SKILL.md"), "utf8");
+              const destContent = readFileSync(join(dest, "SKILL.md"), "utf8");
+              upToDate = srcContent === destContent;
+            } catch { upToDate = false; }
+          }
+        }
+        const installCmd = "claude plugin install " + s.pluginName + "@noob-tester-skills";
+        const symlinkCmd = src ? "ln -sf " + tilde(src) + " " + tilde(dest) : "";
+        return { id: s.id, label: s.id, src, dest, installed: destExists, upToDate, srcExists, pluginInstalled: !!ver, installCmd, symlinkCmd, marketplaceCmd };
+      });
+
+      // ── External skills ──
+      const externalSkills = [];
+
+      // bb skill (from noob-tester-skills)
+      const bbPkgDir = join(noobTesterPluginBase, "bb");
+      const bbVer = findPluginVersion(bbPkgDir);
+      const bbSkillSrc = bbVer ? join(bbPkgDir, bbVer, "skills", "bb") : null;
+      externalSkills.push({
+        id: "bb-skill", label: "bb (Bitbucket skill)", dest: join(skillsDir, "bb"),
+        installed: existsSync(join(skillsDir, "bb")),
+        pluginInstalled: !!bbVer, src: bbSkillSrc,
+        installCmd: "claude plugin install bb@noob-tester-skills",
+        symlinkCmd: bbSkillSrc ? "ln -sf " + tilde(bbSkillSrc) + " " + tilde(join(skillsDir, "bb")) : "",
+        marketplaceCmd: marketplaceCmd,
+      });
+
+      // glab skill (from cc-handbook)
+      const glabPkgDir = join(pluginsCache, "cc-handbook", "handbook-glab");
+      const glabVer = findPluginVersion(glabPkgDir);
+      const glabSkillSrc = glabVer ? join(glabPkgDir, glabVer, "skills", "glab-skill") : null;
+      externalSkills.push({
+        id: "glab-skill", label: "glab (GitLab skill)", dest: join(skillsDir, "glab"),
+        installed: existsSync(join(skillsDir, "glab")),
+        pluginInstalled: !!glabVer, src: glabSkillSrc,
+        installCmd: "claude plugin install handbook-glab@cc-handbook",
+        symlinkCmd: glabSkillSrc ? "ln -sf " + tilde(glabSkillSrc) + " " + tilde(join(skillsDir, "glab")) : "",
+        marketplaceCmd: "claude plugin marketplace add nikiforovall/claude-code-rules",
+      });
+
+      // agent-browser + dogfood skills (from vercel-labs/agent-browser via npx)
+      externalSkills.push({
+        id: "agent-browser-skill", label: "Agent Browser skill", dest: join(skillsDir, "agent-browser"),
+        installed: existsSync(join(skillsDir, "agent-browser")),
+        pluginInstalled: true, src: null,
+        installCmd: "npx skills add vercel-labs/agent-browser",
+        symlinkCmd: "", marketplaceCmd: "",
+      });
+      externalSkills.push({
+        id: "dogfood-skill", label: "Dogfood skill", dest: join(skillsDir, "dogfood"),
+        installed: existsSync(join(skillsDir, "dogfood")),
+        pluginInstalled: true, src: null,
+        installCmd: "npx skills add vercel-labs/agent-browser",
+        symlinkCmd: "", marketplaceCmd: "",
+      });
+
+      // ── Hooks ──
+      const metricsHookDest = join(hooksDir, "subagent-metrics.sh");
+      const metricsPkgDir = join(noobTesterPluginBase, "subagent-metrics");
+      const metricsVer = findPluginVersion(metricsPkgDir);
+      const metricsHookSrc = metricsVer ? join(metricsPkgDir, metricsVer, "hooks", "subagent-metrics.sh") : null;
+      const hooks = [{
+        id: "subagent-metrics", label: "Subagent Metrics Hook",
+        installed: existsSync(metricsHookDest),
+        src: metricsHookSrc, dest: metricsHookDest,
+        pluginInstalled: !!metricsVer,
+        installCmd: "claude plugin install subagent-metrics@noob-tester-skills",
+        symlinkCmd: metricsHookSrc ? "ln -sf " + tilde(metricsHookSrc) + " " + tilde(metricsHookDest) : "",
+        marketplaceCmd: marketplaceCmd,
+      }];
+
+      // DB status
+      let dbOk = false;
+      let dbTables = 0;
+      try {
+        const sdb = getDb();
+        const tables = sdb.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name != '_migrations' AND name NOT LIKE 'sqlite_%'").get() as { c: number };
+        dbOk = true;
+        dbTables = tables.c;
+      } catch {}
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ deps, skills: skillItems, externalSkills, hooks, db: { ok: dbOk, tables: dbTables } }));
+      return;
+    }
+
+    if (url.pathname === "/api/setup/install-skill" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { src, dest } = JSON.parse(body);
+          if (!src || !dest) { res.writeHead(400); res.end('{"error":"src and dest required"}'); return; }
+
+          // Remove existing dest if present
+          if (existsSync(dest)) {
+            try { rmSync(dest, { recursive: true, force: true }); } catch {}
+          }
+          // Create parent dir
+          const parentDir = join(dest, "..");
+          if (!existsSync(parentDir)) mkdirSync(parentDir, { recursive: true });
+          // Symlink
+          symlinkSync(src, dest);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err) }));
         }
       });
