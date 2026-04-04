@@ -1,87 +1,103 @@
 # noob-tester
 
-An AI-powered QA testing system that turns Claude Code into a fully autonomous test engineer. Give it a ticket and a target URL — it reads the requirements, analyzes the codebase, writes test cases, executes them via browser automation and direct API testing, finds bugs, and delivers a comprehensive report with root cause analysis and improvement recommendations.
-
-## Why
-
-**For QA engineers** — You spend half your day reading tickets, setting up test data, clicking through the same flows, and writing bug reports. noob-tester handles that grunt work. It reads the ticket, writes the test cases, runs them, and hands you a report with findings. You spend your time on what actually needs your brain — validating edge cases, questioning requirements, exploratory testing that requires domain knowledge. Your output per sprint doubles because you're reviewing results instead of producing them from scratch.
-
-**For developers** — You push a PR and want to know if it breaks anything before QA even looks at it. Point noob-tester at your ticket — it analyzes the code diff, figures out what's impacted, and runs targeted tests against the staging deploy. You get feedback in minutes, not days. Fewer bugs bounce back from QA. Fewer "works on my machine" surprises. The impact analysis alone saves you from the PRs that silently break three other features.
-
-**For engineering managers** — Every ticket gets the same testing depth regardless of sprint pressure, team capacity, or who's on PTO. The dashboard shows exactly what was tested, what passed, what failed, and what wasn't covered — across every ticket, every sprint. No more "we tested it" without evidence. Reports include risk hotspots, coverage gaps, and improvement recommendations — data you can use in sprint retros and release decisions.
-
-**For the business** — Testing that used to take days happens in hours. Releases move faster because QA isn't the bottleneck. Bug escapes drop because coverage is consistent. Every run can use you Claude code subscription — run it on every ticket, not just the ones your team has time for. The system compounds: UI maps, failure patterns, and test cases persist across runs, so each cycle is faster and more targeted than the last.
-
-**ROI** — It runs on Claude Code. Multiple tickets tested in parallel. Test cases, UI maps, and failure patterns persist across runs so each cycle builds on the last. QA reviews results instead of producing them. Releases don't wait for a testing queue.
-
-## What It Does
-
-- **Reads your ticket** — pulls requirements, acceptance criteria, dev comments, linked MRs, and builds a full understanding of what was built
-- **Analyzes your codebase** — clones repos, builds a searchable index with import graph, traces full dependency chains (UI → API → service → database) to understand impact
-- **Writes test cases** — generates BDD and traditional test cases for UI, API, and integration layers, tagged by priority and test layer
-- **Plans the testing** — creates a test plan with steps, confidence levels, coverage gaps, blockers, and concise test notes
-- **Executes UI tests** — browser automation via agent-browser (Playwright), captures screenshots, snapshots, HAR, console logs, video per action, learns the UI map
-- **Executes API tests** — direct HTTP testing via curl/jq, validates status codes, response schemas, auth flows, error handling, with full request/response artifacts
-- **Finds every issue** — functional bugs, console errors, network failures, accessibility problems, performance issues, visual regressions — all categorized by severity
-- **Cleans up after itself** — API tests track created resources and delete them in reverse order after execution
-- **Generates intelligent reports** — Claude analyzes all findings, identifies risk hotspots, detects issue patterns, evaluates coverage gaps, and writes prioritized improvement recommendations
-- **Updates ticket and Slack** — posts test results back to the ticket, notifies the team
-- **Runs in parallel** — multiple Claude Code sessions claim different test cases from the same pool, no duplicates
-- **Caches intelligently** — ticket info, MR diffs, and linked data are cached after the first fetch and reused by subsequent skills, saving tokens and reducing API calls
-- **Maps your APIs** — builds a persistent API map with endpoints, parameters, response schemas, and dependency chains. Tracks endpoint health (active/flaky/failing) and response times across runs
-- **Analyzes code coverage** — links test cases to source files via import graph, shows which files have zero test coverage, selects test cases by git diff
-- **Classifies failures** — root cause analysis after execution: env issue, flaky selector, actual bug, test data, network, auth, timeout — with confidence scores and suggested actions
-- **Detects false positives** — auto-retries failed tests, marks transient failures as likely false positives, surfaces confirmed failures with confidence levels
-- **Prioritizes by risk** — scores test cases from failure patterns, code churn, flakiness, and recency — executes highest-risk tests first
-- **Audits accessibility** — runs axe-core WCAG checks on every page during browser testing, stores violations with impact levels and WCAG criteria
-- **Detects visual regressions** — compares screenshots against baselines per page/viewport, uses Claude vision for diff analysis, supports review and acceptance workflows
-- **Audits test suite health** — finds near-duplicate test cases (Jaccard similarity), never-failed tests, orphaned tests, and stale tests for cleanup
-- **Learns over time** — UI maps and API maps persist across sessions, failure patterns are tracked, selector reliability is measured, tech issues carry workarounds
-
-## How It Works
-
-```
-Ticket + Target URL
-         ↓
-Claude Code (the brain)    ←  Skills teach it the QA workflow
-         ↓
-noob-tester CLI (data)     ←  SQLite DB, codebase index, secrets, artifacts
-         +
-agent-browser (UI tests)   ←  Playwright-based browser automation + axe-core a11y
-         +
-curl/jq (API tests)        ←  Direct HTTP request testing
-         ↓
-Root cause analysis        ←  Classify failures, detect false positives
-         ↓
-Live Dashboard             ←  Real-time results at localhost:4040
-```
-
-**noob-tester** is a CLI data layer that Claude Code calls via Bash. Skills (SKILL.md files) teach Claude how to orchestrate the full QA pipeline. Claude does the thinking — reading code, understanding requirements, deciding what to test, interpreting failures. The CLI stores and retrieves data.
-
-Multiple Claude Code sessions run in parallel — they share the same database and claim test cases without duplicates.
+An AI-powered QA testing system that integrates with Claude Code as a persistent data layer — turning your AI agent into a fully autonomous test engineer. Give it a ticket and a target URL; it reads requirements, analyzes the codebase, writes test cases, executes them via browser automation and direct API testing, finds bugs, and delivers a comprehensive report with root cause analysis.
 
 ---
 
-## Prerequisites
+## Table of Contents
 
-| Dependency                                                                       | Required | Purpose                                                                                                                                                                        |
-| -------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Claude Code](https://claude.com/claude-code)                                    | Yes      | The AI agent that runs the skills                                                                                                                                              |
-| [agent-browser](https://github.com/vercel-labs/agent-browser)                    | Yes      | Browser automation for UI tests (`/noob-explore`)                                                                                                                              |
-| [Atlassian MCP](https://github.com/anthropics/claude-code/blob/main/docs/mcp.md) | Yes      | Ticket reading, linked MR discovery, test result updates, Confluence pages. All skills depend on the ticket as the source of requirements, acceptance criteria, and dev context |
-| git                                                                              | Yes      | Repo cloning, syncing, and codebase indexing                                                                                                                                   |
-| curl                                                                             | Yes      | API test execution (`/noob-api-explore`)                                                                                                                                       |
-| jq                                                                               | Yes      | JSON parsing in CLI commands and API response validation                                                                                                                       |
-| [glab](https://gitlab.com/gitlab-org/cli)                                        | Optional | GitLab CLI for reading MR diffs and repo browsing                                                                                                                              |
+1. [What It Is](#what-it-is)
+2. [Architecture](#architecture)
+3. [Installation](#installation)
+4. [Quick Start](#quick-start)
+5. [AI Skills](#ai-skills)
+6. [CLI Reference](#cli-reference)
+   - [Chain Commands](#chain-commands-ai-optimized)
+   - [Auth](#auth)
+   - [Session](#session)
+   - [Run](#run)
+   - [Run Pack](#run-pack)
+   - [Test Cases](#test-cases)
+   - [Repos & Codebase](#repos--codebase)
+   - [Capture / Artifacts](#capture--artifacts)
+   - [UI Maps](#ui-maps)
+   - [API Maps](#api-maps)
+   - [Query](#query)
+   - [Coverage](#coverage)
+   - [Secrets](#secrets)
+   - [Metrics](#metrics)
+   - [Risk & Audit](#risk--audit)
+   - [Accessibility & Visual](#accessibility--visual)
+   - [Ticket Context](#ticket-context)
+   - [Tech Issues](#tech-issues)
+   - [RCA](#rca)
+   - [Report](#report)
+   - [Sync](#sync)
+   - [Settings](#settings)
+   - [Cleanup](#cleanup)
+   - [Watch Dashboard](#watch-dashboard)
+7. [Data Store](#data-store)
 
-## Install
+---
+
+## What It Is
+
+`noob-tester` is the **CLI data layer** for an AI testing agent. The CLI manages all persistent state — sessions, runs, test cases, run packs, UI maps, API maps, codebase indexes, coverage data, secrets, and issues — while Claude Code does the actual work using its tools (browser, file reading, API calls, MCP integrations).
+
+The system is built around two core ideas:
+
+- **Skills** — Markdown instruction files that tell Claude Code how to perform specific QA phases (analysis, test case generation, exploration, RCA, reporting). Each skill is self-contained and composable.
+- **Chain Commands** — High-level CLI operations that combine multiple steps into a single robust command, reducing agent token usage and error rates compared to manual bash sequences.
+
+---
+
+## Architecture
+
+```
+Claude Code (AI Agent)
+       │
+       │  uses skills (SKILL.md files)
+       │
+       ▼
+noob-tester CLI  ←→  SQLite DB (~/.noob-tester/noob-tester.db)
+       │
+       ├── Sessions & Runs        (lifecycle tracking)
+       ├── Run Packs              (test case execution queue)
+       ├── Test Cases             (BDD / traditional format)
+       ├── UI Maps                (persistent selector knowledge base)
+       ├── API Maps               (endpoint registry + health)
+       ├── Coverage Maps          (source file → test case links)
+       ├── Secrets                (target-scoped credentials)
+       ├── Codebase Index         (FTS5 full-text search)
+       └── Artifacts              (screenshots, HAR, snapshots)
+             │
+             ▼
+    Watch Dashboard (React, port 4040)
+```
+
+---
+
+## Installation
+
+**Prerequisites:**
+
+| Dependency                                                                       | Required | Purpose                                                                          |
+| -------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| [Claude Code](https://claude.com/claude-code)                                    | Yes      | The AI agent that runs all skills                                                |
+| [agent-browser](https://github.com/vercel-labs/agent-browser)                    | Yes      | Browser automation for UI tests (`/noob-explore`)                                |
+| [Atlassian MCP](https://github.com/anthropics/claude-code/blob/main/docs/mcp.md) | Yes      | Ticket reading, MR discovery, result updates, Confluence. Required by all skills |
+| git, curl, jq                                                                    | Yes      | Repo cloning + API test execution + JSON parsing                                 |
+| [glab](https://gitlab.com/gitlab-org/cli)                                        | Optional | GitLab CLI — reading MR diffs and repo browsing                                  |
+| [1Password CLI](https://developer.1password.com/docs/cli/)                       | Optional | `secrets import-op` — import credentials from 1Password vaults                   |
+
+**Install the CLI:**
 
 ```bash
 npm install -g @ganeshgaxy/noob-tester
-noob-tester setup
+noob-tester setup          # verify all dependencies and database
 ```
 
-Install skills into Claude Code:
+**Install skills into Claude Code:**
 
 ```bash
 cp -r skills/ ~/.claude/skills/
@@ -125,6 +141,7 @@ In Claude Code:
 ```
 
 Coverage and risk (CLI):
+
 ```bash
 # Build coverage map and find gaps
 noob-tester coverage build frontend
@@ -139,58 +156,94 @@ noob-tester testcase risk --ticket PROJ-123
 
 ---
 
-## Skills
+## AI Skills
 
-Each skill works **standalone** or as part of a pipeline. Use whichever fits what you're doing.
+Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's skills directory. Each skill is self-contained and composable — use them standalone or chain them through a full QA pipeline.
 
-| Skill               | What it does                                                                                                    |
-| ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `/noob-tester`      | Main orchestrator — routes to the right skill based on what you ask                                             |
-| `/noob-analyze`     | Deep analysis: gap, requirements, feasibility, and **impact analysis** against the codebase                     |
-| `/noob-testcase`    | Generate BDD + traditional test cases from tickets with deep codebase understanding                        |
-| `/noob-plan`        | Test planning for dev-complete tickets — reads MRs, code diffs, prior analysis, test cases, UI map              |
-| `/noob-explore`     | Browser automation — execute `ui` and `ui_api` test cases via run packs, UI map learner, configurable capture, **axe-core a11y audit**, **visual regression checks** on every page |
-| `/noob-api-explore` | API testing — execute ALL `api` layer test cases in one run via curl/jq, codebase-driven, per-role auth, per-test cleanup |
-| `/noob-rca`         | Root cause analysis — classify failures (env/flaky/bug/data/network), update patterns, suggest actions          |
-| `/noob-report`      | Generate report with RCA classifications, a11y results, notify Slack, update ticket                             |
+**Install location:** `~/.claude/skills/<skill-name>/SKILL.md`
 
-| User says...                                 | Use this                                         |
-| -------------------------------------------- | ------------------------------------------------ |
-| "analyze the impact of PROJ-123"             | `/noob-analyze`                                  |
-| "write test cases for PROJ-123"              | `/noob-testcase`                                 |
-| "PROJ-123 is ready for QA, plan the testing" | `/noob-plan`                                     |
-| "test the login page at https://app.com"     | `/noob-explore`                                  |
-| "run the test cases for PROJ-123"            | `/noob-explore` (ui) + `/noob-api-explore` (api) |
-| "test the API endpoints for PROJ-123"        | `/noob-api-explore`                              |
-| "why did these tests fail?"                  | `/noob-rca`                                      |
-| "what's the code coverage for myapp?"        | `noob-tester coverage stats myapp`               |
-| "generate a report for run abc123"           | `/noob-report`                                   |
-| "full QA test of PROJ-123"                   | `/noob-tester` (full pipeline)                   |
+### Skill Reference
+
+| Skill                | Phase           | Trigger                                                               |
+| -------------------- | --------------- | --------------------------------------------------------------------- |
+| `/noob-tester`       | Orchestrator    | "test PROJ-123" — routes to the right skill or runs the full pipeline |
+| `/noob-analyze`      | 1 — Analysis    | "analyze the impact of PROJ-123"                                      |
+| `/noob-plan`         | 2 — Planning    | "PROJ-123 is ready for QA, plan the testing"                          |
+| `/noob-testcase`     | 3 — Generation  | "write test cases for PROJ-123"                                       |
+| `/noob-explore`      | 4 — UI Testing  | "test the login page at https://staging.app.com"                      |
+| `/noob-api-explore`  | 4 — API Testing | "run the API tests for PROJ-123"                                      |
+| `/noob-rca`          | 5 — RCA         | "why did these tests fail?"                                           |
+| `/noob-report`       | 5 — Report      | "generate a report for PROJ-123"                                      |
+| `/noob-mr-pr`        | Utility         | "review the MR for PROJ-123"                                          |
+| `/noob-repos-setup`  | Utility         | "set up repos for PROJ-123"                                           |
+| `/noob-ticket-cache` | Utility         | ticket context caching (called internally by other skills)            |
+
+### Skill Details
+
+**`/noob-tester`** — Main orchestrator. Routes to the right skill based on natural language. Runs the full 5-phase pipeline when asked to "test" a ticket end-to-end.
+
+**`/noob-analyze`** — Phase 1. Reads the ticket (via Atlassian MCP), auto-discovers repos from MR links and ticket description, syncs + indexes the codebase, and produces four analysis types:
+
+- **Gap analysis** — what's missing or unclear in the requirements
+- **Requirements analysis** — structured requirements breakdown
+- **Feasibility analysis** — what can and can't be automated
+- **Impact analysis** — traces every requirement through the full codebase dependency chain (UI → API → service → database), finds regression risks, shared code concerns, config/feature-flag issues, and hidden edge cases
+
+**`/noob-plan`** — Phase 2. Runs when a ticket is dev-complete and ready for QA. Fetches linked MRs/PRs, reads actual code diffs, syncs the correct branch, reads prior analysis and UI map, and generates an ordered test plan with: strategy, test steps (confident vs uncertain), test notes, blockers, coverage gaps, and MR references.
+
+**`/noob-testcase`** — Phase 3. Generates BDD (Given/When/Then) and Traditional (Steps/Expected) test cases from the plan, analysis, and deep codebase reading. Produces three types: `direct_functional` → `impact_regression` → `general_regression`. Tags every test case with a layer (`ui`, `api`, `ui_api`, `database`, `ai`, `unit`, `other`) that determines which runner can execute it.
+
+**`/noob-explore`** — Phase 4, UI layer. Browser automation (agent-browser / Playwright). Executes `ui` and `ui_api` test cases one at a time via run packs. On every page: takes snapshot + screenshot, scans elements into the UI map (stable selectors: `role[name="text"]`), runs axe-core WCAG audit, checks visual regression against baseline. Uses credentials from secrets store. Recovers from selector failures by checking UI map staleness and retrying from a fresh snapshot.
+
+**`/noob-api-explore`** — Phase 4, API layer. Executes ALL `api` layer test cases in a single invocation using `curl` + `jq`. Reads codebase once, authenticates once per role, loops through every API test. Validates status codes, response bodies, timing. Tracks created resources for cleanup in reverse order after each test.
+
+**`/noob-rca`** — Phase 5, RCA. Classifies every failed/blocked run pack entry into: `env_issue`, `flaky_selector`, `actual_bug`, `test_data_issue`, `network`, `auth_issue`, `timeout`, `unknown`. Assigns confidence scores and suggested actions. Updates failure patterns for future risk scoring.
+
+**`/noob-report`** — Phase 5, Report. Pulls all data for a ticket (analyses, plan, test cases, run packs, issues, RCA, a11y, visual diffs, tech issues), generates a PASS/FAIL/PARTIAL verdict, posts results to the ticket, and notifies Slack.
+
+**`/noob-mr-pr`** — Utility. Reviews a GitLab MR or Bitbucket PR for a ticket — reads the diff, checks against acceptance criteria, surfaces concerns.
+
+**`/noob-repos-setup`** — Utility. Ensures all repos for a ticket are registered, cloned/pulled, and indexed. Called internally by analysis and planning skills.
+
+**`/noob-ticket-cache`** — Utility. Manages the ticket context cache (ticket info, MR diffs, comments, linked tickets). Prevents redundant Atlassian MCP and glab calls across skills.
+
+### Example Pipeline
+
+```
+# In Claude Code — full 5-phase pipeline
+/noob-analyze PROJ-123                    # Phase 1: Analysis + impact
+/noob-plan PROJ-123                       # Phase 2: Test plan from MR diffs
+/noob-testcase PROJ-123                   # Phase 3: Generate test cases
+/noob-explore https://staging.app.com     # Phase 4: Browser test (ui/ui_api)
+/noob-api-explore PROJ-123                # Phase 4: API tests (api layer, all at once)
+/noob-rca                                 # Phase 5: Classify failures
+/noob-report PROJ-123                     # Phase 5: Final report + ticket update
+```
 
 ---
 
-## Commands
+## CLI Reference
 
 ### `noob-tester repos` — Manage repositories and codebase index
 
 Register repos, group them, sync to local disk, and build a searchable index with BM25 full-text search + import dependency graph.
 
-| Command                                | Description                                                                                                                                           |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `repos add <name> <url>`               | Register a repository                                                                                                                                 |
-| `repos list`                           | List all registered repos                                                                                                                             |
-| `repos delete <name> --yes`            | Delete a repo and its index                                                                                                                           |
-| `repos path <name>`                    | Get local path of a synced repo                                                                                                                       |
-| `repos group add <name> --repos a,b,c` | Create a repo group                                                                                                                                   |
-| `repos group list`                     | List all groups                                                                                                                                       |
-| `repos group delete <name>`            | Delete a group                                                                                                                                        |
-| `repos discover --ticket <id>`           | **Find all repos for a ticket** (from runs, test cases, UI maps) + ensure them. `--url <extra>` to add more. Auto: register + clone/pull + diff-aware index |
-| `repos ensure <urls...>`               | Register + clone/pull + index repos. Accepts URLs or names. Uses `glab` for GitLab repos. All repos in `~/.noob-tester/repos/`                        |
-| `repos sync <name>`                    | Clone or pull a repo or group. `--branch <branch>` to checkout a specific branch. `--reindex` to auto-re-index if commit changed                      |
-| `repos index <name>`                   | Diff-aware re-index (only changed files since last indexed commit). `--full` for complete rebuild. Records branch + commit                             |
-| `repos search <query>`                 | Search indexed code                                                                                                                                   |
-| `repos search <query> --expand`        | Search + show related files via import graph                                                                                                          |
-| `repos search <query> --repos a,b`     | Search specific repos                                                                                                                                 |
+| Command                                | Description                                                                                                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repos add <name> <url>`               | Register a repository                                                                                                                                       |
+| `repos list`                           | List all registered repos                                                                                                                                   |
+| `repos delete <name> --yes`            | Delete a repo and its index                                                                                                                                 |
+| `repos path <name>`                    | Get local path of a synced repo                                                                                                                             |
+| `repos group add <name> --repos a,b,c` | Create a repo group                                                                                                                                         |
+| `repos group list`                     | List all groups                                                                                                                                             |
+| `repos group delete <name>`            | Delete a group                                                                                                                                              |
+| `repos discover --ticket <id>`         | **Find all repos for a ticket** (from runs, test cases, UI maps) + ensure them. `--url <extra>` to add more. Auto: register + clone/pull + diff-aware index |
+| `repos ensure <urls...>`               | Register + clone/pull + index repos. Accepts URLs or names. Uses `glab` for GitLab repos. All repos in `~/.noob-tester/repos/`                              |
+| `repos sync <name>`                    | Clone or pull a repo or group. `--branch <branch>` to checkout a specific branch. `--reindex` to auto-re-index if commit changed                            |
+| `repos index <name>`                   | Diff-aware re-index (only changed files since last indexed commit). `--full` for complete rebuild. Records branch + commit                                  |
+| `repos search <query>`                 | Search indexed code                                                                                                                                         |
+| `repos search <query> --expand`        | Search + show related files via import graph                                                                                                                |
+| `repos search <query> --repos a,b`     | Search specific repos                                                                                                                                       |
 
 ```bash
 # Register and group
@@ -290,7 +343,7 @@ Test cases in BDD or traditional format, with multi-session claim system.
 | `testcase release-session <sessionId>`                                               | Release all claims by a session                                                          |
 | `testcase list --ticket <ref>`                                                       | List cases for a ticket                                                                  |
 | `testcase stats <ticketRef>`                                                         | Show counts by type/status                                                               |
-| `testcase select --repo <name> --diff <branch>`                                     | Select test cases affected by code changes (via coverage_map + import graph)             |
+| `testcase select --repo <name> --diff <branch>`                                      | Select test cases affected by code changes (via coverage_map + import graph)             |
 | `testcase risk --ticket <ref>`                                                       | Compute risk scores from failure patterns, code churn, flakiness, recency                |
 | `testcase audit --ticket <ref>`                                                      | Audit: find duplicates, never-failed, stale. `--duplicates`, `--orphaned`, `--stale`     |
 
@@ -331,27 +384,27 @@ Run packs are the execution layer for `/noob-explore`. Each pack groups test cas
 
 **Default behavior:** `/noob-explore` resumes an existing pack with pending/failed entries. If none exist, it creates a new pack. If the user says "rerun" or "fresh", it forces a new pack.
 
-| Command                                            | Description                                                                                                                                                                                                  |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Command                                              | Description                                                                                                                                                                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `runpack resolve --ticket <id> --run <runId>`        | **Resume or create** a run pack. Checks for existing packs with pending/failed entries first. `--fresh` to force new. Optional: `--target-url`, `--secret-target`, `--secret-role`, `--capture`, `--session` |
 | `runpack create --ticket <id> --run <runId>`         | Create a new run pack (always fresh, CLI only — skills should use `resolve`). Optional: `--target-url`, `--secret-target`, `--secret-role`, `--capture`, `--session`                                         |
-| `runpack meta <packId>`                            | Get pack metadata (target, credentials, capture config)                                                                                                                                                      |
-| `runpack add <packId> <testCaseId>`                | Add a specific test case to a pack                                                                                                                                                                           |
-| `runpack claim <packId> <sessionId>`               | Claim next pending entry already in the pack (resume mode)                                                                                                                                                   |
+| `runpack meta <packId>`                              | Get pack metadata (target, credentials, capture config)                                                                                                                                                      |
+| `runpack add <packId> <testCaseId>`                  | Add a specific test case to a pack                                                                                                                                                                           |
+| `runpack claim <packId> <sessionId>`                 | Claim next pending entry already in the pack (resume mode)                                                                                                                                                   |
 | `runpack claim-next <packId> <ticketId> <sessionId>` | Pick next test case not yet in the pack, add and claim it. `--layer` to filter by test layer. `--runner` to set runner type (ui/api, auto-detected from layer)                                               |
-| `runpack populate <packId> <ticketId> --status <s>`  | Add ready test cases to pack with status: `pending`, `blocked`, `skipped`. `--layer` to filter by test layer (e.g. `--layer api`). `--runner` to stamp entries. Optional: `--reason`, `--run`, `--session` |
-| `runpack result <entryId> --status <s>`            | Record result: `passed`, `failed`, `skipped`, `blocked`. Optional: `--results`, `--logs`, `--observations`, `--issues` (all JSON)                                                                            |
-| `runpack artifact <entryId> --type <t> --path <p>` | Attach artifact: `screenshot`, `snapshot`, `video`, `har`, `console`, `trace`. Optional: `--label`, `--step`, `--metadata`                                                                                   |
-| `runpack observe <entryId> --text <t>`             | Add an observation                                                                                                                                                                                           |
-| `runpack log <entryId> --text <t>`                 | Add a log entry                                                                                                                                                                                              |
+| `runpack populate <packId> <ticketId> --status <s>`  | Add ready test cases to pack with status: `pending`, `blocked`, `skipped`. `--layer` to filter by test layer (e.g. `--layer api`). `--runner` to stamp entries. Optional: `--reason`, `--run`, `--session`   |
+| `runpack result <entryId> --status <s>`              | Record result: `passed`, `failed`, `skipped`, `blocked`. Optional: `--results`, `--logs`, `--observations`, `--issues` (all JSON)                                                                            |
+| `runpack artifact <entryId> --type <t> --path <p>`   | Attach artifact: `screenshot`, `snapshot`, `video`, `har`, `console`, `trace`. Optional: `--label`, `--step`, `--metadata`                                                                                   |
+| `runpack observe <entryId> --text <t>`               | Add an observation                                                                                                                                                                                           |
+| `runpack log <entryId> --text <t>`                   | Add a log entry                                                                                                                                                                                              |
 | `runpack list --ticket <id>`                         | List run packs for a ticket (with pass/fail/pending counts)                                                                                                                                                  |
-| `runpack list --pack <packId>`                     | List entries in a specific pack                                                                                                                                                                              |
-| `runpack release <packId>`                         | Release all claimed entries back to pending                                                                                                                                                                  |
-| `runpack retry --entry <entryId>`                  | Retry a specific entry (reset to pending)                                                                                                                                                                    |
-| `runpack retry --name <text> --pack <packId>`      | Retry entries matching test case name (substring)                                                                                                                                                            |
-| `runpack retry --pack <packId>`                    | Retry all failed/blocked entries                                                                                                                                                                             |
-| `runpack retry --all <packId>`                     | Retry ALL entries including passed (full rerun of same pack)                                                                                                                                                 |
-| `runpack delete --pack <packId> --yes`             | Delete a specific pack                                                                                                                                                                                       |
+| `runpack list --pack <packId>`                       | List entries in a specific pack                                                                                                                                                                              |
+| `runpack release <packId>`                           | Release all claimed entries back to pending                                                                                                                                                                  |
+| `runpack retry --entry <entryId>`                    | Retry a specific entry (reset to pending)                                                                                                                                                                    |
+| `runpack retry --name <text> --pack <packId>`        | Retry entries matching test case name (substring)                                                                                                                                                            |
+| `runpack retry --pack <packId>`                      | Retry all failed/blocked entries                                                                                                                                                                             |
+| `runpack retry --all <packId>`                       | Retry ALL entries including passed (full rerun of same pack)                                                                                                                                                 |
+| `runpack delete --pack <packId> --yes`               | Delete a specific pack                                                                                                                                                                                       |
 | `runpack delete --ticket <id> --yes`                 | Delete all packs for a ticket                                                                                                                                                                                |
 | `runpack auto-retry <packId>`                        | Mark all failed/blocked entries for auto-retry (max 1 retry per entry)                                                                                                                                       |
 | `runpack classify-retry <entryId> --status <s>`      | Classify retry result: `likely_false_positive` if passed, confidence level if failed                                                                                                                         |
@@ -379,11 +432,11 @@ noob-tester runpack artifact $ENTRY_ID --type screenshot --path ./step1.png --la
 
 Stores snapshots, console logs, HAR network data, screenshots, and network errors per action, linked to run, runpack entry, page URL, and action number.
 
-| Command                                     | Description                                                                                                                                                                                                                                                      |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                                     | Description                                                                                                                                                                                                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `capture store --run <runId> --type <type>` | Store an artifact. Types: `snapshot`, `screenshot`, `console`, `har`, `video`, `trace`, `network_error`, `api_request`. `--file <path>` or `--content <text>`. Optional: `--pack`, `--entry`, `--session`, `--ticket`, `--action <n>`, `--desc`, `--url <pageUrl>` |
-| `capture list --run <runId>`                | List artifacts for a run. `--entry <id>` for a specific entry. `--type` to filter                                                                                                                                                                                |
-| `capture stats --run <runId>`               | Show artifact counts by type                                                                                                                                                                                                                                     |
+| `capture list --run <runId>`                | List artifacts for a run. `--entry <id>` for a specific entry. `--type` to filter                                                                                                                                                                                  |
+| `capture stats --run <runId>`               | Show artifact counts by type                                                                                                                                                                                                                                       |
 
 ```bash
 # Store console logs for an action
@@ -406,28 +459,28 @@ UI maps are a persistent knowledge base of how an app's UI works — pages, sele
 
 **Stable selectors** — `uimap scan` stores elements using role + text/label/placeholder/url (e.g. `button[name="Sign In"]`, `textbox[placeholder="Search"]`), not ephemeral `[ref=eN]` refs. Each element records its selector strategy type (`role+text`, `role+placeholder`, `role+url`, `ref`). The map tells you WHAT elements to expect, the current browser snapshot tells you WHERE they are.
 
-| Command                                              | Description                                                                                                                                                                                                                                            |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Command                                              | Description                                                                                                                                                                                                                                              |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `uimap create --name <n>`                            | Create a map. Optional: `--repos`, `--targets`, `--tickets` (comma-separated)                                                                                                                                                                            |
-| `uimap get <id>`                                     | Get map details + stats                                                                                                                                                                                                                                |
-| `uimap list`                                         | List all maps with stats                                                                                                                                                                                                                               |
-| `uimap resolve --ticket <id>`                          | Find a map by ticket ID, `--repo`, or `--target`. Returns first match                                                                                                                                                                                    |
-| `uimap update <id>`                                  | Add repos/targets/tickets: `--add-repos`, `--add-targets`, `--add-tickets`                                                                                                                                                                                 |
-| `uimap delete <id> --yes`                            | Delete map and all its data                                                                                                                                                                                                                            |
+| `uimap get <id>`                                     | Get map details + stats                                                                                                                                                                                                                                  |
+| `uimap list`                                         | List all maps with stats                                                                                                                                                                                                                                 |
+| `uimap resolve --ticket <id>`                        | Find a map by ticket ID, `--repo`, or `--target`. Returns first match                                                                                                                                                                                    |
+| `uimap update <id>`                                  | Add repos/targets/tickets: `--add-repos`, `--add-targets`, `--add-tickets`                                                                                                                                                                               |
+| `uimap delete <id> --yes`                            | Delete map and all its data                                                                                                                                                                                                                              |
 | `uimap page <mapId> --url <pattern>`                 | Record/update a page (upserts by URL). Optional: `--title`, `--snapshot`, `--screenshot`, `--auth-required`, `--auth-roles`, `--code`, `--repos`, `--tickets`, `--parity`, `--run`, `--session`                                                          |
-| `uimap pages <mapId>`                                | List all pages                                                                                                                                                                                                                                         |
+| `uimap pages <mapId>`                                | List all pages                                                                                                                                                                                                                                           |
 | `uimap element <pageId> --selector <sel> --type <t>` | Record/update an element (upserts by selector). Optional: `--role`, `--text`, `--action`, `--result`, `--code`, `--tickets`, `--auth-roles`, `--run`, `--testcase`                                                                                       |
-| `uimap elements <pageId>`                            | List elements on a page                                                                                                                                                                                                                                |
-| `uimap lookup --map <id> --url <pattern>`            | Look up elements by URL. `--type` to filter. Sorted by reliability                                                                                                                                                                                     |
-| `uimap hit <elementId>`                              | Record selector success. `--run` optional                                                                                                                                                                                                              |
-| `uimap miss <elementId>`                             | Record selector failure. Auto-updates status (working/flaky/broken)                                                                                                                                                                                    |
-| `uimap alt <elementId> --selector <sel>`             | Add alternative selector                                                                                                                                                                                                                               |
-| `uimap flaky <mapId>`                                | List flaky/broken elements                                                                                                                                                                                                                             |
-| `uimap nav <mapId> --from <pageId> --to <pageId>`    | Record navigation. `--via` element, `--type`, `--conditions`                                                                                                                                                                                           |
-| `uimap path --map <id> --from <url> --to <url>`      | Find navigation path between URLs (BFS pathfinding)                                                                                                                                                                                                    |
-| `uimap form <pageId>`                                | Record/update a form. `--selector`, `--fields` (JSON), `--submit`, `--success`, `--error`, `--sample-values`                                                                                                                                           |
+| `uimap elements <pageId>`                            | List elements on a page                                                                                                                                                                                                                                  |
+| `uimap lookup --map <id> --url <pattern>`            | Look up elements by URL. `--type` to filter. Sorted by reliability                                                                                                                                                                                       |
+| `uimap hit <elementId>`                              | Record selector success. `--run` optional                                                                                                                                                                                                                |
+| `uimap miss <elementId>`                             | Record selector failure. Auto-updates status (working/flaky/broken)                                                                                                                                                                                      |
+| `uimap alt <elementId> --selector <sel>`             | Add alternative selector                                                                                                                                                                                                                                 |
+| `uimap flaky <mapId>`                                | List flaky/broken elements                                                                                                                                                                                                                               |
+| `uimap nav <mapId> --from <pageId> --to <pageId>`    | Record navigation. `--via` element, `--type`, `--conditions`                                                                                                                                                                                             |
+| `uimap path --map <id> --from <url> --to <url>`      | Find navigation path between URLs (BFS pathfinding)                                                                                                                                                                                                      |
+| `uimap form <pageId>`                                | Record/update a form. `--selector`, `--fields` (JSON), `--submit`, `--success`, `--error`, `--sample-values`                                                                                                                                             |
 | `uimap scan <pageId> --snapshot <path>`              | **Parse accessibility snapshot and bulk-record all elements + forms.** Stores stable selectors: `role[name="text"]`, `role[placeholder]`, `role[url]`, `@ref` fallback. Records selector strategy per element. `--ticket`, `--run`, `--session` optional |
-| `uimap stats <mapId>`                                | Show map statistics                                                                                                                                                                                                                                    |
+| `uimap stats <mapId>`                                | Show map statistics                                                                                                                                                                                                                                      |
 
 ```bash
 # Create a map for the app (defined by repos, not target)
@@ -460,18 +513,18 @@ noob-tester uimap page $MAP_ID --url "/beta-feature" \
 
 Like UI maps for the frontend, API maps are a persistent knowledge base of your backend. Endpoints, parameters, response schemas, dependency chains, and health tracking — all visualized as a force-directed graph in the dashboard.
 
-| Command                                     | Description                                                                                |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `apimap resolve <name>`                     | Find or create an API map. `--base-url`, `--tickets`, `--repos`                            |
-| `apimap endpoint <mapId>`                   | Register/update an endpoint. `--method`, `--path`, `--summary`, `--auth-type`, `--auth-roles` |
-| `apimap call <endpointId>`                  | Record a call result. `--status` (HTTP code), `--time` (ms). Updates health automatically  |
-| `apimap param <endpointId>`                 | Add a parameter. `--name`, `--in` (path/query/body/header), `--type`, `--required`         |
-| `apimap response <endpointId>`              | Register expected response. `--status`, `--schema`, `--example`                            |
-| `apimap chain <mapId>`                      | Add dependency. `--from`, `--to`, `--type` (creates/reads/updates/deletes/cleanup)         |
-| `apimap lookup <mapId>`                     | Find endpoint by `--method` + `--path`                                                     |
-| `apimap list`                               | List all API maps                                                                          |
-| `apimap get <name>`                         | Full map data (endpoints, params, responses, chains)                                       |
-| `apimap stats <name>`                       | Statistics (total, active, flaky, failing, avg response time)                              |
+| Command                        | Description                                                                                   |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| `apimap resolve <name>`        | Find or create an API map. `--base-url`, `--tickets`, `--repos`                               |
+| `apimap endpoint <mapId>`      | Register/update an endpoint. `--method`, `--path`, `--summary`, `--auth-type`, `--auth-roles` |
+| `apimap call <endpointId>`     | Record a call result. `--status` (HTTP code), `--time` (ms). Updates health automatically     |
+| `apimap param <endpointId>`    | Add a parameter. `--name`, `--in` (path/query/body/header), `--type`, `--required`            |
+| `apimap response <endpointId>` | Register expected response. `--status`, `--schema`, `--example`                               |
+| `apimap chain <mapId>`         | Add dependency. `--from`, `--to`, `--type` (creates/reads/updates/deletes/cleanup)            |
+| `apimap lookup <mapId>`        | Find endpoint by `--method` + `--path`                                                        |
+| `apimap list`                  | List all API maps                                                                             |
+| `apimap get <name>`            | Full map data (endpoints, params, responses, chains)                                          |
+| `apimap stats <name>`          | Statistics (total, active, flaky, failing, avg response time)                                 |
 
 ```bash
 # Create or find an API map
@@ -494,6 +547,7 @@ noob-tester apimap chain $APIMAP_ID --from $EP_ID --to $GET_EP_ID --type creates
 ```
 
 **Endpoint health** updates automatically based on call results:
+
 - **active** — no failures or low failure rate
 - **flaky** — intermittent failures (some succeed, some fail)
 - **failing** — consistently failing (3+ consecutive failures)
@@ -502,13 +556,13 @@ noob-tester apimap chain $APIMAP_ID --from $EP_ID --to $GET_EP_ID --type creates
 
 Link test cases to source files via `impacted_files` + import graph expansion. Find which source files have no test coverage.
 
-| Command                                   | Description                                                                                             |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `coverage build <repoName>`               | Build coverage map from test case `impacted_files` + 1-level import graph expansion                     |
-| `coverage stats <repoName>`               | Show coverage statistics (total/covered/uncovered files, coverage %)                                    |
-| `coverage uncovered <repoName>`           | List files with no test case coverage, sorted by importer count (more importers = higher risk)          |
-| `coverage file <repoName> <filePath>`     | Show which test cases cover a specific file (with link type and confidence)                              |
-| `coverage clear <repoName>`               | Clear coverage map for a repo (rebuild with `coverage build`)                                           |
+| Command                               | Description                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `coverage build <repoName>`           | Build coverage map from test case `impacted_files` + 1-level import graph expansion            |
+| `coverage stats <repoName>`           | Show coverage statistics (total/covered/uncovered files, coverage %)                           |
+| `coverage uncovered <repoName>`       | List files with no test case coverage, sorted by importer count (more importers = higher risk) |
+| `coverage file <repoName> <filePath>` | Show which test cases cover a specific file (with link type and confidence)                    |
+| `coverage clear <repoName>`           | Clear coverage map for a repo (rebuild with `coverage build`)                                  |
 
 ```bash
 # Build coverage map (reads test_cases.impacted_files, expands via import_graph)
@@ -529,13 +583,13 @@ noob-tester coverage file frontend src/auth/login.ts
 
 Classify failures from completed run packs. Used by `/noob-rca` skill or standalone.
 
-| Command                          | Description                                                                                                  |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `rca save`                       | Save an RCA result. `--pack`, `--entry`, `--testcase`, `--classification`, `--confidence`, `--cause` required. Optional: `--evidence`, `--pattern`, `--action` |
-| `rca list --pack <id>`           | List RCA results for a run pack (with test case details)                                                     |
-| `rca summary --pack <id>`        | Summary counts by classification and suggested action                                                        |
-| `rca get <entryId>`              | Get RCA result for a specific entry                                                                          |
-| `rca clear --pack <id>`          | Clear all RCA results for re-analysis                                                                        |
+| Command                   | Description                                                                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rca save`                | Save an RCA result. `--pack`, `--entry`, `--testcase`, `--classification`, `--confidence`, `--cause` required. Optional: `--evidence`, `--pattern`, `--action` |
+| `rca list --pack <id>`    | List RCA results for a run pack (with test case details)                                                                                                       |
+| `rca summary --pack <id>` | Summary counts by classification and suggested action                                                                                                          |
+| `rca get <entryId>`       | Get RCA result for a specific entry                                                                                                                            |
+| `rca clear --pack <id>`   | Clear all RCA results for re-analysis                                                                                                                          |
 
 **Classifications:** `env_issue`, `flaky_selector`, `actual_bug`, `test_data_issue`, `network`, `auth_issue`, `timeout`, `unknown`
 
@@ -558,12 +612,12 @@ noob-tester rca summary --pack $PACKID
 
 Store and query axe-core WCAG audit results. Automatically populated by `/noob-explore` on every page load.
 
-| Command                          | Description                                                                                           |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `a11y scan <runId>`              | Store axe-core violations JSON. `--url`, `--results` (JSON array). Optional: `--pack`, `--entry`, `--page-id` |
-| `a11y add <runId>`               | Store a single a11y issue. `--url`, `--rule`, `--impact`, `--description`. Optional: `--wcag`, `--selector`, `--html` |
-| `a11y list`                      | List a11y issues. `--run`, `--pack`, or `--page` to filter                                            |
-| `a11y summary <runId>`           | Summary by impact level and rule, with page count                                                     |
+| Command                | Description                                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `a11y scan <runId>`    | Store axe-core violations JSON. `--url`, `--results` (JSON array). Optional: `--pack`, `--entry`, `--page-id`         |
+| `a11y add <runId>`     | Store a single a11y issue. `--url`, `--rule`, `--impact`, `--description`. Optional: `--wcag`, `--selector`, `--html` |
+| `a11y list`            | List a11y issues. `--run`, `--pack`, or `--page` to filter                                                            |
+| `a11y summary <runId>` | Summary by impact level and rule, with page count                                                                     |
 
 **Impact levels:** `critical`, `serious`, `moderate`, `minor` (mapped from axe-core)
 
@@ -584,8 +638,8 @@ noob-tester a11y list --pack $PACKID --json
 
 Given a git diff, find which test cases should run based on coverage map + import graph.
 
-| Command | Description |
-|---------|-------------|
+| Command                                         | Description                                                                                                    |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `testcase select --repo <name> --diff <branch>` | Select test cases affected by changed files. `--ticket` to scope. `--depth <n>` for deeper expansion. `--json` |
 
 ```bash
@@ -602,8 +656,8 @@ noob-tester testcase select --repo frontend --diff main --ticket PROJ-123 --json
 
 Compute risk scores from failure patterns, code churn, flakiness, and recency.
 
-| Command | Description |
-|---------|-------------|
+| Command                        | Description                                                      |
+| ------------------------------ | ---------------------------------------------------------------- |
 | `testcase risk --ticket <ref>` | Compute and store risk scores for all ready test cases. `--json` |
 
 ```bash
@@ -618,11 +672,11 @@ noob-tester runpack claim-next $PACKID PROJ-123 $SESSION --layer ui --risk
 
 Auto-retry failed entries to distinguish real failures from transient issues.
 
-| Command | Description |
-|---------|-------------|
-| `runpack auto-retry <packId>` | Mark all failed/blocked entries for retry (max 1 retry each) |
+| Command                                         | Description                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| `runpack auto-retry <packId>`                   | Mark all failed/blocked entries for retry (max 1 retry each)                   |
 | `runpack classify-retry <entryId> --status <s>` | Classify retry result: `likely_false_positive` if passed, confidence if failed |
-| `runpack false-positives <packId>` | Show false positive stats. `--json` |
+| `runpack false-positives <packId>`              | Show false positive stats. `--json`                                            |
 
 ```bash
 # After execution completes with failures:
@@ -640,13 +694,13 @@ noob-tester runpack false-positives $PACKID
 
 Audit test cases for duplicates, never-failed, orphaned, and stale entries.
 
-| Command | Description |
-|---------|-------------|
-| `testcase audit --ticket <ref>` | Full audit: duplicates + never-failed + stale. `--json` |
-| `testcase audit --duplicates --ticket <ref>` | Only near-duplicate pairs (Jaccard similarity). `--threshold <n>` (default: 0.65) |
-| `testcase audit --never-failed --ticket <ref>` | Test cases executed but never failed (potential low-value) |
-| `testcase audit --orphaned` | Test cases with no run pack activity in 90 days (across all tickets) |
-| `testcase audit --stale --ticket <ref>` | Test cases not executed in 30+ days |
+| Command                                        | Description                                                                       |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `testcase audit --ticket <ref>`                | Full audit: duplicates + never-failed + stale. `--json`                           |
+| `testcase audit --duplicates --ticket <ref>`   | Only near-duplicate pairs (Jaccard similarity). `--threshold <n>` (default: 0.65) |
+| `testcase audit --never-failed --ticket <ref>` | Test cases executed but never failed (potential low-value)                        |
+| `testcase audit --orphaned`                    | Test cases with no run pack activity in 90 days (across all tickets)              |
+| `testcase audit --stale --ticket <ref>`        | Test cases not executed in 30+ days                                               |
 
 ```bash
 # Full audit
@@ -661,15 +715,15 @@ noob-tester testcase audit --duplicates --ticket PROJ-123 --threshold 0.7 --json
 
 Compare screenshots against baselines per page/viewport. Hash-based quick check + Claude vision for detailed analysis.
 
-| Command | Description |
-|---------|-------------|
-| `visual baseline --page <id> --url <pattern> --screenshot <path>` | Set baseline. `--viewport`, `--run`, `--entry` |
-| `visual compare --page <id> --screenshot <path>` | Compare against baseline (hash check). Returns `{ hasBaseline, hashMatch, baselinePath }` |
-| `visual diff-save --baseline <id> --run <runId> --current <path>` | Save diff result. `--score`, `--description`, `--regression`, `--entry` |
-| `visual list` | List diffs. `--run`, `--unreviewed`, `--json` |
-| `visual accept <diffId>` | Accept current screenshot as new baseline |
-| `visual review <diffId>` | Mark reviewed: `--regression` or `--ok` |
-| `visual stats` | Stats: baselines, diffs, regressions, reviewed/unreviewed. `--run`, `--json` |
+| Command                                                           | Description                                                                               |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `visual baseline --page <id> --url <pattern> --screenshot <path>` | Set baseline. `--viewport`, `--run`, `--entry`                                            |
+| `visual compare --page <id> --screenshot <path>`                  | Compare against baseline (hash check). Returns `{ hasBaseline, hashMatch, baselinePath }` |
+| `visual diff-save --baseline <id> --run <runId> --current <path>` | Save diff result. `--score`, `--description`, `--regression`, `--entry`                   |
+| `visual list`                                                     | List diffs. `--run`, `--unreviewed`, `--json`                                             |
+| `visual accept <diffId>`                                          | Accept current screenshot as new baseline                                                 |
+| `visual review <diffId>`                                          | Mark reviewed: `--regression` or `--ok`                                                   |
+| `visual stats`                                                    | Stats: baselines, diffs, regressions, reviewed/unreviewed. `--run`, `--json`              |
 
 ```bash
 # Set baseline on first passing run
@@ -852,10 +906,10 @@ All query commands support `--ticket <TICKET-ID>` (finds latest run) or `--run <
 | Command                                                                                  | Description                                                                                                                                |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `save analysis <runId> --type <type> --content <json>`                                   | Save analysis (gap/requirements/feasibility/impact)                                                                                        |
-| `save plan <runId> --ticket <id>`                                                          | Save a test plan. `--plan` JSON includes all sections: strategy, requirements, testNotes, blockers, coverageGaps, mrRefs, targetUrl, etc.  |
+| `save plan <runId> --ticket <id>`                                                        | Save a test plan. `--plan` JSON includes all sections: strategy, requirements, testNotes, blockers, coverageGaps, mrRefs, targetUrl, etc.  |
 | `save step <planId> --run <runId> --order <n> --description <text> --confidence <level>` | Add a step to a plan. Optional: `--category`, `--priority`, `--testcase <id>`, `--mr <ref>`, `--uimap-page <id>`, `--page-url`, `--source` |
 | `save delete-plan --id <planId> --yes`                                                   | Delete a specific plan and all its steps                                                                                                   |
-| `save delete-plan --ticket <id> --yes`                                                     | Delete all plans for a ticket                                                                                                         |
+| `save delete-plan --ticket <id> --yes`                                                   | Delete all plans for a ticket                                                                                                              |
 
 ### `noob-tester cleanup` — Clean up data and processes
 
@@ -881,25 +935,25 @@ All query commands support `--ticket <TICKET-ID>` (finds latest run) or `--run <
 
 Avoids redundant Atlassian MCP calls and `glab mr view` fetches. First skill to read a ticket saves the data; subsequent skills check cache first. Hybrid storage: SQLite index + JSON files in `~/.noob-tester/ticket-context/`.
 
-| Command                                  | Description                                                                                       |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ticket-context save <ticket>`           | Save content. `--type`, `--content`, `--ttl <min>` (default: 30), `--source`                      |
-| `ticket-context get <ticket>`            | Get cached data. `--type` (exact or prefix). Returns `{cached: true/false, content}`              |
-| `ticket-context invalidate <ticket>`     | Delete entries. `--type` for specific (e.g. `mr_diff:!423`), prefix (e.g. `mr_diff`), or all      |
-| `ticket-context list <ticket>`           | List all cached entries for a ticket                                                              |
-| `ticket-context tickets`                 | List all tickets with cached context                                                              |
-| `ticket-context purge`                   | Remove all stale entries past their TTL                                                           |
+| Command                              | Description                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `ticket-context save <ticket>`       | Save content. `--type`, `--content`, `--ttl <min>` (default: 30), `--source`                 |
+| `ticket-context get <ticket>`        | Get cached data. `--type` (exact or prefix). Returns `{cached: true/false, content}`         |
+| `ticket-context invalidate <ticket>` | Delete entries. `--type` for specific (e.g. `mr_diff:!423`), prefix (e.g. `mr_diff`), or all |
+| `ticket-context list <ticket>`       | List all cached entries for a ticket                                                         |
+| `ticket-context tickets`             | List all tickets with cached context                                                         |
+| `ticket-context purge`               | Remove all stale entries past their TTL                                                      |
 
 **Context types:**
 
-| Type                | Default TTL | Content                                     |
-| ------------------- | ----------- | ------------------------------------------- |
-| `ticket_info`       | 30 min      | Title, description, AC, status, comments     |
-| `comments`          | 15 min      | All ticket comments                          |
-| `linked_tickets`    | 60 min      | Parent, subtasks, blockers                   |
-| `mr_metadata`       | 60 min      | List of MR refs (repo, branch, ID)           |
-| `mr_diff:!<id>`     | 120 min     | Full diff for one MR                         |
-| `confluence:<id>`   | 60 min      | Confluence page content                      |
+| Type              | Default TTL | Content                                  |
+| ----------------- | ----------- | ---------------------------------------- |
+| `ticket_info`     | 30 min      | Title, description, AC, status, comments |
+| `comments`        | 15 min      | All ticket comments                      |
+| `linked_tickets`  | 60 min      | Parent, subtasks, blockers               |
+| `mr_metadata`     | 60 min      | List of MR refs (repo, branch, ID)       |
+| `mr_diff:!<id>`   | 120 min     | Full diff for one MR                     |
+| `confluence:<id>` | 60 min      | Confluence page content                  |
 
 ```bash
 # First skill (noob-analyze) fetches and saves
@@ -924,8 +978,8 @@ noob-tester ticket-context invalidate PROJ-123
 
 | Command                                    | Description                                                                                                                                              |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `report --ticket <id>`                       | **Comprehensive ticket report** — pulls analyses, plans, test cases, run packs (UI + API), issues, UI maps, tech issues, sessions. Formatted text output |
-| `report --ticket <id> --json`                | Same data as structured JSON — used by `/noob-report` skill for deep analysis                                                                            |
+| `report --ticket <id>`                     | **Comprehensive ticket report** — pulls analyses, plans, test cases, run packs (UI + API), issues, UI maps, tech issues, sessions. Formatted text output |
+| `report --ticket <id> --json`              | Same data as structured JSON — used by `/noob-report` skill for deep analysis                                                                            |
 | `report --run <runId>`                     | Legacy single-run report (issues only)                                                                                                                   |
 | `history` / `history --json`               | List past runs                                                                                                                                           |
 | `status <runId>` / `status <runId> --json` | Show run details                                                                                                                                         |
@@ -934,15 +988,15 @@ noob-tester ticket-context invalidate PROJ-123
 
 These commands replace multi-step bash sequences, eliminating jq parsing and reducing agent errors.
 
-| Command | What it replaces |
-|---------|-----------------|
-| `init --ticket X --target-url Y` | `session start` + jq + `run resolve` + jq + `session link` + `runpack resolve` + jq (4 commands → 1) |
-| `finish --run X --session Y` | `run complete` + `session end` (2 → 1) |
-| `capture-page --run X --url Y --action N` | 4× `agent-browser` + 4× `capture store` + `uimap page` + `uimap scan` (11 → 1) |
-| `claim-smart --pack X --ticket Y --session Z` | Retry failed → resume pending → claim new → done check (20+ lines → 1) |
-| `auth-resolve --pack X` | `runpack meta` + `secrets get-profile` + 4× jq for email/password/token (6 → 1) |
-| `repos setup-for-ticket --ticket X` | `repos discover` + `repos sync` + `repos index` per repo (5+ → 1) |
-| `api-request --method POST --url X` | `curl` + parse response + `capture store` + `runpack log` + `apimap call` (6+ → 1) |
+| Command                                       | What it replaces                                                                                     |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `init --ticket X --target-url Y`              | `session start` + jq + `run resolve` + jq + `session link` + `runpack resolve` + jq (4 commands → 1) |
+| `finish --run X --session Y`                  | `run complete` + `session end` (2 → 1)                                                               |
+| `capture-page --run X --url Y --action N`     | 4× `agent-browser` + 4× `capture store` + `uimap page` + `uimap scan` (11 → 1)                       |
+| `claim-smart --pack X --ticket Y --session Z` | Retry failed → resume pending → claim new → done check (20+ lines → 1)                               |
+| `auth-resolve --pack X`                       | `runpack meta` + `secrets get-profile` + 4× jq for email/password/token (6 → 1)                      |
+| `repos setup-for-ticket --ticket X`           | `repos discover` + `repos sync` + `repos index` per repo (5+ → 1)                                    |
+| `api-request --method POST --url X`           | `curl` + parse response + `capture store` + `runpack log` + `apimap call` (6+ → 1)                   |
 
 ```bash
 # Example: Full noob-explore setup in 3 lines instead of 20+
@@ -962,6 +1016,7 @@ noob-tester setup --provider bitbucket # only check Bitbucket tools
 ```
 
 Checks:
+
 - **Core CLIs** — git, curl, jq, claude
 - **Browser Automation** — agent-browser CLI, agent-browser skills
 - **GitLab** — glab CLI, glab auth, glab plugin, glab skill symlink
@@ -1150,19 +1205,11 @@ noob-tester watch
 
 Sessions auto-register, claim different test cases, share the DB.
 
-## Database
+## Data Store
 
-All data in `~/.noob-tester/noob-tester.db` (SQLite).
+All data in `~/.noob-tester/noob-tester.db` (SQLite, WAL mode).
 
 **Tables:** runs, sessions, action_log, analyses, test_plans, test_steps, issues, failure_patterns, raw_outputs, test_cases, run_pack_entries, run_artifacts, tech_issues, ui_maps, ui_map_pages, ui_map_elements, ui_map_navigations, ui_map_forms, targets, secrets, repos, repo_groups, repo_group_members, code_fts, import_graph
-
-## Prerequisites
-
-- [Node.js](https://nodejs.org) >= 18
-- [agent-browser](https://github.com/vercel-labs/agent-browser) — for UI automation
-- [glab](https://gitlab.com/gitlab-org/cli) — for GitLab access (optional)
-- Claude Code with Atlassian MCP — for ticket/Confluence (optional)
-- [1Password CLI](https://developer.1password.com/docs/cli/) — for `secrets import-op` (optional)
 
 ## License
 
