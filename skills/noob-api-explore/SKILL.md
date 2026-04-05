@@ -44,8 +44,18 @@ noob-tester apimap chain $APIMAP_ID --from $POST_EP_ID --to $GET_EP_ID --type cr
 
 ## 2. Initialize
 
+**Before init, resolve the target URL from the secret target name.** Do NOT guess or hardcode URLs.
+
 ```bash
-INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "<base-url>" --task "API Testing: <TICKET-ID>" --labels "api-explore" --secret-target <target-name> --secret-role <role>)
+# Resolve target URL from secret target name — REQUIRED before init
+TARGET_URL=$(noob-tester secrets target list --json | jq -r '.[] | select(.name == "<target-name>") | .url')
+if [ -z "$TARGET_URL" ] || [ "$TARGET_URL" = "null" ]; then
+  echo "ERROR: Could not resolve URL for target '<target-name>'. Available targets:"
+  noob-tester secrets target list --json | jq '.[].name'
+  exit 1
+fi
+
+INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "$TARGET_URL" --task "API Testing: <TICKET-ID>" --labels "api-explore" --secret-target <target-name> --secret-role <role>)
 SESSION_ID=$(echo "$INIT" | jq -r '.sessionId')
 RUN_ID=$(echo "$INIT" | jq -r '.runId')
 RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
@@ -101,13 +111,13 @@ TIMING=$(echo "$RESULT" | jq -r '.timing')
 
 ### Validate Each Response
 
-| Check | Log as |
-|-------|--------|
-| Wrong status code | `log issue --category functional --severity high` |
-| Missing response fields | `log issue --category functional --severity high` |
-| Slow (>3s) | `log issue --category performance --severity medium` |
-| Auth failure (401/403) | `log issue --category functional --severity critical` + `tech-issue log` |
-| Server error (5xx) | `log issue --category functional --severity critical` + `tech-issue log` |
+| Check                   | Log as                                                                   |
+| ----------------------- | ------------------------------------------------------------------------ |
+| Wrong status code       | `log issue --category functional --severity high`                        |
+| Missing response fields | `log issue --category functional --severity high`                        |
+| Slow (>3s)              | `log issue --category performance --severity medium`                     |
+| Auth failure (401/403)  | `log issue --category functional --severity critical` + `tech-issue log` |
+| Server error (5xx)      | `log issue --category functional --severity critical` + `tech-issue log` |
 
 ### Track Created Resources + Per-Test Cleanup
 
@@ -133,6 +143,7 @@ noob-tester query codebase "<endpoint path or handler name>" --expand
 ```
 
 Include root cause in the result:
+
 ```bash
 noob-tester runpack result $ENTRY_ID --status failed \
   --results '{"runner":"api","error":"500 on POST /api/users","root_cause":"src/handlers/users.ts:23 — missing unique constraint check"}' \
@@ -140,6 +151,7 @@ noob-tester runpack result $ENTRY_ID --status failed \
 ```
 
 For passing tests:
+
 ```bash
 noob-tester runpack result $ENTRY_ID --status passed --results '{"runner":"api","summary":"All steps passed"}'
 ```
@@ -154,6 +166,7 @@ noob-tester finish --run $RUN_ID --session $SESSION_ID \
 ```
 
 **IMPORTANT: Include the session ID in your final message to the user** (needed for metrics hook):
+
 > Done. Session: $SESSION_ID
 
 ## Key Differences from /noob-explore

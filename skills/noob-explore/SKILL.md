@@ -26,7 +26,7 @@ noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
 
 ```bash
 # Resolve target URL from secret target name — REQUIRED before init
-TARGET_URL=$(noob-tester secrets target get <target-name> --json | jq -r '.url')
+TARGET_URL=$(noob-tester secrets target list --json | jq -r '.[] | select(.name == "<target-name>") | .url')
 if [ -z "$TARGET_URL" ] || [ "$TARGET_URL" = "null" ]; then
   echo "ERROR: Could not resolve URL for target '<target-name>'. Available targets:"
   noob-tester secrets target list --json | jq '.[].name'
