@@ -2778,13 +2778,38 @@ export function startWatchServer(opts: WatchOptions): void {
       function tilde(p: string): string {
         return p.replace(home, "~");
       }
+      function extraNvmBins(): string[] {
+        const candidates = [
+          join(home, ".nvm", "versions", "node"),
+          join(home, ".local", "share", "nvm"),
+        ];
+        const bins: string[] = [];
+        for (const base of candidates) {
+          if (!existsSync(base)) continue;
+          try {
+            for (const entry of readdirSync(base)) {
+              const bin = join(base, entry, "bin");
+              if (existsSync(bin)) bins.push(bin);
+              const nested = join(base, entry);
+              if (existsSync(join(nested, "bin")))
+                bins.push(join(nested, "bin"));
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        return bins;
+      }
       function cmdExists(cmd: string): boolean {
         try {
           execSync(`which ${cmd}`, { stdio: "ignore" });
           return true;
         } catch {
-          return false;
+          /* fall through */
         }
+        // Fallback: search nvm-managed bin dirs (handles cross-version installs)
+        const extra = extraNvmBins();
+        return extra.some((dir) => existsSync(join(dir, cmd)));
       }
       function findPluginVersion(basePath: string): string | null {
         if (!existsSync(basePath)) return null;

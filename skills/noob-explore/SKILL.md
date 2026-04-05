@@ -50,11 +50,34 @@ fi
 
 Decide which test case to run **before** login. There are two modes:
 
+**CRITICAL: Safe JSON Parsing for Stateful Operations**
+
+⚠️ **claim-smart is stateful — calling it twice claims TWO test cases.** Never pipe directly to jq without inspecting first.
+
+```bash
+# Step 1: Capture raw output WITHOUT piping to jq
+CLAIM_OUTPUT=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk 2>&1)
+
+# Step 2: Save to temp file for inspection if output is large
+echo "$CLAIM_OUTPUT" > /tmp/claim_output.json
+
+# Step 3: Inspect the raw output for errors or malformed JSON
+# If you see parse errors, check the last 100 chars
+tail -c 200 /tmp/claim_output.json
+
+# Step 4: Only after verifying output is valid, parse with jq
+ENTRY=$(echo "$CLAIM_OUTPUT")
+DONE=$(echo "$ENTRY" | jq -r '.done // empty')
+```
+
 **Mode A: Claim next unclaimed test case (default)**
 
 ```bash
-ENTRY=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk)
+# Claim once, save output, inspect, then parse
+CLAIM_OUTPUT=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk 2>&1)
+ENTRY=$(echo "$CLAIM_OUTPUT")
 
+# Check if all tests are done
 DONE=$(echo "$ENTRY" | jq -r '.done // empty')
 if [ "$DONE" = "true" ]; then
   noob-tester finish --run $RUN_ID --session $SESSION_ID --summary "All test cases executed"
