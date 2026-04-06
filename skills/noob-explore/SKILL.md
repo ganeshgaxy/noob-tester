@@ -11,16 +11,16 @@ Execute ONE test case per invocation via browser automation. Invoke repeatedly f
 
 ```bash
 # runpack list --pack returns ARRAY (not {entries: [...]})
-noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.tc_title != null) | {id, status, tc_title}'
+noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | {id, status, test_case_id}'
 
-# Find specific entry (always null-check tc_title)
-noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.tc_title != null and (.tc_title | test("keyword"; "i"))) | {id, status}'
+# Find specific entry by status (e.g., claimed, failed, blocked)
+noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.status != "passed")'
 
 # query plan returns SINGLE OBJECT: {plan, steps}
 noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
 ```
 
-## 1. Resolve Target URL + Initialize + UI Map + Claim or Retry
+## 1. Resolve Target URL + Initialize + UI Map
 
 **Before init, resolve the target URL from the secret target name.** Do NOT guess or hardcode URLs.
 
@@ -46,64 +46,19 @@ if [ -z "$MAP_ID" ]; then
 fi
 ```
 
-### Claim Next OR Retry
+### Extract Test Case Entry
 
-Decide which test case to run **before** login. There are two modes:
+`$ENTRY` contains: `id`, `tc_title`, `tc_format`, `test_case_id`, `status`.
 
-**CRITICAL: Safe JSON Parsing for Stateful Operations**
-
-⚠️ **claim-smart is stateful — calling it twice claims TWO test cases.** Never pipe directly to jq without inspecting first.
+Extract values:
 
 ```bash
-# Step 1: Capture raw output WITHOUT piping to jq
-CLAIM_OUTPUT=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk 2>&1)
-
-# Step 2: Save to temp file for inspection if output is large
-echo "$CLAIM_OUTPUT" > /tmp/claim_output.json
-
-# Step 3: Inspect the raw output for errors or malformed JSON
-# If you see parse errors, check the last 100 chars
-tail -c 200 /tmp/claim_output.json
-
-# Step 4: Only after verifying output is valid, parse with jq
-ENTRY=$(echo "$CLAIM_OUTPUT")
-DONE=$(echo "$ENTRY" | jq -r '.done // empty')
+ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
+TC_TITLE=$(echo "$ENTRY" | jq -r '.tc_title')
+TC_FORMAT=$(echo "$ENTRY" | jq -r '.tc_format')
 ```
 
-**Mode A: Claim next unclaimed test case (default)**
-
-```bash
-# Claim once, save output, inspect, then parse
-CLAIM_OUTPUT=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk 2>&1)
-ENTRY=$(echo "$CLAIM_OUTPUT")
-
-# Check if all tests are done
-DONE=$(echo "$ENTRY" | jq -r '.done // empty')
-if [ "$DONE" = "true" ]; then
-  noob-tester finish --run $RUN_ID --session $SESSION_ID --summary "All test cases executed"
-  exit 0
-fi
-```
-
-**Mode B: Retry a specific test case by name**
-
-Use when the user asks to rerun a previously failed/passed/blocked test.
-
-```bash
-# Retry in a specific run pack
-noob-tester runpack retry --name "<test-case-name>" --pack $RUNPACK_ID
-
-# Retry in the latest run pack for the ticket (no --pack needed)
-noob-tester runpack retry --name "<test-case-name>"
-```
-
-`retry` resets the entry status so `claim-smart` picks it up. Then claim it:
-
-```bash
-ENTRY=$(noob-tester claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk)
-```
-
-### Continue with claimed entry
+### Begin Execution
 
 ```bash
 ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')

@@ -1587,6 +1587,28 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_org ON auth_sessions(org_id);
       "048-runpack-testcaseid",
     );
   }
+
+  // Denormalize test case title into run_pack_entries for faster queries
+  if (!applied.has("049-runpack-tc-title")) {
+    try {
+      db.exec("ALTER TABLE run_pack_entries ADD COLUMN tc_title TEXT");
+    } catch {
+      /* column already exists */
+    }
+    // Back-fill titles for existing entries
+    try {
+      db.exec(
+        `UPDATE run_pack_entries SET tc_title = (
+           SELECT title FROM test_cases WHERE test_cases.id = run_pack_entries.test_case_id
+         ) WHERE tc_title IS NULL AND test_case_id != '__header__'`,
+      );
+    } catch {
+      /* best-effort */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "049-runpack-tc-title",
+    );
+  }
 }
 
 function tryLoadVss(db: Database.Database): void {

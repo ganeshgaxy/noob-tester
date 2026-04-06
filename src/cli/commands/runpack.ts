@@ -34,14 +34,19 @@ import {
 /** Resolve a short ID prefix to full UUID, exit if not found. */
 function resolveId(idOrPrefix: string): string {
   const full = resolveRunPackId(idOrPrefix);
-  if (!full) { console.error(`Run pack "${idOrPrefix}" not found`); process.exit(1); }
+  if (!full) {
+    console.error(`Run pack "${idOrPrefix}" not found`);
+    process.exit(1);
+  }
   return full;
 }
 
 export function registerRunPackCommands(program: Command): void {
   const rp = program
     .command("runpack")
-    .description("Manage run packs — create, claim, execute, and track test runs per ticket");
+    .description(
+      "Manage run packs — create, claim, execute, and track test runs per ticket",
+    );
 
   rp.command("create")
     .description("Create an empty run pack for a ticket")
@@ -49,11 +54,22 @@ export function registerRunPackCommands(program: Command): void {
     .requiredOption("--run <runId>", "Run ID to associate with")
     .option("--session <sessionId>", "Session ID")
     .option("--target-url <url>", "Target URL to test")
-    .option("--secret-target <name>", "Secret target name for login credentials")
-    .option("--secret-role <role>", "Secret role within the target (default: default)")
-    .option("--capture <types>", "Comma-separated capture types: screenshot,snapshot,video,har,console,trace")
+    .option(
+      "--secret-target <name>",
+      "Secret target name for login credentials",
+    )
+    .option(
+      "--secret-role <role>",
+      "Secret role within the target (default: default)",
+    )
+    .option(
+      "--capture <types>",
+      "Comma-separated capture types: screenshot,snapshot,video,har,console,trace",
+    )
     .action((opts) => {
-      const captureConfig = opts.capture ? (opts.capture as string).split(",").map((s: string) => s.trim()) : undefined;
+      const captureConfig = opts.capture
+        ? (opts.capture as string).split(",").map((s: string) => s.trim())
+        : undefined;
       const runPackId = createRunPack({
         ticketId: opts.ticket,
         runId: opts.run,
@@ -63,7 +79,11 @@ export function registerRunPackCommands(program: Command): void {
         secretRole: opts.secretRole,
         captureConfig,
       });
-      const result: Record<string, unknown> = { runPackId, ticketId: opts.ticket, runId: opts.run };
+      const result: Record<string, unknown> = {
+        runPackId,
+        ticketId: opts.ticket,
+        runId: opts.run,
+      };
       if (opts.targetUrl) result.targetUrl = opts.targetUrl;
       if (opts.secretTarget) result.secretTarget = opts.secretTarget;
       if (captureConfig) result.capture = captureConfig;
@@ -79,21 +99,31 @@ export function registerRunPackCommands(program: Command): void {
         console.error(`Run pack ${runPackIdArg} not found`);
         process.exit(1);
       }
-      console.log(JSON.stringify(meta, null, 2));
+      console.log(JSON.stringify(meta));
     });
 
   rp.command("resolve")
-    .description("Resume an existing run pack or create a new one (default: resume-first)")
+    .description(
+      "Resume an existing run pack or create a new one (default: resume-first)",
+    )
     .requiredOption("--ticket <id>", "Ticket ID")
     .requiredOption("--run <runId>", "Run ID")
     .option("--session <sessionId>", "Session ID")
     .option("--target-url <url>", "Target URL (used when creating new)")
-    .option("--secret-target <name>", "Secret target name (used when creating new)")
+    .option(
+      "--secret-target <name>",
+      "Secret target name (used when creating new)",
+    )
     .option("--secret-role <role>", "Secret role (used when creating new)")
-    .option("--capture <types>", "Comma-separated capture types (used when creating new)")
+    .option(
+      "--capture <types>",
+      "Comma-separated capture types (used when creating new)",
+    )
     .option("--fresh", "Force create a new pack, skip resume check")
     .action((opts) => {
-      const captureConfig = opts.capture ? (opts.capture as string).split(",").map((s: string) => s.trim()) : undefined;
+      const captureConfig = opts.capture
+        ? (opts.capture as string).split(",").map((s: string) => s.trim())
+        : undefined;
       const result = resolveRunPack(opts.ticket, {
         runId: opts.run,
         sessionId: opts.session,
@@ -104,13 +134,15 @@ export function registerRunPackCommands(program: Command): void {
         fresh: opts.fresh,
       });
       const meta = getRunPackMeta(result.runPackId);
-      console.log(JSON.stringify({
-        runPackId: result.runPackId,
-        resumed: result.resumed,
-        ticketId: opts.ticket,
-        targetUrl: meta?.target_url ?? opts.targetUrl ?? null,
-        secretTarget: meta?.secret_target ?? opts.secretTarget ?? null,
-      }));
+      console.log(
+        JSON.stringify({
+          runPackId: result.runPackId,
+          resumed: result.resumed,
+          ticketId: opts.ticket,
+          targetUrl: meta?.target_url ?? opts.targetUrl ?? null,
+          secretTarget: meta?.secret_target ?? opts.secretTarget ?? null,
+        }),
+      );
     });
 
   rp.command("add <runPackId> <testCaseId>")
@@ -124,7 +156,12 @@ export function registerRunPackCommands(program: Command): void {
         sessionId: opts.session,
       });
       if (!entry) {
-        console.log(JSON.stringify({ added: false, message: "Test case already in pack or pack not found" }));
+        console.log(
+          JSON.stringify({
+            added: false,
+            message: "Test case already in pack or pack not found",
+          }),
+        );
       } else {
         console.log(JSON.stringify({ added: true, entryId: entry.id }));
       }
@@ -132,39 +169,78 @@ export function registerRunPackCommands(program: Command): void {
 
   rp.command("claim <runPackId> <sessionId>")
     .description("Claim the next pending entry already in the run pack")
-    .action((rpId, sessionId) => {
+    .option(
+      "--name <title>",
+      "Claim only an entry whose test case title contains this string (case-insensitive substring match)",
+    )
+    .action((rpId, sessionId, opts) => {
       const runPackId = resolveId(rpId);
-      const entry = claimNextEntry(runPackId, sessionId);
+      const entry = claimNextEntry(runPackId, sessionId, { name: opts.name });
       if (!entry) {
-        console.log(JSON.stringify({ claimed: null, message: "No pending entries in this run pack" }));
+        const msg = opts.name
+          ? `No pending entries matching "${opts.name}" in this run pack`
+          : "No pending entries in this run pack";
+        console.log(JSON.stringify({ claimed: null, message: msg }));
       } else {
-        console.log(JSON.stringify(entry, null, 2));
+        console.log(JSON.stringify(entry));
       }
     });
 
   rp.command("claim-next <runPackId> <ticketId> <sessionId>")
-    .description("Pick the next test case not yet in the pack, add it, and claim it (used by noob-explore and noob-api-explore)")
+    .description(
+      "Pick the next test case not yet in the pack, add it, and claim it (used by noob-explore and noob-api-explore)",
+    )
     .option("--run <runId>", "Override run ID for this entry")
-    .option("--layer <layer>", "Filter by test layer: ui | api | ui_api | database | ai | unit | other")
-    .option("--runner <runner>", "Runner type: ui | api (auto-detected from layer if omitted)")
-    .option("--risk", "Order by risk score (highest risk first) instead of priority")
+    .option(
+      "--layer <layer>",
+      "Filter by test layer: ui | api | ui_api | database | ai | unit | other",
+    )
+    .option(
+      "--runner <runner>",
+      "Runner type: ui | api (auto-detected from layer if omitted)",
+    )
+    .option(
+      "--risk",
+      "Order by risk score (highest risk first) instead of priority",
+    )
+    .option(
+      "--name <title>",
+      "Claim only a test case whose title contains this string (case-insensitive substring match)",
+    )
     .action((rpId, ticketId, sessionId, opts) => {
       const runPackId = resolveId(rpId);
-      const entry = claimNextNewEntry(runPackId, ticketId, sessionId, { runId: opts.run, layer: opts.layer, runner: opts.runner, riskBased: opts.risk ?? false });
+      const entry = claimNextNewEntry(runPackId, ticketId, sessionId, {
+        runId: opts.run,
+        layer: opts.layer,
+        runner: opts.runner,
+        riskBased: opts.risk ?? false,
+        name: opts.name,
+      });
       if (!entry) {
-        console.log(JSON.stringify({ claimed: null, message: "All test cases are already in the run pack" }));
+        const msg = opts.name
+          ? `No unclaimed test cases matching "${opts.name}" in this run pack`
+          : "All test cases are already in the run pack";
+        console.log(JSON.stringify({ claimed: null, message: msg }));
       } else {
-        console.log(JSON.stringify(entry, null, 2));
+        console.log(JSON.stringify(entry));
       }
     });
 
   rp.command("populate <runPackId> <ticketId>")
-    .description("Add ALL ready test cases to the pack with a given status (e.g. blocked on login failure)")
+    .description(
+      "Add ALL ready test cases to the pack with a given status (e.g. blocked on login failure)",
+    )
     .requiredOption("--status <status>", "pending | blocked | skipped")
-    .option("--reason <text>", "Reason for the status (e.g. 'Login failed: invalid credentials')")
+    .option(
+      "--reason <text>",
+      "Reason for the status (e.g. 'Login failed: invalid credentials')",
+    )
     .option("--run <runId>", "Run ID")
     .option("--session <sessionId>", "Session ID")
-    .option("--layer <layer>", "Only add test cases with this layer: ui | api | ui_api | etc.")
+    .option(
+      "--layer <layer>",
+      "Only add test cases with this layer: ui | api | ui_api | etc.",
+    )
     .option("--runner <runner>", "Set runner type on added entries: ui | api")
     .action((rpId, ticketId, opts) => {
       const runPackId = resolveId(rpId);
@@ -175,7 +251,13 @@ export function registerRunPackCommands(program: Command): void {
         layer: opts.layer,
         runner: opts.runner,
       });
-      console.log(JSON.stringify({ populated: count, status: opts.status, layer: opts.layer ?? "all" }));
+      console.log(
+        JSON.stringify({
+          populated: count,
+          status: opts.status,
+          layer: opts.layer ?? "all",
+        }),
+      );
     });
 
   rp.command("result <entryId>")
@@ -196,10 +278,18 @@ export function registerRunPackCommands(program: Command): void {
     });
 
   rp.command("artifact <entryId>")
-    .description("Attach an artifact (screenshot, snapshot, video, HAR, console, trace) to a run pack entry")
-    .requiredOption("--type <type>", "screenshot | snapshot | video | har | console | trace")
+    .description(
+      "Attach an artifact (screenshot, snapshot, video, HAR, console, trace) to a run pack entry",
+    )
+    .requiredOption(
+      "--type <type>",
+      "screenshot | snapshot | video | har | console | trace",
+    )
     .requiredOption("--path <filePath>", "Path to artifact file")
-    .option("--label <text>", "Human-readable label (e.g. 'After login', 'Step 3 failure')")
+    .option(
+      "--label <text>",
+      "Human-readable label (e.g. 'After login', 'Step 3 failure')",
+    )
     .option("--step <n>", "Step number this artifact belongs to", parseInt)
     .option("--metadata <json>", "Extra JSON metadata")
     .action((entryId, opts) => {
@@ -241,7 +331,7 @@ export function registerRunPackCommands(program: Command): void {
           ? getRunPackEntries(packId)
           : getRunPackEntriesWithTestCases(packId);
         if (opts.json) {
-          console.log(JSON.stringify(entries, null, 2));
+          console.log(JSON.stringify(entries));
           return;
         }
         if ((entries as unknown[]).length === 0) {
@@ -251,12 +341,15 @@ export function registerRunPackCommands(program: Command): void {
         console.log(chalk.bold(`\nRun Pack ${packId.slice(0, 8)}\n`));
         for (const e of entries as Array<Record<string, unknown>>) {
           const statusColor =
-            e.status === "passed" ? chalk.green
-              : e.status === "failed" ? chalk.red
-                : e.status === "claimed" ? chalk.yellow
+            e.status === "passed"
+              ? chalk.green
+              : e.status === "failed"
+                ? chalk.red
+                : e.status === "claimed"
+                  ? chalk.yellow
                   : chalk.dim;
           console.log(
-            `  ${statusColor((e.status as string).padEnd(8))} ${e.tc_title || e.test_case_id}`
+            `  ${statusColor((e.status as string).padEnd(8))} ${e.tc_title || e.test_case_id}`,
           );
         }
         console.log();
@@ -266,7 +359,7 @@ export function registerRunPackCommands(program: Command): void {
       if (opts.ticket) {
         const packs = getRunPacksByTicket(opts.ticket);
         if (opts.json) {
-          console.log(JSON.stringify(packs, null, 2));
+          console.log(JSON.stringify(packs));
           return;
         }
         if ((packs as unknown[]).length === 0) {
@@ -277,7 +370,7 @@ export function registerRunPackCommands(program: Command): void {
         for (const p of packs as Array<Record<string, unknown>>) {
           const id = (p.run_pack_id as string).slice(0, 8);
           console.log(
-            `  ${chalk.blue(id)} ${chalk.green(`${p.passed}P`)} ${chalk.red(`${p.failed}F`)} ${chalk.dim(`${p.pending}pend`)} ${chalk.dim(`total:${p.total}`)} ${chalk.dim(p.created_at as string)}`
+            `  ${chalk.blue(id)} ${chalk.green(`${p.passed}P`)} ${chalk.red(`${p.failed}F`)} ${chalk.dim(`${p.pending}pend`)} ${chalk.dim(`total:${p.total}`)} ${chalk.dim(p.created_at as string)}`,
           );
         }
         console.log();
@@ -286,7 +379,7 @@ export function registerRunPackCommands(program: Command): void {
 
       const tickets = getRunPackTicketIds();
       if (opts.json) {
-        console.log(JSON.stringify(tickets, null, 2));
+        console.log(JSON.stringify(tickets));
         return;
       }
       if ((tickets as unknown[]).length === 0) {
@@ -296,7 +389,7 @@ export function registerRunPackCommands(program: Command): void {
       console.log(chalk.bold("\nRun Packs by Ticket\n"));
       for (const j of tickets as Array<Record<string, unknown>>) {
         console.log(
-          `  ${chalk.blue(j.ticket_id as string).padEnd(20)} ${chalk.dim(`${j.pack_count} packs`)} ${chalk.green(`${j.passed}P`)} ${chalk.red(`${j.failed}F`)} ${chalk.dim(`${j.pending}pend`)} ${chalk.dim(`last: ${j.last_run}`)}`
+          `  ${chalk.blue(j.ticket_id as string).padEnd(20)} ${chalk.dim(`${j.pack_count} packs`)} ${chalk.green(`${j.passed}P`)} ${chalk.red(`${j.failed}F`)} ${chalk.dim(`${j.pending}pend`)} ${chalk.dim(`last: ${j.last_run}`)}`,
         );
       }
       console.log();
@@ -313,9 +406,18 @@ export function registerRunPackCommands(program: Command): void {
   rp.command("retry")
     .description("Reset entries back to pending for rerun")
     .option("--entry <entryId>", "Retry a specific entry by ID")
-    .option("--name <text>", "Retry entries matching test case name (substring match, requires --pack)")
-    .option("--pack <runPackId>", "Target run pack (with --name: retry by name; alone: retry all failed/blocked)")
-    .option("--all <runPackId>", "Retry ALL entries in a pack (including passed)")
+    .option(
+      "--name <text>",
+      "Retry entries matching test case name (substring match, requires --pack)",
+    )
+    .option(
+      "--pack <runPackId>",
+      "Target run pack (with --name: retry by name; alone: retry all failed/blocked)",
+    )
+    .option(
+      "--all <runPackId>",
+      "Retry ALL entries in a pack (including passed)",
+    )
     .action((opts) => {
       if (opts.entry) {
         const ok = retryEntry(opts.entry);
@@ -350,8 +452,14 @@ export function registerRunPackCommands(program: Command): void {
       }
       const packId = opts.pack ? resolveId(opts.pack) : null;
       if (!opts.yes) {
-        const target = packId ? `run pack ${packId.slice(0, 8)}` : `all run packs for ${opts.ticket}`;
-        console.log(chalk.yellow(`This will delete ${target}. Run with --yes to confirm.`));
+        const target = packId
+          ? `run pack ${packId.slice(0, 8)}`
+          : `all run packs for ${opts.ticket}`;
+        console.log(
+          chalk.yellow(
+            `This will delete ${target}. Run with --yes to confirm.`,
+          ),
+        );
         return;
       }
       if (packId) {
@@ -359,14 +467,18 @@ export function registerRunPackCommands(program: Command): void {
         console.log(chalk.green(`Deleted ${count} entry(ies) from run pack.`));
       } else {
         const count = deleteRunPacksByTicket(opts.ticket);
-        console.log(chalk.green(`Deleted ${count} entry(ies) for ${opts.ticket}.`));
+        console.log(
+          chalk.green(`Deleted ${count} entry(ies) for ${opts.ticket}.`),
+        );
       }
     });
 
   // ── False Positive Reduction ──
 
   rp.command("auto-retry <runPackId>")
-    .description("Mark all failed/blocked entries for auto-retry (max 1 retry per entry)")
+    .description(
+      "Mark all failed/blocked entries for auto-retry (max 1 retry per entry)",
+    )
     .action((runPackIdArg) => {
       const runPackId = resolveId(runPackIdArg);
       const count = markForAutoRetry(runPackId);
@@ -374,8 +486,13 @@ export function registerRunPackCommands(program: Command): void {
     });
 
   rp.command("classify-retry <entryId>")
-    .description("Classify a retried entry result (likely_false_positive or confirmed failure)")
-    .requiredOption("--status <status>", "Retry result: passed | failed | blocked")
+    .description(
+      "Classify a retried entry result (likely_false_positive or confirmed failure)",
+    )
+    .requiredOption(
+      "--status <status>",
+      "Retry result: passed | failed | blocked",
+    )
     .action((entryId, opts) => {
       const confidence = classifyRetryResult(entryId, opts.status);
       console.log(JSON.stringify({ entryId, confidence }));
@@ -389,22 +506,30 @@ export function registerRunPackCommands(program: Command): void {
       const stats = getFalsePositiveStats(runPackId);
 
       if (opts.json) {
-        console.log(JSON.stringify(stats, null, 2));
+        console.log(JSON.stringify(stats));
         return;
       }
 
       console.log(chalk.bold("\nFalse Positive Analysis\n"));
       console.log(`  Total failed:        ${stats.totalFailed}`);
       console.log(`  Retried:             ${stats.retried}`);
-      console.log(`  False positives:     ${chalk.yellow(String(stats.falsePositives))}`);
-      console.log(`  Confirmed failures:  ${chalk.red(String(stats.confirmedFailures))}`);
+      console.log(
+        `  False positives:     ${chalk.yellow(String(stats.falsePositives))}`,
+      );
+      console.log(
+        `  Confirmed failures:  ${chalk.red(String(stats.confirmedFailures))}`,
+      );
       if (Object.keys(stats.byConfidence).length > 0) {
         console.log(chalk.bold("\n  By confidence:"));
         for (const [conf, count] of Object.entries(stats.byConfidence)) {
-          const color = conf === "likely_false_positive" ? chalk.yellow
-            : conf === "high" ? chalk.red
-            : conf === "low" ? chalk.green
-            : chalk.dim;
+          const color =
+            conf === "likely_false_positive"
+              ? chalk.yellow
+              : conf === "high"
+                ? chalk.red
+                : conf === "low"
+                  ? chalk.green
+                  : chalk.dim;
           console.log(`    ${color(conf.padEnd(24))} ${count}`);
         }
       }

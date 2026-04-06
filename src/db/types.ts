@@ -124,6 +124,7 @@ export interface RunPackEntryRow {
   run_id: string;
   session_id: string | null;
   test_case_id: string;
+  tc_title: string | null;
   fresh_or_existing: string;
   status: string;
   results: string | null;

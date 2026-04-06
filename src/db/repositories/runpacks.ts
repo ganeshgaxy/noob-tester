@@ -23,14 +23,18 @@ export function createRunPack(input: CreateRunPackInput): string {
       `INSERT INTO run_pack_entries
        (id, run_pack_id, ticket_id, run_id, session_id, test_case_id, fresh_or_existing, status,
         target_url, secret_target, secret_role, capture_config)
-       VALUES (?, ?, ?, ?, ?, '__header__', 'fresh', 'header', ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, '__header__', 'fresh', 'header', ?, ?, ?, ?)`,
     )
     .run(
-      uuid(), runPackId, input.ticketId, input.runId, input.sessionId ?? null,
+      uuid(),
+      runPackId,
+      input.ticketId,
+      input.runId,
+      input.sessionId ?? null,
       input.targetUrl ?? null,
       input.secretTarget ?? null,
       input.secretRole ?? null,
-      input.captureConfig ? JSON.stringify(input.captureConfig) : null
+      input.captureConfig ? JSON.stringify(input.captureConfig) : null,
     );
 
   return runPackId;
@@ -45,7 +49,9 @@ export function createRunPack(input: CreateRunPackInput): string {
 export function resolveRunPackId(idOrPrefix: string): string | null {
   if (idOrPrefix.length >= 36) return idOrPrefix; // already full UUID
   const row = getDb()
-    .prepare("SELECT DISTINCT run_pack_id FROM run_pack_entries WHERE run_pack_id LIKE ? LIMIT 2")
+    .prepare(
+      "SELECT DISTINCT run_pack_id FROM run_pack_entries WHERE run_pack_id LIKE ? LIMIT 2",
+    )
     .all(idOrPrefix + "%") as Array<{ run_pack_id: string }>;
   if (row.length === 1) return row[0].run_pack_id;
   return null; // ambiguous or not found
@@ -54,13 +60,20 @@ export function resolveRunPackId(idOrPrefix: string): string | null {
 export function getRunPackMeta(runPackId: string) {
   return getDb()
     .prepare(
-      "SELECT run_pack_id, ticket_id, run_id, target_url, secret_target, secret_role, capture_config, created_at FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id = '__header__'"
+      "SELECT run_pack_id, ticket_id, run_id, target_url, secret_target, secret_role, capture_config, created_at FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id = '__header__'",
     )
-    .get(runPackId) as {
-      run_pack_id: string; ticket_id: string; run_id: string;
-      target_url: string | null; secret_target: string | null; secret_role: string | null;
-      capture_config: string | null; created_at: string;
-    } | undefined;
+    .get(runPackId) as
+    | {
+        run_pack_id: string;
+        ticket_id: string;
+        run_id: string;
+        target_url: string | null;
+        secret_target: string | null;
+        secret_role: string | null;
+        capture_config: string | null;
+        created_at: string;
+      }
+    | undefined;
 }
 
 /**
@@ -70,14 +83,14 @@ export function getRunPackMeta(runPackId: string) {
 export function addEntry(
   runPackId: string,
   testCaseId: string,
-  opts?: { runId?: string; sessionId?: string }
+  opts?: { runId?: string; sessionId?: string },
 ): RunPackEntryRow | null {
   const db = getDb();
 
   // Check if already in pack
   const existing = db
     .prepare(
-      "SELECT id FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id = ?"
+      "SELECT id FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id = ?",
     )
     .get(runPackId, testCaseId);
 
@@ -86,24 +99,30 @@ export function addEntry(
   // Get pack metadata from header
   const header = db
     .prepare(
-      "SELECT ticket_id, run_id FROM run_pack_entries WHERE run_pack_id = ? LIMIT 1"
+      "SELECT ticket_id, run_id FROM run_pack_entries WHERE run_pack_id = ? LIMIT 1",
     )
     .get(runPackId) as { ticket_id: string; run_id: string } | undefined;
 
   if (!header) return null;
 
+  // Look up the test case title to denormalize into the entry
+  const tc = db
+    .prepare("SELECT title FROM test_cases WHERE id = ?")
+    .get(testCaseId) as { title: string } | undefined;
+
   const id = uuid();
   db.prepare(
     `INSERT INTO run_pack_entries
-     (id, run_pack_id, ticket_id, run_id, session_id, test_case_id, fresh_or_existing, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'fresh', 'pending')`
+     (id, run_pack_id, ticket_id, run_id, session_id, test_case_id, tc_title, fresh_or_existing, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'fresh', 'pending')`,
   ).run(
     id,
     runPackId,
     header.ticket_id,
     opts?.runId ?? header.run_id,
     opts?.sessionId ?? null,
-    testCaseId
+    testCaseId,
+    tc?.title ?? null,
   );
 
   return db
@@ -120,14 +139,20 @@ export function claimNextNewEntry(
   runPackId: string,
   ticketId: string,
   sessionId: string,
-  opts?: { runId?: string; layer?: string; runner?: string; riskBased?: boolean }
+  opts?: {
+    runId?: string;
+    layer?: string;
+    runner?: string;
+    riskBased?: boolean;
+    name?: string;
+  },
 ) {
   const db = getDb();
 
   // Get test case IDs already in this run pack
   const existingTcIds = db
     .prepare(
-      "SELECT test_case_id FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id != '__header__'"
+      "SELECT test_case_id FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id != '__header__'",
     )
     .all(runPackId) as Array<{ test_case_id: string }>;
 
@@ -135,8 +160,10 @@ export function claimNextNewEntry(
 
   // Find next ready test case not in the pack, by priority
   const layerFilter = opts?.layer ? " AND COALESCE(test_layer, 'ui') = ?" : "";
+  const nameFilter = opts?.name ? " AND LOWER(title) LIKE LOWER(?)" : "";
   const params: unknown[] = [ticketId];
   if (opts?.layer) params.push(opts.layer);
+  if (opts?.name) params.push(`%${opts.name}%`);
 
   const orderClause = opts?.riskBased
     ? "ORDER BY COALESCE(risk_score, 0) DESC, priority ASC, created_at ASC"
@@ -145,28 +172,34 @@ export function claimNextNewEntry(
   const allReady = db
     .prepare(
       `SELECT id FROM test_cases
-       WHERE ticket_ref = ? AND ready = 1${layerFilter}
-       ${orderClause}`
+       WHERE ticket_ref = ? AND ready = 1${layerFilter}${nameFilter}
+       ${orderClause}`,
     )
     .all(...params) as Array<{ id: string }>;
 
   const nextTc = allReady.find((tc) => !existingSet.has(tc.id));
   if (!nextTc) return null;
 
-  // Get pack metadata
+  // Get pack metadata + test case title
   const header = db
     .prepare(
-      "SELECT run_id FROM run_pack_entries WHERE run_pack_id = ? LIMIT 1"
+      "SELECT run_id FROM run_pack_entries WHERE run_pack_id = ? LIMIT 1",
     )
     .get(runPackId) as { run_id: string } | undefined;
 
+  const tcRow = db
+    .prepare("SELECT title FROM test_cases WHERE id = ?")
+    .get(nextTc.id) as { title: string } | undefined;
+
   // Add and claim in one go
   const entryId = uuid();
-  const runner = opts?.runner ?? (opts?.layer === "api" ? "api" : opts?.layer === "ui_api" ? "api" : "ui");
+  const runner =
+    opts?.runner ??
+    (opts?.layer === "api" ? "api" : opts?.layer === "ui_api" ? "api" : "ui");
   db.prepare(
     `INSERT INTO run_pack_entries
-     (id, run_pack_id, ticket_id, run_id, session_id, test_case_id, fresh_or_existing, status, started_at, runner)
-     VALUES (?, ?, ?, ?, ?, ?, 'fresh', 'claimed', datetime('now'), ?)`
+     (id, run_pack_id, ticket_id, run_id, session_id, test_case_id, tc_title, fresh_or_existing, status, started_at, runner)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'fresh', 'claimed', datetime('now'), ?)`,
   ).run(
     entryId,
     runPackId,
@@ -174,7 +207,8 @@ export function claimNextNewEntry(
     opts?.runId ?? header?.run_id ?? "",
     sessionId,
     nextTc.id,
-    runner
+    tcRow?.title ?? null,
+    runner,
   );
 
   // Return entry joined with test case details
@@ -187,29 +221,35 @@ export function claimNextNewEntry(
               tc.test_layer as tc_layer
        FROM run_pack_entries rpe
        JOIN test_cases tc ON rpe.test_case_id = tc.id
-       WHERE rpe.id = ?`
+       WHERE rpe.id = ?`,
     )
     .get(entryId);
 }
 
 /**
  * Claim the next pending entry in a run pack for execution.
+ * @param name - Optional substring filter on tc_title (case-insensitive)
  */
 export function claimNextEntry(
   runPackId: string,
-  sessionId: string
+  sessionId: string,
+  opts?: { name?: string },
 ): RunPackEntryRow | null {
   const db = getDb();
+
+  const nameFilter = opts?.name ? " AND LOWER(rpe.tc_title) LIKE LOWER(?)" : "";
+  const params: unknown[] = [runPackId];
+  if (opts?.name) params.push(`%${opts.name}%`);
 
   const entry = db
     .prepare(
       `SELECT rpe.* FROM run_pack_entries rpe
        JOIN test_cases tc ON rpe.test_case_id = tc.id
-       WHERE rpe.run_pack_id = ? AND rpe.status = 'pending' AND rpe.test_case_id != '__header__'
+       WHERE rpe.run_pack_id = ? AND rpe.status = 'pending' AND rpe.test_case_id != '__header__'${nameFilter}
        ORDER BY tc.priority ASC, rpe.created_at ASC
-       LIMIT 1`
+       LIMIT 1`,
     )
-    .get(runPackId) as RunPackEntryRow | undefined;
+    .get(...params) as RunPackEntryRow | undefined;
 
   if (!entry) return null;
 
@@ -218,7 +258,7 @@ export function claimNextEntry(
        status = 'claimed',
        session_id = ?,
        started_at = datetime('now')
-     WHERE id = ?`
+     WHERE id = ?`,
   ).run(sessionId, entry.id);
 
   return db
@@ -237,7 +277,7 @@ export function updateEntryResult(
     logs?: string;
     observations?: string;
     issues?: string;
-  }
+  },
 ): void {
   const db = getDb();
 
@@ -246,17 +286,38 @@ export function updateEntryResult(
   const sets: string[] = ["status = ?", "completed_at = datetime('now')"];
   const params: unknown[] = [status];
 
-  if (result?.results !== undefined) { sets.push("results = ?"); params.push(result.results); }
-  if (result?.logs !== undefined) { sets.push("logs = ?"); params.push(result.logs); }
-  if (result?.observations !== undefined) { sets.push("observations = ?"); params.push(result.observations); }
-  if (result?.issues !== undefined) { sets.push("issues = ?"); params.push(result.issues); }
+  if (result?.results !== undefined) {
+    sets.push("results = ?");
+    params.push(result.results);
+  }
+  if (result?.logs !== undefined) {
+    sets.push("logs = ?");
+    params.push(result.logs);
+  }
+  if (result?.observations !== undefined) {
+    sets.push("observations = ?");
+    params.push(result.observations);
+  }
+  if (result?.issues !== undefined) {
+    sets.push("issues = ?");
+    params.push(result.issues);
+  }
 
   params.push(entryId);
-  db.prepare(`UPDATE run_pack_entries SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  db.prepare(`UPDATE run_pack_entries SET ${sets.join(", ")} WHERE id = ?`).run(
+    ...params,
+  );
 }
 
 export interface Artifact {
-  type: "screenshot" | "snapshot" | "video" | "har" | "console" | "trace" | "api_request";
+  type:
+    | "screenshot"
+    | "snapshot"
+    | "video"
+    | "har"
+    | "console"
+    | "trace"
+    | "api_request";
   path: string;
   label?: string;
   timestamp?: string;
@@ -289,7 +350,7 @@ export function addEntryArtifact(entryId: string, artifact: Artifact): void {
 
   db.prepare("UPDATE run_pack_entries SET artifacts = ? WHERE id = ?").run(
     JSON.stringify(artifacts),
-    entryId
+    entryId,
   );
 }
 
@@ -314,7 +375,7 @@ export function getEntryArtifacts(entryId: string): Artifact[] {
  */
 export function addEntryObservation(
   entryId: string,
-  observation: string
+  observation: string,
 ): void {
   const db = getDb();
   const entry = db
@@ -333,9 +394,10 @@ export function addEntryObservation(
   }
   observations.push(observation);
 
-  db.prepare(
-    "UPDATE run_pack_entries SET observations = ? WHERE id = ?"
-  ).run(JSON.stringify(observations), entryId);
+  db.prepare("UPDATE run_pack_entries SET observations = ? WHERE id = ?").run(
+    JSON.stringify(observations),
+    entryId,
+  );
 }
 
 /**
@@ -361,7 +423,7 @@ export function addEntryLog(entryId: string, log: string): void {
 
   db.prepare("UPDATE run_pack_entries SET logs = ? WHERE id = ?").run(
     JSON.stringify(logs),
-    entryId
+    entryId,
   );
 }
 
@@ -379,19 +441,24 @@ export function resolveRunPack(
     secretRole?: string;
     captureConfig?: string[];
     fresh?: boolean;
-  }
+  },
 ): { runPackId: string; resumed: boolean } {
   const db = getDb();
 
   if (!opts.fresh) {
     // Count total ready test cases for this ticket
-    const totalReady = (db.prepare(
-      "SELECT COUNT(*) as c FROM test_cases WHERE ticket_ref = ? AND ready = 1"
-    ).get(ticketId) as { c: number }).c;
+    const totalReady = (
+      db
+        .prepare(
+          "SELECT COUNT(*) as c FROM test_cases WHERE ticket_ref = ? AND ready = 1",
+        )
+        .get(ticketId) as { c: number }
+    ).c;
 
     // Find the most recent pack for this ticket (today or still running)
-    const latestPack = db.prepare(
-      `SELECT h.run_pack_id,
+    const latestPack = db
+      .prepare(
+        `SELECT h.run_pack_id,
          COALESCE(e.entry_count, 0) as entry_count,
          COALESCE(e.pending, 0) as pending,
          COALESCE(e.claimed, 0) as claimed,
@@ -410,15 +477,25 @@ export function resolveRunPack(
        ) e ON e.run_pack_id = h.run_pack_id
        WHERE h.ticket_id = ? AND h.test_case_id = '__header__'
          AND date(h.created_at) = date('now')
-       ORDER BY h.created_at DESC LIMIT 1`
-    ).get(ticketId) as {
-      run_pack_id: string; entry_count: number;
-      pending: number; claimed: number; failed: number; passed: number;
-    } | undefined;
+       ORDER BY h.created_at DESC LIMIT 1`,
+      )
+      .get(ticketId) as
+      | {
+          run_pack_id: string;
+          entry_count: number;
+          pending: number;
+          claimed: number;
+          failed: number;
+          passed: number;
+        }
+      | undefined;
 
     if (latestPack) {
       // Resume if: has pending/claimed/failed entries, OR hasn't claimed all test cases yet
-      const hasWorkRemaining = latestPack.pending > 0 || latestPack.claimed > 0 || latestPack.failed > 0;
+      const hasWorkRemaining =
+        latestPack.pending > 0 ||
+        latestPack.claimed > 0 ||
+        latestPack.failed > 0;
       const hasUnclaimed = latestPack.entry_count < totalReady;
 
       if (hasWorkRemaining || hasUnclaimed) {
@@ -448,7 +525,7 @@ export function resolveRunPack(
 export function getRunPackEntries(runPackId: string): RunPackEntryRow[] {
   return getDb()
     .prepare(
-      "SELECT * FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id != '__header__' ORDER BY created_at"
+      "SELECT * FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id != '__header__' ORDER BY created_at",
     )
     .all(runPackId) as RunPackEntryRow[];
 }
@@ -476,7 +553,7 @@ export function getRunPacksByTicket(ticketId: string) {
        FROM run_pack_entries
        WHERE ticket_id = ? AND test_case_id != '__header__'
        GROUP BY run_pack_id
-       ORDER BY MIN(created_at) DESC`
+       ORDER BY MIN(created_at) DESC`,
     )
     .all(ticketId);
 }
@@ -499,7 +576,7 @@ export function getRunPackTicketIds() {
        FROM run_pack_entries
        WHERE test_case_id != '__header__'
        GROUP BY ticket_id
-       ORDER BY MAX(created_at) DESC`
+       ORDER BY MAX(created_at) DESC`,
     )
     .all();
 }
@@ -527,7 +604,7 @@ export function getRunPackEntriesWithTestCases(runPackId: string) {
        FROM run_pack_entries rpe
        JOIN test_cases tc ON rpe.test_case_id = tc.id
        WHERE rpe.run_pack_id = ?
-       ORDER BY tc.priority ASC, rpe.created_at ASC`
+       ORDER BY tc.priority ASC, rpe.created_at ASC`,
     )
     .all(runPackId);
 }
@@ -541,13 +618,19 @@ export function populateRunPack(
   runPackId: string,
   ticketId: string,
   status: "pending" | "blocked" | "skipped",
-  opts?: { runId?: string; sessionId?: string; reason?: string; layer?: string; runner?: string }
+  opts?: {
+    runId?: string;
+    sessionId?: string;
+    reason?: string;
+    layer?: string;
+    runner?: string;
+  },
 ): number {
   const db = getDb();
 
   const existingTcIds = db
     .prepare(
-      "SELECT test_case_id FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id != '__header__'"
+      "SELECT test_case_id FROM run_pack_entries WHERE run_pack_id = ? AND test_case_id != '__header__'",
     )
     .all(runPackId) as Array<{ test_case_id: string }>;
   const existingSet = new Set(existingTcIds.map((r) => r.test_case_id));
@@ -558,31 +641,42 @@ export function populateRunPack(
 
   const allReady = db
     .prepare(
-      `SELECT id FROM test_cases WHERE ticket_ref = ? AND ready = 1${layerFilter} ORDER BY priority ASC, created_at ASC`
+      `SELECT id FROM test_cases WHERE ticket_ref = ? AND ready = 1${layerFilter} ORDER BY priority ASC, created_at ASC`,
     )
     .all(...params) as Array<{ id: string }>;
 
   const header = db
-    .prepare("SELECT run_id FROM run_pack_entries WHERE run_pack_id = ? LIMIT 1")
+    .prepare(
+      "SELECT run_id FROM run_pack_entries WHERE run_pack_id = ? LIMIT 1",
+    )
     .get(runPackId) as { run_id: string } | undefined;
 
   let added = 0;
   const runner = opts?.runner ?? (opts?.layer === "api" ? "api" : null);
   const insert = db.prepare(
     `INSERT INTO run_pack_entries
-     (id, run_pack_id, ticket_id, run_id, session_id, test_case_id, fresh_or_existing, status, results, runner, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'fresh', ?, ?, ?, ${status !== "pending" ? "datetime('now')" : "NULL"})`
+     (id, run_pack_id, ticket_id, run_id, session_id, test_case_id, tc_title, fresh_or_existing, status, results, runner, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'fresh', ?, ?, ?, ${status !== "pending" ? "datetime('now')" : "NULL"})`,
   );
 
   const reason = opts?.reason ? JSON.stringify({ reason: opts.reason }) : null;
 
   for (const tc of allReady) {
     if (existingSet.has(tc.id)) continue;
+    const tcRow = db
+      .prepare("SELECT title FROM test_cases WHERE id = ?")
+      .get(tc.id) as { title: string } | undefined;
     insert.run(
-      uuid(), runPackId, ticketId,
+      uuid(),
+      runPackId,
+      ticketId,
       opts?.runId ?? header?.run_id ?? "",
       opts?.sessionId ?? null,
-      tc.id, status, reason, runner
+      tc.id,
+      tcRow?.title ?? null,
+      status,
+      reason,
+      runner,
     );
     added++;
   }
@@ -596,7 +690,7 @@ export function populateRunPack(
 export function releaseRunPackClaims(runPackId: string): number {
   const result = getDb()
     .prepare(
-      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL WHERE run_pack_id = ? AND status = 'claimed'"
+      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL WHERE run_pack_id = ? AND status = 'claimed'",
     )
     .run(runPackId);
 
@@ -609,7 +703,7 @@ export function releaseRunPackClaims(runPackId: string): number {
 export function retryEntry(entryId: string): boolean {
   const result = getDb()
     .prepare(
-      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL, completed_at = NULL, results = NULL, logs = NULL, observations = NULL, issues = NULL, artifacts = NULL WHERE id = ? AND test_case_id != '__header__'"
+      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL, completed_at = NULL, results = NULL, logs = NULL, observations = NULL, issues = NULL, artifacts = NULL WHERE id = ? AND test_case_id != '__header__'",
     )
     .run(entryId);
   return result.changes > 0;
@@ -623,7 +717,7 @@ export function retryByName(runPackId: string, name: string): number {
     .prepare(
       `UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL, completed_at = NULL, results = NULL, logs = NULL, observations = NULL, issues = NULL, artifacts = NULL
        WHERE run_pack_id = ? AND test_case_id != '__header__'
-       AND test_case_id IN (SELECT id FROM test_cases WHERE title LIKE ?)`
+       AND test_case_id IN (SELECT id FROM test_cases WHERE title LIKE ?)`,
     )
     .run(runPackId, `%${name}%`);
   return result.changes;
@@ -635,7 +729,7 @@ export function retryByName(runPackId: string, name: string): number {
 export function retryFailed(runPackId: string): number {
   const result = getDb()
     .prepare(
-      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL, completed_at = NULL, results = NULL, logs = NULL, observations = NULL, issues = NULL, artifacts = NULL WHERE run_pack_id = ? AND status IN ('failed', 'blocked') AND test_case_id != '__header__'"
+      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL, completed_at = NULL, results = NULL, logs = NULL, observations = NULL, issues = NULL, artifacts = NULL WHERE run_pack_id = ? AND status IN ('failed', 'blocked') AND test_case_id != '__header__'",
     )
     .run(runPackId);
   return result.changes;
@@ -647,7 +741,7 @@ export function retryFailed(runPackId: string): number {
 export function retryAll(runPackId: string): number {
   const result = getDb()
     .prepare(
-      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL, completed_at = NULL, results = NULL, logs = NULL, observations = NULL, issues = NULL, artifacts = NULL WHERE run_pack_id = ? AND test_case_id != '__header__'"
+      "UPDATE run_pack_entries SET status = 'pending', session_id = NULL, started_at = NULL, completed_at = NULL, results = NULL, logs = NULL, observations = NULL, issues = NULL, artifacts = NULL WHERE run_pack_id = ? AND test_case_id != '__header__'",
     )
     .run(runPackId);
   return result.changes;
