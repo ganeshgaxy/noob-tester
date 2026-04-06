@@ -1,5 +1,11 @@
 import type { Command } from "commander";
-import { createRun, resolveRun, updateRunPhase, completeRun, getRun } from "../../db/repositories/runs.js";
+import {
+  createRun,
+  resolveRun,
+  updateRunPhase,
+  completeRun,
+  getRun,
+} from "../../db/repositories/runs.js";
 import { getDb } from "../../db/client.js";
 
 export function registerRunCommands(program: Command): void {
@@ -8,17 +14,38 @@ export function registerRunCommands(program: Command): void {
   run
     .command("create")
     .description("Create a new test run")
-    .requiredOption("--input-type <type>", "Input type: ticket | confluence | text | file")
-    .requiredOption("--input-ref <ref>", "Input reference (ticket key, page id, text, path)")
+    .requiredOption(
+      "--input-type <type>",
+      "Input type: ticket | confluence | text | file",
+    )
+    .requiredOption(
+      "--input-ref <ref>",
+      "Input reference (ticket key, page id, text, path)",
+    )
     .option("--input-full <text>", "Full input text (defaults to input-ref)")
     .option("--target-url <url>", "Base URL of the application to test")
     .option("--repo <url...>", "GitLab repo URL(s) to analyze (repeatable)")
-    .option("--reuse-run <runId>", "Reuse analysis/plan from a prior run (skip Phase 1 & 2)")
+    .option(
+      "--reuse-run <runId>",
+      "Reuse analysis/plan from a prior run (skip Phase 1 & 2)",
+    )
     .option("--fresh", "Ignore all prior data, start from scratch")
-    .option("--force", "Override existing data — regenerate analysis/plan/testcases even if they exist for this ticket")
-    .option("--capture <types>", "Comma-separated capture types: screenshot,snapshot,video,har,console,trace (default: all)")
-    .option("--secret-target <name>", "Secret target name for login credentials")
-    .option("--secret-role <role>", "Secret role within the target (default: default)")
+    .option(
+      "--force",
+      "Override existing data — regenerate analysis/plan/testcases even if they exist for this ticket",
+    )
+    .option(
+      "--capture <types>",
+      "Comma-separated capture types: screenshot,snapshot,video,har,console,trace (default: all)",
+    )
+    .option(
+      "--secret-target <name>",
+      "Secret target name for login credentials",
+    )
+    .option(
+      "--secret-role <role>",
+      "Secret role within the target (default: default)",
+    )
     .option("--config <json>", "Extra config as JSON", "{}")
     .action((opts) => {
       const config = {
@@ -27,7 +54,9 @@ export function registerRunCommands(program: Command): void {
         reuseRunId: opts.reuseRun ?? null,
         fresh: opts.fresh ?? false,
         force: opts.force ?? false,
-        capture: opts.capture ? (opts.capture as string).split(",").map((s: string) => s.trim()) : undefined,
+        capture: opts.capture
+          ? (opts.capture as string).split(",").map((s: string) => s.trim())
+          : undefined,
         secretTarget: opts.secretTarget ?? undefined,
         secretRole: opts.secretRole ?? undefined,
         ...JSON.parse(opts.config),
@@ -37,7 +66,7 @@ export function registerRunCommands(program: Command): void {
         config,
         opts.inputType,
         opts.inputRef,
-        opts.inputFull ?? opts.inputRef
+        opts.inputFull ?? opts.inputRef,
       );
 
       // Link to prior run if reusing
@@ -72,8 +101,14 @@ export function registerRunCommands(program: Command): void {
   run
     .command("resolve")
     .description("Resume an existing running/pending run or create a new one")
-    .requiredOption("--input-type <type>", "Input type: ticket | confluence | text | file")
-    .requiredOption("--input-ref <ref>", "Input reference (ticket key, page id, text, path)")
+    .requiredOption(
+      "--input-type <type>",
+      "Input type: ticket | confluence | text | file",
+    )
+    .requiredOption(
+      "--input-ref <ref>",
+      "Input reference (ticket key, page id, text, path)",
+    )
     .option("--input-full <text>", "Full input text (defaults to input-ref)")
     .option("--target-url <url>", "Base URL of the application to test")
     .option("--repo <url...>", "GitLab repo URL(s) (repeatable)")
@@ -86,7 +121,9 @@ export function registerRunCommands(program: Command): void {
       const config = {
         targetUrl: opts.targetUrl,
         repos: opts.repo ?? [],
-        capture: opts.capture ? (opts.capture as string).split(",").map((s: string) => s.trim()) : undefined,
+        capture: opts.capture
+          ? (opts.capture as string).split(",").map((s: string) => s.trim())
+          : undefined,
         secretTarget: opts.secretTarget ?? undefined,
         secretRole: opts.secretRole ?? undefined,
         ...JSON.parse(opts.config),
@@ -97,7 +134,7 @@ export function registerRunCommands(program: Command): void {
         opts.inputType,
         opts.inputRef,
         opts.inputFull ?? opts.inputRef,
-        { fresh: opts.fresh }
+        { fresh: opts.fresh },
       );
 
       const result: Record<string, unknown> = { runId, resumed };
@@ -138,6 +175,6 @@ export function registerRunCommands(program: Command): void {
         console.error(`Run ${runId} not found`);
         process.exit(1);
       }
-      console.log(JSON.stringify(r, null, 2));
+      console.log(JSON.stringify(r));
     });
 }

@@ -10,14 +10,22 @@ import { updateEvidenceStats } from "../../db/repositories/resource-stats.js";
 export function registerRunArtifactCommands(program: Command): void {
   const ra = program
     .command("capture")
-    .description("Store per-action artifacts — snapshots, console logs, HAR, screenshots, network errors");
+    .description(
+      "Store per-action artifacts — snapshots, console logs, HAR, screenshots, network errors",
+    );
 
   ra.command("store")
     .description("Store an artifact for a run action")
     .requiredOption("--run <runId>", "Run ID")
-    .requiredOption("--type <type>", "Artifact type: snapshot | screenshot | console | har | video | trace | network_error")
+    .requiredOption(
+      "--type <type>",
+      "Artifact type: snapshot | screenshot | console | har | video | trace | network_error",
+    )
     .option("--file <path>", "File path to the artifact")
-    .option("--content <text>", "Inline content (for small data like console errors)")
+    .option(
+      "--content <text>",
+      "Inline content (for small data like console errors)",
+    )
     .option("--pack <runPackId>", "Run pack ID")
     .option("--entry <entryId>", "Run pack entry ID")
     .option("--session <sessionId>", "Session ID")
@@ -41,7 +49,9 @@ export function registerRunArtifactCommands(program: Command): void {
         pageUrl: opts.url,
         metadata: opts.metadata ? JSON.parse(opts.metadata) : undefined,
       });
-      try { updateEvidenceStats(); } catch {}
+      try {
+        updateEvidenceStats();
+      } catch {}
       console.log(JSON.stringify({ artifactId: id }));
     });
 
@@ -62,11 +72,16 @@ export function registerRunArtifactCommands(program: Command): void {
         process.exit(1);
       }
       if (opts.json) {
-        console.log(JSON.stringify(artifacts, null, 2));
+        console.log(JSON.stringify(artifacts));
       } else {
-        if (artifacts.length === 0) { console.log("No artifacts."); return; }
+        if (artifacts.length === 0) {
+          console.log("No artifacts.");
+          return;
+        }
         for (const a of artifacts) {
-          console.log(`  ${String(a.action_index).padStart(3)} ${a.artifact_type.padEnd(14)} ${a.page_url || ""} ${a.file_path || a.content?.slice(0, 50) || ""}`);
+          console.log(
+            `  ${String(a.action_index).padStart(3)} ${a.artifact_type.padEnd(14)} ${a.page_url || ""} ${a.file_path || a.content?.slice(0, 50) || ""}`,
+          );
         }
       }
     });

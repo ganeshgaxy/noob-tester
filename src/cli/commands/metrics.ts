@@ -4,16 +4,44 @@ import { getDb } from "../../db/client.js";
 
 // Cost per million tokens — from https://docs.anthropic.com/en/docs/about-claude/pricing
 // cache_read = 10% of input price, cache_create = 125% of input price
-const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheCreate: number }> = {
-  "claude-opus-4-6":    { input: 5,  output: 25, cacheRead: 0.5,  cacheCreate: 6.25 },
-  "claude-opus-4":      { input: 15, output: 75, cacheRead: 1.5,  cacheCreate: 18.75 },
-  "claude-sonnet-4-6":  { input: 3,  output: 15, cacheRead: 0.3,  cacheCreate: 3.75 },
-  "claude-sonnet-4":    { input: 3,  output: 15, cacheRead: 0.3,  cacheCreate: 3.75 },
-  "claude-haiku-4-5":   { input: 1,  output: 5,  cacheRead: 0.1,  cacheCreate: 1.25 },
+const MODEL_PRICING: Record<
+  string,
+  { input: number; output: number; cacheRead: number; cacheCreate: number }
+> = {
+  "claude-opus-4-6": {
+    input: 5,
+    output: 25,
+    cacheRead: 0.5,
+    cacheCreate: 6.25,
+  },
+  "claude-opus-4": {
+    input: 15,
+    output: 75,
+    cacheRead: 1.5,
+    cacheCreate: 18.75,
+  },
+  "claude-sonnet-4-6": {
+    input: 3,
+    output: 15,
+    cacheRead: 0.3,
+    cacheCreate: 3.75,
+  },
+  "claude-sonnet-4": {
+    input: 3,
+    output: 15,
+    cacheRead: 0.3,
+    cacheCreate: 3.75,
+  },
+  "claude-haiku-4-5": {
+    input: 1,
+    output: 5,
+    cacheRead: 0.1,
+    cacheCreate: 1.25,
+  },
   // Short aliases (default to latest)
-  opus:   { input: 5,  output: 25, cacheRead: 0.5,  cacheCreate: 6.25 },
-  sonnet: { input: 3,  output: 15, cacheRead: 0.3,  cacheCreate: 3.75 },
-  haiku:  { input: 1,  output: 5,  cacheRead: 0.1,  cacheCreate: 1.25 },
+  opus: { input: 5, output: 25, cacheRead: 0.5, cacheCreate: 6.25 },
+  sonnet: { input: 3, output: 15, cacheRead: 0.3, cacheCreate: 3.75 },
+  haiku: { input: 1, output: 5, cacheRead: 0.1, cacheCreate: 1.25 },
 };
 
 interface TokenBreakdown {
@@ -25,17 +53,23 @@ interface TokenBreakdown {
 }
 
 function lookupPricing(model: string) {
-  return MODEL_PRICING[model]
-    ?? Object.entries(MODEL_PRICING).find(([k]) => model.startsWith(k))?.[1]
-    ?? MODEL_PRICING.sonnet;
+  return (
+    MODEL_PRICING[model] ??
+    Object.entries(MODEL_PRICING).find(([k]) => model.startsWith(k))?.[1] ??
+    MODEL_PRICING.sonnet
+  );
 }
 
 function calculateCost(model: string, tokens: TokenBreakdown): number {
   const p = lookupPricing(model);
 
   // If we have any breakdown at all, use exact calculation
-  if (tokens.inputTokens != null || tokens.outputTokens != null
-    || tokens.cacheReadTokens != null || tokens.cacheCreateTokens != null) {
+  if (
+    tokens.inputTokens != null ||
+    tokens.outputTokens != null ||
+    tokens.cacheReadTokens != null ||
+    tokens.cacheCreateTokens != null
+  ) {
     const cost =
       ((tokens.inputTokens ?? 0) / 1_000_000) * p.input +
       ((tokens.outputTokens ?? 0) / 1_000_000) * p.output +
@@ -53,13 +87,19 @@ function calculateCost(model: string, tokens: TokenBreakdown): number {
 export function registerMetricsCommands(program: Command): void {
   const metrics = program
     .command("metrics")
-    .description("Track and query usage metrics (duration, tokens, tool calls, cost)");
+    .description(
+      "Track and query usage metrics (duration, tokens, tool calls, cost)",
+    );
 
   metrics
     .command("log <sessionId>")
     .description("Log a metric event for a session")
     .option("--duration <ms>", "Duration in milliseconds", parseInt)
-    .option("--tokens <n>", "Total token count (fallback when breakdown unavailable)", parseInt)
+    .option(
+      "--tokens <n>",
+      "Total token count (fallback when breakdown unavailable)",
+      parseInt,
+    )
     .option("--input-tokens <n>", "Non-cached input tokens", parseInt)
     .option("--output-tokens <n>", "Output tokens", parseInt)
     .option("--cache-read-tokens <n>", "Cache read (hit) tokens", parseInt)
@@ -67,7 +107,10 @@ export function registerMetricsCommands(program: Command): void {
     .option("--tools <n>", "Number of tool calls", parseInt)
     .option("--actions <n>", "Number of actions", parseInt)
     .option("--issues <n>", "Number of issues found", parseInt)
-    .option("--model <name>", "Model ID (e.g. claude-opus-4-6, claude-sonnet-4-6)")
+    .option(
+      "--model <name>",
+      "Model ID (e.g. claude-opus-4-6, claude-sonnet-4-6)",
+    )
     .action((sessionId, opts) => {
       const db = getDb();
       const sets: string[] = [];
@@ -95,9 +138,12 @@ export function registerMetricsCommands(program: Command): void {
       }
 
       // Total tokens: explicit value, or sum of all token types
-      const totalTokens = opts.tokens
-        ?? ((opts.inputTokens ?? 0) + (opts.outputTokens ?? 0)
-          + (opts.cacheReadTokens ?? 0) + (opts.cacheCreateTokens ?? 0));
+      const totalTokens =
+        opts.tokens ??
+        (opts.inputTokens ?? 0) +
+          (opts.outputTokens ?? 0) +
+          (opts.cacheReadTokens ?? 0) +
+          (opts.cacheCreateTokens ?? 0);
       if (totalTokens > 0) {
         sets.push("estimated_tokens = estimated_tokens + ?");
         params.push(totalTokens);
@@ -135,19 +181,26 @@ export function registerMetricsCommands(program: Command): void {
       }
 
       if (sets.length === 0) {
-        console.log(JSON.stringify({ updated: false, message: "No metrics provided" }));
+        console.log(
+          JSON.stringify({ updated: false, message: "No metrics provided" }),
+        );
         return;
       }
 
       params.push(sessionId);
-      db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+      db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(
+        ...params,
+      );
 
       const result: Record<string, unknown> = { updated: true };
       if (model && totalTokens > 0) {
         result.cost_usd = calculateCost(model, breakdown);
         result.model = model;
-        const hasBreakdown = opts.inputTokens || opts.outputTokens
-          || opts.cacheReadTokens || opts.cacheCreateTokens;
+        const hasBreakdown =
+          opts.inputTokens ||
+          opts.outputTokens ||
+          opts.cacheReadTokens ||
+          opts.cacheCreateTokens;
         result.cost_method = hasBreakdown ? "exact" : "estimated";
       }
       console.log(JSON.stringify(result));
@@ -164,7 +217,7 @@ export function registerMetricsCommands(program: Command): void {
                   total_duration_ms, estimated_tokens, input_tokens, output_tokens,
                   cache_read_tokens, cache_create_tokens, tool_calls, estimated_cost_usd,
                   created_at, last_heartbeat, ended_at
-           FROM sessions WHERE id = ?`
+           FROM sessions WHERE id = ?`,
         )
         .get(sessionId);
 
@@ -172,7 +225,7 @@ export function registerMetricsCommands(program: Command): void {
         console.error(`Session ${sessionId} not found`);
         process.exit(1);
       }
-      console.log(JSON.stringify(session, null, 2));
+      console.log(JSON.stringify(session));
     });
 
   metrics
@@ -194,7 +247,7 @@ export function registerMetricsCommands(program: Command): void {
              SUM(estimated_tokens) as tokens,
              SUM(tool_calls) as tools,
              SUM(estimated_cost_usd) as cost_usd
-           FROM sessions ${where}`
+           FROM sessions ${where}`,
         )
         .get() as Record<string, number>;
 
@@ -202,7 +255,9 @@ export function registerMetricsCommands(program: Command): void {
         db.prepare("SELECT COUNT(*) as c FROM runs").get() as { c: number }
       ).c;
       const testcases = (
-        db.prepare("SELECT COUNT(*) as c FROM test_cases").get() as { c: number }
+        db.prepare("SELECT COUNT(*) as c FROM test_cases").get() as {
+          c: number;
+        }
       ).c;
       const totalIssues = (
         db.prepare("SELECT COUNT(*) as c FROM issues").get() as { c: number }
@@ -215,23 +270,28 @@ export function registerMetricsCommands(program: Command): void {
         totalActions: agg.actions ?? 0,
         totalIssues: totalIssues,
         totalDurationMs: agg.duration_ms ?? 0,
-        totalDurationMin: Math.round((agg.duration_ms ?? 0) / 60000 * 10) / 10,
+        totalDurationMin:
+          Math.round(((agg.duration_ms ?? 0) / 60000) * 10) / 10,
         estimatedTokens: agg.tokens ?? 0,
         toolCalls: agg.tools ?? 0,
         estimatedCostUsd: Math.round((agg.cost_usd ?? 0) * 100) / 100,
       };
 
       if (opts.json) {
-        console.log(JSON.stringify(result, null, 2));
+        console.log(JSON.stringify(result));
         return;
       }
 
       // Token breakdown
-      const tokenBreakdown = db.prepare(`
+      const tokenBreakdown = db
+        .prepare(
+          `
         SELECT SUM(input_tokens) as input, SUM(output_tokens) as output,
                SUM(cache_read_tokens) as cache_read, SUM(cache_create_tokens) as cache_create
         FROM sessions ${where}
-      `).get() as Record<string, number>;
+      `,
+        )
+        .get() as Record<string, number>;
 
       Object.assign(result, {
         inputTokens: tokenBreakdown.input ?? 0,
@@ -241,7 +301,7 @@ export function registerMetricsCommands(program: Command): void {
       });
 
       if (opts.json) {
-        console.log(JSON.stringify(result, null, 2));
+        console.log(JSON.stringify(result));
         return;
       }
 
@@ -252,12 +312,25 @@ export function registerMetricsCommands(program: Command): void {
       console.log(`  Total Actions: ${result.totalActions}`);
       console.log(`  Total Issues:  ${result.totalIssues}`);
       console.log(`  Duration:      ${result.totalDurationMin} min`);
-      console.log(`  Tokens:        ${result.estimatedTokens.toLocaleString()}`);
-      if ((result as Record<string, number>).inputTokens > 0 || (result as Record<string, number>).outputTokens > 0) {
-        console.log(`    Input:       ${(result as Record<string, number>).inputTokens.toLocaleString()}`);
-        console.log(`    Output:      ${(result as Record<string, number>).outputTokens.toLocaleString()}`);
-        console.log(`    Cache Read:  ${(result as Record<string, number>).cacheReadTokens.toLocaleString()}`);
-        console.log(`    Cache Write: ${(result as Record<string, number>).cacheCreateTokens.toLocaleString()}`);
+      console.log(
+        `  Tokens:        ${result.estimatedTokens.toLocaleString()}`,
+      );
+      if (
+        (result as Record<string, number>).inputTokens > 0 ||
+        (result as Record<string, number>).outputTokens > 0
+      ) {
+        console.log(
+          `    Input:       ${(result as Record<string, number>).inputTokens.toLocaleString()}`,
+        );
+        console.log(
+          `    Output:      ${(result as Record<string, number>).outputTokens.toLocaleString()}`,
+        );
+        console.log(
+          `    Cache Read:  ${(result as Record<string, number>).cacheReadTokens.toLocaleString()}`,
+        );
+        console.log(
+          `    Cache Write: ${(result as Record<string, number>).cacheCreateTokens.toLocaleString()}`,
+        );
       }
       console.log(`  Tool Calls:    ${result.toolCalls}`);
       console.log(`  Est. Cost:     $${result.estimatedCostUsd.toFixed(2)}`);
@@ -271,24 +344,38 @@ export function registerMetricsCommands(program: Command): void {
       const db = getDb();
 
       const actionCount = (
-        db.prepare("SELECT COUNT(*) as c FROM action_log WHERE run_id = ?").get(runId) as { c: number }
+        db
+          .prepare("SELECT COUNT(*) as c FROM action_log WHERE run_id = ?")
+          .get(runId) as { c: number }
       ).c;
       const issueCount = (
-        db.prepare("SELECT COUNT(*) as c FROM issues WHERE run_id = ?").get(runId) as { c: number }
+        db
+          .prepare("SELECT COUNT(*) as c FROM issues WHERE run_id = ?")
+          .get(runId) as { c: number }
       ).c;
-      const totalDuration = (
-        db.prepare("SELECT SUM(duration_ms) as d FROM action_log WHERE run_id = ?").get(runId) as { d: number | null }
-      ).d ?? 0;
-      const totalTokens = (
-        db.prepare("SELECT SUM(tokens_used) as t FROM action_log WHERE run_id = ?").get(runId) as { t: number | null }
-      ).t ?? 0;
+      const totalDuration =
+        (
+          db
+            .prepare(
+              "SELECT SUM(duration_ms) as d FROM action_log WHERE run_id = ?",
+            )
+            .get(runId) as { d: number | null }
+        ).d ?? 0;
+      const totalTokens =
+        (
+          db
+            .prepare(
+              "SELECT SUM(tokens_used) as t FROM action_log WHERE run_id = ?",
+            )
+            .get(runId) as { t: number | null }
+        ).t ?? 0;
 
       const byPhase = db
         .prepare(
           `SELECT phase, COUNT(*) as actions,
                   SUM(duration_ms) as duration_ms,
                   SUM(tokens_used) as tokens
-           FROM action_log WHERE run_id = ? GROUP BY phase ORDER BY phase`
+           FROM action_log WHERE run_id = ? GROUP BY phase ORDER BY phase`,
         )
         .all(runId);
 
@@ -297,19 +384,21 @@ export function registerMetricsCommands(program: Command): void {
           `SELECT agent_name, COUNT(*) as actions,
                   SUM(duration_ms) as duration_ms,
                   SUM(tokens_used) as tokens
-           FROM action_log WHERE run_id = ? GROUP BY agent_name`
+           FROM action_log WHERE run_id = ? GROUP BY agent_name`,
         )
         .all(runId);
 
-      console.log(JSON.stringify({
-        runId,
-        actions: actionCount,
-        issues: issueCount,
-        totalDurationMs: totalDuration,
-        totalDurationMin: Math.round(totalDuration / 60000 * 10) / 10,
-        estimatedTokens: totalTokens,
-        byPhase,
-        byAgent,
-      }, null, 2));
+      console.log(
+        JSON.stringify({
+          runId,
+          actions: actionCount,
+          issues: issueCount,
+          totalDurationMs: totalDuration,
+          totalDurationMin: Math.round((totalDuration / 60000) * 10) / 10,
+          estimatedTokens: totalTokens,
+          byPhase,
+          byAgent,
+        }),
+      );
     });
 }

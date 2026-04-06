@@ -14,7 +14,9 @@ import {
 export function registerVisualCommands(program: Command): void {
   const vis = program
     .command("visual")
-    .description("Visual regression testing — baselines, comparisons, and diff review");
+    .description(
+      "Visual regression testing — baselines, comparisons, and diff review",
+    );
 
   vis
     .command("baseline")
@@ -31,14 +33,16 @@ export function registerVisualCommands(program: Command): void {
         opts.url,
         opts.viewport ?? "1280x720",
         opts.screenshot,
-        { runId: opts.run, entryId: opts.entry }
+        { runId: opts.run, entryId: opts.entry },
       );
       console.log(JSON.stringify({ baselineId: id }));
     });
 
   vis
     .command("compare")
-    .description("Compare a screenshot against the baseline (hash-based quick check)")
+    .description(
+      "Compare a screenshot against the baseline (hash-based quick check)",
+    )
     .requiredOption("--page <pageId>", "UI map page ID")
     .requiredOption("--screenshot <path>", "Path to current screenshot")
     .option("--viewport <WxH>", "Viewport size (default: 1280x720)")
@@ -46,7 +50,7 @@ export function registerVisualCommands(program: Command): void {
       const result = compareAgainstBaseline(
         opts.page,
         opts.screenshot,
-        opts.viewport ?? "1280x720"
+        opts.viewport ?? "1280x720",
       );
       console.log(JSON.stringify(result));
     });
@@ -58,7 +62,11 @@ export function registerVisualCommands(program: Command): void {
     .requiredOption("--run <runId>", "Run ID")
     .requiredOption("--current <path>", "Path to current screenshot")
     .option("--entry <entryId>", "Run pack entry ID")
-    .option("--score <n>", "Diff score 0.0-1.0 (higher = more different)", parseFloat)
+    .option(
+      "--score <n>",
+      "Diff score 0.0-1.0 (higher = more different)",
+      parseFloat,
+    )
     .option("--description <text>", "Description of visual differences")
     .option("--regression", "Mark as a visual regression")
     .action((opts) => {
@@ -85,7 +93,7 @@ export function registerVisualCommands(program: Command): void {
           : getUnreviewedDiffs();
 
       if (opts.json) {
-        console.log(JSON.stringify(diffs, null, 2));
+        console.log(JSON.stringify(diffs));
         return;
       }
 
@@ -94,14 +102,20 @@ export function registerVisualCommands(program: Command): void {
         return;
       }
 
-      console.log(chalk.bold(`\nVisual Diffs (${(diffs as unknown[]).length}):\n`));
+      console.log(
+        chalk.bold(`\nVisual Diffs (${(diffs as unknown[]).length}):\n`),
+      );
       for (const d of diffs as Array<Record<string, unknown>>) {
         const regTag = d.is_regression ? chalk.red(" [REGRESSION]") : "";
-        const reviewTag = d.reviewed ? chalk.green(" ✓reviewed") : chalk.yellow(" pending");
-        const scoreTag = d.diff_score != null ? chalk.dim(` (${d.diff_score})`) : "";
+        const reviewTag = d.reviewed
+          ? chalk.green(" ✓reviewed")
+          : chalk.yellow(" pending");
+        const scoreTag =
+          d.diff_score != null ? chalk.dim(` (${d.diff_score})`) : "";
         const url = d.url_pattern ?? "";
         console.log(`  ${url}${regTag}${reviewTag}${scoreTag}`);
-        if (d.description) console.log(`    ${chalk.dim(String(d.description).slice(0, 120))}`);
+        if (d.description)
+          console.log(`    ${chalk.dim(String(d.description).slice(0, 120))}`);
       }
       console.log();
     });
@@ -129,7 +143,12 @@ export function registerVisualCommands(program: Command): void {
         process.exit(1);
       }
       markDiffReviewed(diffId, opts.regression ?? false);
-      console.log(JSON.stringify({ reviewed: true, isRegression: opts.regression ?? false }));
+      console.log(
+        JSON.stringify({
+          reviewed: true,
+          isRegression: opts.regression ?? false,
+        }),
+      );
     });
 
   vis
@@ -141,16 +160,20 @@ export function registerVisualCommands(program: Command): void {
       const stats = getVisualRegressionStats(opts.run);
 
       if (opts.json) {
-        console.log(JSON.stringify(stats, null, 2));
+        console.log(JSON.stringify(stats));
         return;
       }
 
       console.log(chalk.bold("\nVisual Regression Stats:\n"));
       console.log(`  Active baselines:  ${stats.totalBaselines}`);
       console.log(`  Total diffs:       ${stats.totalDiffs}`);
-      console.log(`  Regressions:       ${stats.regressions > 0 ? chalk.red(String(stats.regressions)) : chalk.green("0")}`);
+      console.log(
+        `  Regressions:       ${stats.regressions > 0 ? chalk.red(String(stats.regressions)) : chalk.green("0")}`,
+      );
       console.log(`  Reviewed:          ${stats.reviewed}`);
-      console.log(`  Unreviewed:        ${stats.unreviewed > 0 ? chalk.yellow(String(stats.unreviewed)) : chalk.green("0")}`);
+      console.log(
+        `  Unreviewed:        ${stats.unreviewed > 0 ? chalk.yellow(String(stats.unreviewed)) : chalk.green("0")}`,
+      );
       console.log();
     });
 }

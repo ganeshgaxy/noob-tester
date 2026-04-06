@@ -26,7 +26,10 @@ export function registerTestCaseCommands(program: Command): void {
   tc.command("create <runId>")
     .description("Create a test case")
     .requiredOption("--ticket <ref>", "Ticket reference (e.g. PROJ-123)")
-    .requiredOption("--type <type>", "direct_functional | impact_regression | general_regression")
+    .requiredOption(
+      "--type <type>",
+      "direct_functional | impact_regression | general_regression",
+    )
     .requiredOption("--format <fmt>", "bdd | traditional")
     .requiredOption("--title <text>", "Test case title")
     .option("--description <text>", "Description")
@@ -48,7 +51,10 @@ export function registerTestCaseCommands(program: Command): void {
     .option("--code-context <text>", "Relevant code context")
     .option("--ready", "Mark test case as ready for execution (default: draft)")
     .option("--plan-step <id>", "Link to a plan step ID")
-    .option("--layer <layer>", "Test layer: ui | api | ui_api | database | ai | unit | other (default: ui)")
+    .option(
+      "--layer <layer>",
+      "Test layer: ui | api | ui_api | database | ai | unit | other (default: ui)",
+    )
     .action((runId, opts) => {
       const id = createTestCase({
         runId,
@@ -58,7 +64,9 @@ export function registerTestCaseCommands(program: Command): void {
         format: opts.format,
         title: opts.title,
         description: opts.description,
-        preconditions: opts.preconditions ? JSON.parse(opts.preconditions) : undefined,
+        preconditions: opts.preconditions
+          ? JSON.parse(opts.preconditions)
+          : undefined,
         labels: opts.labels ? JSON.parse(opts.labels) : undefined,
         bddFeature: opts.bddFeature,
         bddScenario: opts.bddScenario,
@@ -67,7 +75,9 @@ export function registerTestCaseCommands(program: Command): void {
         bddThen: opts.bddThen ? JSON.parse(opts.bddThen) : undefined,
         tradSteps: opts.tradSteps ? JSON.parse(opts.tradSteps) : undefined,
         tradExpected: opts.tradExpected,
-        impactedFiles: opts.impactedFiles ? JSON.parse(opts.impactedFiles) : undefined,
+        impactedFiles: opts.impactedFiles
+          ? JSON.parse(opts.impactedFiles)
+          : undefined,
         relatedMr: opts.relatedMr,
         codeContext: opts.codeContext,
         ready: opts.ready ?? false,
@@ -78,14 +88,22 @@ export function registerTestCaseCommands(program: Command): void {
     });
 
   tc.command("claim <ticketRef> <sessionId>")
-    .description("Claim the next available test case for execution (priority order)")
+    .description(
+      "Claim the next available test case for execution (priority order)",
+    )
     .option("--fresh", "Also claim previously completed cases for re-execution")
     .action((ticketRef, sessionId, opts) => {
-      const claimed = claimNextTestCase(ticketRef, sessionId, opts.fresh ?? false);
+      const claimed = claimNextTestCase(
+        ticketRef,
+        sessionId,
+        opts.fresh ?? false,
+      );
       if (!claimed) {
-        console.log(JSON.stringify({ claimed: null, message: "No test cases available" }));
+        console.log(
+          JSON.stringify({ claimed: null, message: "No test cases available" }),
+        );
       } else {
-        console.log(JSON.stringify(claimed, null, 2));
+        console.log(JSON.stringify(claimed));
       }
     });
 
@@ -131,7 +149,7 @@ export function registerTestCaseCommands(program: Command): void {
       }
 
       if (opts.json) {
-        console.log(JSON.stringify(cases, null, 2));
+        console.log(JSON.stringify(cases));
         return;
       }
 
@@ -140,7 +158,11 @@ export function registerTestCaseCommands(program: Command): void {
         return;
       }
 
-      const typePriority = { direct_functional: 1, impact_regression: 2, general_regression: 3 };
+      const typePriority = {
+        direct_functional: 1,
+        impact_regression: 2,
+        general_regression: 3,
+      };
       console.log(chalk.bold("\nTest Cases:\n"));
 
       let currentType = "";
@@ -165,13 +187,18 @@ export function registerTestCaseCommands(program: Command): void {
                 ? chalk.yellow
                 : chalk.dim;
 
-        const formatTag = tc.format === "bdd" ? chalk.cyan("[BDD]") : chalk.magenta("[TRAD]");
+        const formatTag =
+          tc.format === "bdd" ? chalk.cyan("[BDD]") : chalk.magenta("[TRAD]");
 
         console.log(
-          `    ${statusColor((tc.status as string).padEnd(8))} ${formatTag} ${tc.title}`
+          `    ${statusColor((tc.status as string).padEnd(8))} ${formatTag} ${tc.title}`,
         );
         if (tc.claimed_by) {
-          console.log(chalk.dim(`      claimed by: ${(tc.claimed_by as string).slice(0, 8)}`));
+          console.log(
+            chalk.dim(
+              `      claimed by: ${(tc.claimed_by as string).slice(0, 8)}`,
+            ),
+          );
         }
       }
       console.log();
@@ -181,7 +208,7 @@ export function registerTestCaseCommands(program: Command): void {
     .description("Show test case statistics for a ticket")
     .action((ticketRef) => {
       const stats = getTestCaseStats(ticketRef);
-      console.log(JSON.stringify(stats, null, 2));
+      console.log(JSON.stringify(stats));
     });
 
   // ── Ready / Draft ──

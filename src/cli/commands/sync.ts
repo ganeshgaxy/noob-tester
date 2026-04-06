@@ -325,7 +325,7 @@ export function registerSyncCommands(program: Command): void {
 
         if (opts.dryRun) {
           if (opts.json) {
-            console.log(JSON.stringify(summary, null, 2));
+            console.log(JSON.stringify(summary));
           } else {
             console.log(chalk.blue("Dry run - would sync (latest only):"));
             console.log(`  Runs:            ${summary.counts.runs}`);
@@ -399,7 +399,7 @@ export function registerSyncCommands(program: Command): void {
         );
 
         if (opts.json) {
-          console.log(JSON.stringify(result, null, 2));
+          console.log(JSON.stringify(result));
         } else {
           console.log(chalk.green("✓ Sync complete"));
           if (result.featureCreated) {
@@ -482,7 +482,7 @@ export function registerSyncCommands(program: Command): void {
       };
 
       if (opts.json) {
-        console.log(JSON.stringify(status, null, 2));
+        console.log(JSON.stringify(status));
       } else {
         console.log(chalk.bold(`Sync Status (Latest Only): ${opts.ticket}\n`));
         console.log(`  Runs:            ${status.counts.runs}`);

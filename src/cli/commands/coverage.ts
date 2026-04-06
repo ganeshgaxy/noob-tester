@@ -12,21 +12,27 @@ import { updateCoverageStats } from "../../db/repositories/resource-stats.js";
 export function registerCoverageCommands(program: Command): void {
   const cov = program
     .command("coverage")
-    .description("Code-level coverage mapping — link test cases to source files, find gaps");
+    .description(
+      "Code-level coverage mapping — link test cases to source files, find gaps",
+    );
 
   cov
     .command("build <repoName>")
-    .description("Build coverage map from test case impacted_files + import graph expansion")
+    .description(
+      "Build coverage map from test case impacted_files + import graph expansion",
+    )
     .action((repoName) => {
       const result = populateCoverageFromTestCases(repoName);
-      try { updateCoverageStats(repoName); } catch {}
+      try {
+        updateCoverageStats(repoName);
+      } catch {}
       console.log(
         JSON.stringify({
           repo: repoName,
           directLinks: result.directLinks,
           expandedLinks: result.expandedLinks,
           totalLinks: result.directLinks + result.expandedLinks,
-        })
+        }),
       );
     });
 
@@ -38,30 +44,27 @@ export function registerCoverageCommands(program: Command): void {
       const stats = getCoverageStats(repoName);
 
       if (opts.json) {
-        console.log(JSON.stringify(stats, null, 2));
+        console.log(JSON.stringify(stats));
         return;
       }
 
       console.log(chalk.bold("\nCoverage Stats: ") + repoName);
+      console.log(`  Total files:    ${stats.totalFiles}`);
       console.log(
-        `  Total files:    ${stats.totalFiles}`
+        `  Covered:        ${chalk.green(String(stats.coveredFiles))}`,
       );
       console.log(
-        `  Covered:        ${chalk.green(String(stats.coveredFiles))}`
+        `  Uncovered:      ${chalk.red(String(stats.uncoveredFiles))}`,
       );
-      console.log(
-        `  Uncovered:      ${chalk.red(String(stats.uncoveredFiles))}`
-      );
-      const covColor = stats.coveragePercent >= 70 ? chalk.green : stats.coveragePercent >= 40 ? chalk.yellow : chalk.red;
-      console.log(
-        `  Coverage:       ${covColor(`${stats.coveragePercent}%`)}`
-      );
-      console.log(
-        `  Direct links:   ${stats.directLinks}`
-      );
-      console.log(
-        `  Expanded links: ${stats.expandedLinks}`
-      );
+      const covColor =
+        stats.coveragePercent >= 70
+          ? chalk.green
+          : stats.coveragePercent >= 40
+            ? chalk.yellow
+            : chalk.red;
+      console.log(`  Coverage:       ${covColor(`${stats.coveragePercent}%`)}`);
+      console.log(`  Direct links:   ${stats.directLinks}`);
+      console.log(`  Expanded links: ${stats.expandedLinks}`);
       console.log();
     });
 
@@ -75,7 +78,7 @@ export function registerCoverageCommands(program: Command): void {
       if (opts.limit) files = files.slice(0, opts.limit);
 
       if (opts.json) {
-        console.log(JSON.stringify(files, null, 2));
+        console.log(JSON.stringify(files));
         return;
       }
 
@@ -103,7 +106,7 @@ export function registerCoverageCommands(program: Command): void {
       const links = getCoverageByFile(repoName, filePath);
 
       if (opts.json) {
-        console.log(JSON.stringify(links, null, 2));
+        console.log(JSON.stringify(links));
         return;
       }
 
@@ -115,7 +118,9 @@ export function registerCoverageCommands(program: Command): void {
       console.log(chalk.bold(`\nTest cases covering ${filePath}:\n`));
       for (const l of links) {
         const confTag =
-          l.confidence < 1.0 ? chalk.dim(` (${l.link_type}, ${Math.round(l.confidence * 100)}%)`) : "";
+          l.confidence < 1.0
+            ? chalk.dim(` (${l.link_type}, ${Math.round(l.confidence * 100)}%)`)
+            : "";
         console.log(`  ${chalk.green("✓")} ${l.title} [${l.type}]${confTag}`);
       }
       console.log();
@@ -123,7 +128,9 @@ export function registerCoverageCommands(program: Command): void {
 
   cov
     .command("clear <repoName>")
-    .description("Clear coverage map for a repo (rebuild with 'coverage build')")
+    .description(
+      "Clear coverage map for a repo (rebuild with 'coverage build')",
+    )
     .action((repoName) => {
       const deleted = clearCoverageMap(repoName);
       console.log(JSON.stringify({ cleared: deleted }));

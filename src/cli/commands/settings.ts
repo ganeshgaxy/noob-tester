@@ -18,9 +18,14 @@ export function registerSettingsCommands(program: Command): void {
     .command("set <key> <value>")
     .description("Set a setting value")
     .action((key, value) => {
-      if (key === "repo_provider" && !VALID_REPO_PROVIDERS.includes(value.toLowerCase())) {
+      if (
+        key === "repo_provider" &&
+        !VALID_REPO_PROVIDERS.includes(value.toLowerCase())
+      ) {
         console.error(
-          chalk.red(`Invalid repo provider: ${value}. Must be one of: ${VALID_REPO_PROVIDERS.join(", ")}`)
+          chalk.red(
+            `Invalid repo provider: ${value}. Must be one of: ${VALID_REPO_PROVIDERS.join(", ")}`,
+          ),
         );
         process.exit(1);
       }
@@ -47,7 +52,7 @@ export function registerSettingsCommands(program: Command): void {
     .action((opts) => {
       const all = listSettings();
       if (opts.json) {
-        console.log(JSON.stringify(all, null, 2));
+        console.log(JSON.stringify(all));
         return;
       }
       if (all.length === 0) {

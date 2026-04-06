@@ -13,7 +13,9 @@ import {
 export function registerA11yCommands(program: Command): void {
   const a11y = program
     .command("a11y")
-    .description("Accessibility testing — store axe-core results, track WCAG violations");
+    .description(
+      "Accessibility testing — store axe-core results, track WCAG violations",
+    );
 
   a11y
     .command("scan <runId>")
@@ -99,7 +101,7 @@ export function registerA11yCommands(program: Command): void {
           : getA11yByPage(opts.page);
 
       if (opts.json) {
-        console.log(JSON.stringify(issues, null, 2));
+        console.log(JSON.stringify(issues));
         return;
       }
 
@@ -121,14 +123,14 @@ export function registerA11yCommands(program: Command): void {
       for (const issue of issues) {
         console.log(
           `  ${impactColor(issue.impact)(issue.impact.padEnd(10))} ` +
-            `${chalk.bold(issue.rule_id)} — ${issue.description}`
+            `${chalk.bold(issue.rule_id)} — ${issue.description}`,
         );
         if (issue.selector) {
           console.log(`    ${chalk.dim("Selector:")} ${issue.selector}`);
         }
         if (issue.wcag_criteria) {
           console.log(
-            `    ${chalk.dim("WCAG:")} ${issue.wcag_criteria} (Level ${issue.wcag_level ?? "?"})`
+            `    ${chalk.dim("WCAG:")} ${issue.wcag_criteria} (Level ${issue.wcag_level ?? "?"})`,
           );
         }
       }
@@ -143,7 +145,7 @@ export function registerA11yCommands(program: Command): void {
       const summary = getA11ySummary(runId);
 
       if (opts.json) {
-        console.log(JSON.stringify(summary, null, 2));
+        console.log(JSON.stringify(summary));
         return;
       }
 

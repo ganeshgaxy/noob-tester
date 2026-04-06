@@ -23,7 +23,15 @@ noob-tester rca clear --pack <PACK_ID>
 
 ## 3. Classify Each Failure
 
-For each failed entry:
+For each failed entry, capture these variables for later use in Step 4b (issue flagging):
+
+```bash
+TC_TITLE=$(echo "$ENTRY" | jq -r '.tc_title')
+ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
+TC_ID=$(echo "$ENTRY" | jq -r '.test_case_id')
+```
+
+Then classify:
 
 1. **Read artifacts** — `noob-tester capture list --entry <ENTRY_ID> --json` → read screenshots, console, HAR
 2. **Check patterns** — `noob-tester query patterns --json`
@@ -63,6 +71,76 @@ noob-tester rca save --pack <PACK_ID> --entry <ENTRY_ID> --testcase <TC_ID> \
   --classification <type> --confidence <0.0-1.0> \
   --cause "Why it failed" --evidence "What was examined" --action <action>
 ```
+
+## 4b. Flag Issue (if actual_bug)
+
+**If classification is `actual_bug`, flag a noob-tester issue with ALL captured artifacts, maps, and evidence:**
+
+```bash
+if [ "$CLASSIFICATION" = "actual_bug" ]; then
+  # Get the run ID (from runpack or session context)
+  RUN_ID=$(noob-tester runpack list --pack <PACK_ID> --json | jq -r '.[0].run_id // empty')
+  if [ -z "$RUN_ID" ]; then
+    RUN_ID=$(<run_id_from_init>)  # Use saved RUN_ID from init
+  fi
+
+  # Get all captures for this entry (screenshot, console, HAR, snapshot)
+  CAPTURES=$(noob-tester capture list --entry <ENTRY_ID> --json)
+
+  # Extract file paths
+  SCREENSHOT=$(echo "$CAPTURES" | jq -r '.[] | select(.type == "screenshot") | .path // empty' | head -1)
+  CONSOLE=$(echo "$CAPTURES" | jq -r '.[] | select(.type == "console") | .content // empty' | head -1)
+  HAR=$(echo "$CAPTURES" | jq -r '.[] | select(.type == "har") | .path // empty' | head -1)
+  SNAPSHOT=$(echo "$CAPTURES" | jq -r '.[] | select(.type == "snapshot") | .path // empty' | head -1)
+
+  # Get location (URL) from latest capture
+  LOCATION=$(echo "$CAPTURES" | jq -r '.[-1].url // empty')
+
+  # Get map ID if it was used during capture
+  MAP_ID=$(echo "$CAPTURES" | jq -r '.[0].map_id // empty' | head -1)
+
+  # Build description with full RCA context
+  DESCRIPTION="RCA Classification: actual_bug
+Confidence: ${CONFIDENCE}%
+
+Root Cause: $CAUSE
+
+Evidence Examined: $EVIDENCE
+
+Test Case: $TC_TITLE
+Artifacts: screenshot, snapshot, console, network"
+
+  if [ -n "$MAP_ID" ]; then
+    DESCRIPTION="$DESCRIPTION
+UI Map ID: $MAP_ID"
+  fi
+
+  if [ -n "$SNAPSHOT" ]; then
+    DESCRIPTION="$DESCRIPTION
+Snapshot: $SNAPSHOT"
+  fi
+
+  # Flag the issue with all artifacts
+  noob-tester log issue $RUN_ID \
+    --category functional --severity high \
+    --title "[Actual Bug RCA] $CAUSE" \
+    --description "$DESCRIPTION" \
+    --location "$LOCATION" \
+    --screenshot "$SCREENSHOT" \
+    --console-log "$CONSOLE" \
+    --network-data "$HAR"
+
+  echo "✓ Issue flagged with RUN_ID=$RUN_ID, ENTRY_ID=$ENTRY_ID"
+fi
+```
+
+**Important Guidelines:**
+
+- **Only execute when `$CLASSIFICATION == "actual_bug"`** — skip for env_issue, flaky, timeout, etc.
+- **Artifacts must be from the failed run** — `capture list --entry` ensures you get the right captures
+- **Include map ID if available** — it links the issue to the UI elements involved
+- **Console and HAR are optional** — only include if they exist
+- **Screenshot is critical** — always include for visual debugging
 
 ## 5. Summary
 

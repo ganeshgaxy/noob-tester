@@ -11,20 +11,32 @@ import {
 } from "../../db/repositories/sessions.js";
 
 export function registerSessionCommands(program: Command): void {
-  const session = program.command("session").description("Manage active testing sessions");
+  const session = program
+    .command("session")
+    .description("Manage active testing sessions");
 
   session
     .command("start")
     .description("Register a new active session")
     .option("--task <text>", "Summary of what this session is testing")
-    .option("--labels <labels>", "Comma-separated labels (e.g. analyze,testcase)")
-    .option("--tickets <refs>", "Comma-separated ticket refs (e.g. PROJ-123,PROJ-456)")
+    .option(
+      "--labels <labels>",
+      "Comma-separated labels (e.g. analyze,testcase)",
+    )
+    .option(
+      "--tickets <refs>",
+      "Comma-separated ticket refs (e.g. PROJ-123,PROJ-456)",
+    )
     .option("--metadata <json>", "Extra metadata as JSON")
     .action((opts) => {
       const id = createSession({
         taskSummary: opts.task,
-        labels: opts.labels ? (opts.labels as string).split(",").map((s: string) => s.trim()) : undefined,
-        ticketRefs: opts.tickets ? (opts.tickets as string).split(",").map((s: string) => s.trim()) : undefined,
+        labels: opts.labels
+          ? (opts.labels as string).split(",").map((s: string) => s.trim())
+          : undefined,
+        ticketRefs: opts.tickets
+          ? (opts.tickets as string).split(",").map((s: string) => s.trim())
+          : undefined,
         metadata: opts.metadata ? JSON.parse(opts.metadata) : undefined,
       });
       console.log(JSON.stringify({ sessionId: id }));
@@ -36,15 +48,25 @@ export function registerSessionCommands(program: Command): void {
     .option("--run-id <id>", "Current run ID")
     .option("--phase <n>", "Current phase", parseInt)
     .option("--task <text>", "Update task summary")
-    .option("--labels <labels>", "Comma-separated labels (e.g. analyze,explore)")
-    .option("--tickets <refs>", "Comma-separated ticket refs to add (e.g. PROJ-789)")
+    .option(
+      "--labels <labels>",
+      "Comma-separated labels (e.g. analyze,explore)",
+    )
+    .option(
+      "--tickets <refs>",
+      "Comma-separated ticket refs to add (e.g. PROJ-789)",
+    )
     .action((sessionId, opts) => {
       heartbeatSession(sessionId, {
         runId: opts.runId,
         phase: opts.phase,
         taskSummary: opts.task,
-        labels: opts.labels ? (opts.labels as string).split(",").map((s: string) => s.trim()) : undefined,
-        ticketRefs: opts.tickets ? (opts.tickets as string).split(",").map((s: string) => s.trim()) : undefined,
+        labels: opts.labels
+          ? (opts.labels as string).split(",").map((s: string) => s.trim())
+          : undefined,
+        ticketRefs: opts.tickets
+          ? (opts.tickets as string).split(",").map((s: string) => s.trim())
+          : undefined,
       });
       console.log(JSON.stringify({ status: "ok" }));
     });
@@ -67,7 +89,7 @@ export function registerSessionCommands(program: Command): void {
         console.error(`Session ${sessionId} not found`);
         process.exit(1);
       }
-      console.log(JSON.stringify(s, null, 2));
+      console.log(JSON.stringify(s));
     });
 
   session
@@ -91,7 +113,7 @@ export function registerSessionCommands(program: Command): void {
       });
 
       if (opts.json) {
-        console.log(JSON.stringify(sessions, null, 2));
+        console.log(JSON.stringify(sessions));
         return;
       }
 
@@ -119,10 +141,10 @@ export function registerSessionCommands(program: Command): void {
 
         console.log(
           `  ${statusColor(`[${s.status.toUpperCase().padEnd(9)}]`)} ` +
-          `${chalk.cyan(s.id.slice(0, 8))} ` +
-          `${phaseStr} ` +
-          `${task} ` +
-          `${chalk.dim(`heartbeat: ${heartbeat}`)}`
+            `${chalk.cyan(s.id.slice(0, 8))} ` +
+            `${phaseStr} ` +
+            `${task} ` +
+            `${chalk.dim(`heartbeat: ${heartbeat}`)}`,
         );
 
         if (s.current_run_id) {

@@ -21,11 +21,15 @@ import {
 export function registerSecretsCommands(program: Command): void {
   const secrets = program
     .command("secrets")
-    .description("Manage credentials scoped to targets (environments/apps) and roles");
+    .description(
+      "Manage credentials scoped to targets (environments/apps) and roles",
+    );
 
   // ── Target management ──
 
-  const target = secrets.command("target").description("Manage targets (environments, apps, tenants)");
+  const target = secrets
+    .command("target")
+    .description("Manage targets (environments, apps, tenants)");
 
   target
     .command("add <name>")
@@ -43,25 +47,34 @@ export function registerSecretsCommands(program: Command): void {
     .option("--json", "Output as JSON")
     .action((opts) => {
       const targets = listTargets() as Array<{
-        name: string; url: string | null; description: string | null;
+        name: string;
+        url: string | null;
+        description: string | null;
       }>;
 
       if (opts.json) {
-        console.log(JSON.stringify(targets, null, 2));
+        console.log(JSON.stringify(targets));
         return;
       }
 
       if (targets.length === 0) {
-        console.log(chalk.dim("No targets. Add one: noob-tester secrets target add <name> --url <url>"));
+        console.log(
+          chalk.dim(
+            "No targets. Add one: noob-tester secrets target add <name> --url <url>",
+          ),
+        );
         return;
       }
 
       console.log(chalk.bold("\n  Targets\n"));
       for (const t of targets) {
         const roles = getRolesForTarget(t.name);
-        console.log(`  ${chalk.cyan.bold(t.name)} ${chalk.dim(t.url ?? "no url")}`);
+        console.log(
+          `  ${chalk.cyan.bold(t.name)} ${chalk.dim(t.url ?? "no url")}`,
+        );
         if (t.description) console.log(chalk.dim(`    ${t.description}`));
-        if (roles.length > 0) console.log(chalk.dim(`    roles: ${roles.join(", ")}`));
+        if (roles.length > 0)
+          console.log(chalk.dim(`    roles: ${roles.join(", ")}`));
       }
       console.log();
     });
@@ -72,7 +85,11 @@ export function registerSecretsCommands(program: Command): void {
     .option("--yes", "Skip confirmation")
     .action((name, opts) => {
       if (!opts.yes) {
-        console.log(chalk.yellow(`This will delete target "${name}" and all its secrets. Run with --yes.`));
+        console.log(
+          chalk.yellow(
+            `This will delete target "${name}" and all its secrets. Run with --yes.`,
+          ),
+        );
         return;
       }
       const ok = deleteTarget(name);
@@ -83,12 +100,16 @@ export function registerSecretsCommands(program: Command): void {
 
   secrets
     .command("set <key> <value>")
-    .description("Set a secret. Value can be literal, env:VAR, or op:vault/item/field")
+    .description(
+      "Set a secret. Value can be literal, env:VAR, or op:vault/item/field",
+    )
     .requiredOption("-t, --target <name>", "Target name")
     .option("-r, --role <role>", "Role name", "default")
     .action((key, value, opts) => {
       setSecret(opts.target, opts.role, key, value);
-      console.log(JSON.stringify({ target: opts.target, role: opts.role, key }));
+      console.log(
+        JSON.stringify({ target: opts.target, role: opts.role, key }),
+      );
     });
 
   secrets
@@ -111,7 +132,7 @@ export function registerSecretsCommands(program: Command): void {
         console.error("Provide --target or --url");
         process.exit(1);
       }
-      console.log(JSON.stringify(resolved, null, 2));
+      console.log(JSON.stringify(resolved));
     });
 
   secrets
@@ -149,15 +170,25 @@ export function registerSecretsCommands(program: Command): void {
         url: opts.url,
         role: opts.role,
       }) as Array<{
-        target_name: string; target_url: string | null; role: string;
-        key: string; value: string; source_type: string;
+        target_name: string;
+        target_url: string | null;
+        role: string;
+        key: string;
+        value: string;
+        source_type: string;
       }>;
 
       if (opts.json) {
-        console.log(JSON.stringify(items.map((i) => ({
-          ...i,
-          value: maskValue(i.value),
-        })), null, 2));
+        console.log(
+          JSON.stringify(
+            items.map((i) => ({
+              ...i,
+              value: maskValue(i.value),
+            })),
+            null,
+            2,
+          ),
+        );
         return;
       }
 
@@ -172,7 +203,10 @@ export function registerSecretsCommands(program: Command): void {
       for (const item of items) {
         if (item.target_name !== currentTarget) {
           currentTarget = item.target_name;
-          console.log(chalk.cyan.bold(`  [${currentTarget}]`) + chalk.dim(` ${item.target_url ?? ""}`));
+          console.log(
+            chalk.cyan.bold(`  [${currentTarget}]`) +
+              chalk.dim(` ${item.target_url ?? ""}`),
+          );
         }
         if (item.role !== currentRole) {
           currentRole = item.role;
@@ -187,7 +221,7 @@ export function registerSecretsCommands(program: Command): void {
               : chalk.dim("lit");
 
         console.log(
-          `      ${chalk.white(item.key.padEnd(25))} ${srcTag}  ${chalk.dim(maskValue(item.value))}`
+          `      ${chalk.white(item.key.padEnd(25))} ${srcTag}  ${chalk.dim(maskValue(item.value))}`,
         );
       }
       console.log();
@@ -195,10 +229,16 @@ export function registerSecretsCommands(program: Command): void {
 
   secrets
     .command("find <search>")
-    .description("Find secrets by key or value (e.g. email address, variable name)")
+    .description(
+      "Find secrets by key or value (e.g. email address, variable name)",
+    )
     .action((search) => {
       const results = findSecretsByValue(search) as Array<{
-        target_name: string; role: string; key: string; value: string; source_type: string;
+        target_name: string;
+        role: string;
+        key: string;
+        value: string;
+        source_type: string;
       }>;
 
       if (results.length === 0) {
@@ -209,7 +249,7 @@ export function registerSecretsCommands(program: Command): void {
       console.log(chalk.bold(`\n  Found ${results.length} match(es):\n`));
       for (const r of results) {
         console.log(
-          `  ${chalk.cyan(r.target_name)}/${chalk.yellow(r.role)}  ${chalk.white(r.key)} = ${chalk.dim(maskValue(r.value))}`
+          `  ${chalk.cyan(r.target_name)}/${chalk.yellow(r.role)}  ${chalk.white(r.key)} = ${chalk.dim(maskValue(r.value))}`,
         );
       }
       console.log();
@@ -220,12 +260,18 @@ export function registerSecretsCommands(program: Command): void {
   secrets
     .command("import-op <opRef>")
     .description(
-      "Import all fields from a 1Password item. opRef = vault/item (e.g. Private/MyApp)"
+      "Import all fields from a 1Password item. opRef = vault/item (e.g. Private/MyApp)",
     )
     .requiredOption("-t, --target <name>", "Target name")
     .option("-r, --role <role>", "Role name", "default")
-    .option("--live", "Store as op: references (always fetched fresh) instead of resolved values")
-    .option("--map <mapping...>", "Custom field mapping: label=KEY_NAME (repeatable)")
+    .option(
+      "--live",
+      "Store as op: references (always fetched fresh) instead of resolved values",
+    )
+    .option(
+      "--map <mapping...>",
+      "Custom field mapping: label=KEY_NAME (repeatable)",
+    )
     .option("--prefix <prefix>", "Prefix all key names (e.g. APP_)")
     .action((opRef, opts) => {
       // Parse --map flags into a Record
@@ -245,11 +291,19 @@ export function registerSecretsCommands(program: Command): void {
         });
 
         if (imported.length === 0) {
-          console.log(chalk.yellow("No fields imported. The 1Password item may be empty."));
+          console.log(
+            chalk.yellow(
+              "No fields imported. The 1Password item may be empty.",
+            ),
+          );
           return;
         }
 
-        console.log(chalk.bold(`\n  Imported ${imported.length} field(s) → ${opts.target}/${opts.role}\n`));
+        console.log(
+          chalk.bold(
+            `\n  Imported ${imported.length} field(s) → ${opts.target}/${opts.role}\n`,
+          ),
+        );
         for (const f of imported) {
           const srcTag =
             f.source === "env"
@@ -257,11 +311,17 @@ export function registerSecretsCommands(program: Command): void {
               : f.source === "1password"
                 ? chalk.blue("op ")
                 : chalk.dim("lit");
-          console.log(`  ${srcTag}  ${chalk.white(f.key.padEnd(25))} ${chalk.dim(`← ${f.label}`)}`);
+          console.log(
+            `  ${srcTag}  ${chalk.white(f.key.padEnd(25))} ${chalk.dim(`← ${f.label}`)}`,
+          );
         }
         console.log();
       } catch (err) {
-        console.error(chalk.red(`Import failed: ${err instanceof Error ? err.message : String(err)}`));
+        console.error(
+          chalk.red(
+            `Import failed: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
         process.exit(1);
       }
     });

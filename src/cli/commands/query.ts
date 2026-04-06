@@ -1,8 +1,20 @@
 import type { Command } from "commander";
 import { getDb } from "../../db/client.js";
-import { getIssuesByRun, queryPriorIssues, getFailurePatterns } from "../../db/repositories/issues.js";
-import { getAnalysesByRun, getAnalysisByType } from "../../db/repositories/analyses.js";
-import { getTestPlan, getTestSteps, getPlansByTicket, getPlanDetail } from "../../db/repositories/plans.js";
+import {
+  getIssuesByRun,
+  queryPriorIssues,
+  getFailurePatterns,
+} from "../../db/repositories/issues.js";
+import {
+  getAnalysesByRun,
+  getAnalysisByType,
+} from "../../db/repositories/analyses.js";
+import {
+  getTestPlan,
+  getTestSteps,
+  getPlansByTicket,
+  getPlanDetail,
+} from "../../db/repositories/plans.js";
 import { loadPriorRunContext, formatPriorContext } from "../context.js";
 import { searchWithContext } from "../../indexer/index.js";
 
@@ -10,7 +22,9 @@ import { searchWithContext } from "../../indexer/index.js";
 function getRunIdsByTicket(ticket: string): string[] {
   return (
     getDb()
-      .prepare("SELECT id FROM runs WHERE input_ref = ? ORDER BY created_at DESC")
+      .prepare(
+        "SELECT id FROM runs WHERE input_ref = ? ORDER BY created_at DESC",
+      )
       .all(ticket) as Array<{ id: string }>
   ).map((r) => r.id);
 }
@@ -35,14 +49,16 @@ export function registerQueryCommands(program: Command): void {
       const db = getDb();
       if (opts.ticket) {
         const runs = db
-          .prepare("SELECT * FROM runs WHERE input_ref = ? ORDER BY created_at DESC LIMIT ?")
+          .prepare(
+            "SELECT * FROM runs WHERE input_ref = ? ORDER BY created_at DESC LIMIT ?",
+          )
           .all(opts.ticket, parseInt(opts.limit));
-        console.log(JSON.stringify(runs, null, 2));
+        console.log(JSON.stringify(runs));
       } else {
         const runs = db
           .prepare("SELECT * FROM runs ORDER BY created_at DESC LIMIT ?")
           .all(parseInt(opts.limit));
-        console.log(JSON.stringify(runs, null, 2));
+        console.log(JSON.stringify(runs));
       }
     });
 
@@ -59,26 +75,39 @@ export function registerQueryCommands(program: Command): void {
     .option("--limit <n>", "Max results", "50")
     .action((opts) => {
       if (opts.run) {
-        console.log(JSON.stringify(getIssuesByRun(opts.run), null, 2));
+        console.log(JSON.stringify(getIssuesByRun(opts.run)));
       } else if (opts.ticket) {
         const runIds = getRunIdsByTicket(opts.ticket);
-        if (runIds.length === 0) { console.log("[]"); return; }
+        if (runIds.length === 0) {
+          console.log("[]");
+          return;
+        }
         const ph = runIds.map(() => "?").join(",");
         const issues = getDb()
-          .prepare(`SELECT * FROM issues WHERE run_id IN (${ph}) ORDER BY severity, category LIMIT ?`)
+          .prepare(
+            `SELECT * FROM issues WHERE run_id IN (${ph}) ORDER BY severity, category LIMIT ?`,
+          )
           .all(...runIds, parseInt(opts.limit));
-        console.log(JSON.stringify(issues, null, 2));
+        console.log(JSON.stringify(issues));
       } else if (opts.location) {
-        console.log(JSON.stringify(queryPriorIssues(opts.location, parseInt(opts.limit)), null, 2));
+        console.log(
+          JSON.stringify(queryPriorIssues(opts.location, parseInt(opts.limit))),
+        );
       } else {
         const db = getDb();
         let sql = "SELECT * FROM issues WHERE 1=1";
         const params: unknown[] = [];
-        if (opts.category) { sql += " AND category = ?"; params.push(opts.category); }
-        if (opts.severity) { sql += " AND severity = ?"; params.push(opts.severity); }
+        if (opts.category) {
+          sql += " AND category = ?";
+          params.push(opts.category);
+        }
+        if (opts.severity) {
+          sql += " AND severity = ?";
+          params.push(opts.severity);
+        }
         sql += " ORDER BY created_at DESC LIMIT ?";
         params.push(parseInt(opts.limit));
-        console.log(JSON.stringify(db.prepare(sql).all(...params), null, 2));
+        console.log(JSON.stringify(db.prepare(sql).all(...params)));
       }
     });
 
@@ -89,7 +118,7 @@ export function registerQueryCommands(program: Command): void {
     .description("Query known failure patterns across all runs")
     .option("--limit <n>", "Max results", "30")
     .action((opts) => {
-      console.log(JSON.stringify(getFailurePatterns(parseInt(opts.limit)), null, 2));
+      console.log(JSON.stringify(getFailurePatterns(parseInt(opts.limit))));
     });
 
   // ── Analysis ──
@@ -99,18 +128,22 @@ export function registerQueryCommands(program: Command): void {
     .description("Query analysis data by run ID or ticket")
     .option("--run <runId>", "Run ID")
     .option("--ticket <ref>", "Ticket ref (uses latest run)")
-    .option("--type <type>", "Analysis type: gap | requirements | feasibility | impact")
+    .option(
+      "--type <type>",
+      "Analysis type: gap | requirements | feasibility | impact",
+    )
     .action((opts) => {
-      const runId = opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
+      const runId =
+        opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
       if (!runId) {
         console.error("Provide --run or --ticket");
         process.exit(1);
       }
       if (opts.type) {
         const a = getAnalysisByType(runId, opts.type);
-        console.log(JSON.stringify(a ? JSON.parse(a.content_json) : null, null, 2));
+        console.log(JSON.stringify(a ? JSON.parse(a.content_json) : null));
       } else {
-        console.log(JSON.stringify(getAnalysesByRun(runId), null, 2));
+        console.log(JSON.stringify(getAnalysesByRun(runId)));
       }
     });
 
@@ -118,30 +151,37 @@ export function registerQueryCommands(program: Command): void {
 
   query
     .command("plan")
-    .description("Query test plan by ticket or run ID — returns latest plan with all sections and steps")
+    .description(
+      "Query test plan by ticket or run ID — returns latest plan with all sections and steps",
+    )
     .option("--run <runId>", "Run ID")
     .option("--ticket <ref>", "Ticket ref (returns latest plan)")
     .option("--json", "Output as JSON")
     .action((opts) => {
       if (opts.ticket) {
         // Get latest plan for this ticket from test_plans.ticket_id
-        const plans = getPlansByTicket(opts.ticket) as Array<Record<string, unknown>>;
+        const plans = getPlansByTicket(opts.ticket) as Array<
+          Record<string, unknown>
+        >;
         if (plans.length === 0) {
           // Fallback to legacy: find plan via run
           const runId = getLatestRunId(opts.ticket);
           if (runId) {
             const legacyPlan = getTestPlan(runId);
-            if (legacyPlan) { console.log(JSON.stringify(legacyPlan, null, 2)); return; }
+            if (legacyPlan) {
+              console.log(JSON.stringify(legacyPlan));
+              return;
+            }
           }
           console.log(JSON.stringify(null));
           return;
         }
         // Get latest plan detail (first in list, already sorted by created_at DESC)
         const detail = getPlanDetail(plans[0].id as string);
-        console.log(JSON.stringify(detail, null, 2));
+        console.log(JSON.stringify(detail));
       } else if (opts.run) {
         const legacyPlan = getTestPlan(opts.run);
-        console.log(JSON.stringify(legacyPlan, null, 2));
+        console.log(JSON.stringify(legacyPlan));
       } else {
         console.error("Provide --run or --ticket");
         process.exit(1);
@@ -156,12 +196,13 @@ export function registerQueryCommands(program: Command): void {
     .option("--run <runId>", "Run ID")
     .option("--ticket <ref>", "Ticket ref (uses latest run)")
     .action((opts) => {
-      const runId = opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
+      const runId =
+        opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
       if (!runId) {
         console.error("Provide --run or --ticket");
         process.exit(1);
       }
-      console.log(JSON.stringify(getTestSteps(runId), null, 2));
+      console.log(JSON.stringify(getTestSteps(runId)));
     });
 
   // ── Codebase search ──
@@ -181,7 +222,7 @@ export function registerQueryCommands(program: Command): void {
         limit: parseInt(opts.limit),
         expand: opts.expand ?? true,
       });
-      console.log(JSON.stringify(results, null, 2));
+      console.log(JSON.stringify(results));
     });
 
   // ── Repos for a run ──
@@ -192,7 +233,8 @@ export function registerQueryCommands(program: Command): void {
     .option("--run <runId>", "Run ID")
     .option("--ticket <ref>", "Ticket ref (uses latest run)")
     .action((opts) => {
-      const runId = opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
+      const runId =
+        opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
       if (!runId) {
         console.error("Provide --run or --ticket");
         process.exit(1);
@@ -206,7 +248,7 @@ export function registerQueryCommands(program: Command): void {
       }
       try {
         const config = JSON.parse(run.config_json);
-        console.log(JSON.stringify(config.repos ?? [], null, 2));
+        console.log(JSON.stringify(config.repos ?? []));
       } catch {
         console.log("[]");
       }
@@ -220,7 +262,8 @@ export function registerQueryCommands(program: Command): void {
     .option("--run <runId>", "Run ID")
     .option("--ticket <ref>", "Ticket ref (uses latest run)")
     .action((opts) => {
-      const runId = opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
+      const runId =
+        opts.run ?? (opts.ticket ? getLatestRunId(opts.ticket) : null);
       if (!runId) {
         console.error("Provide --run or --ticket");
         process.exit(1);

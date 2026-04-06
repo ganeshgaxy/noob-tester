@@ -23,7 +23,9 @@ function resolveId(idOrPrefix: string): string {
 export function registerRcaCommands(program: Command): void {
   const rca = program
     .command("rca")
-    .description("Root cause analysis — classify failures, track patterns, suggest actions");
+    .description(
+      "Root cause analysis — classify failures, track patterns, suggest actions",
+    );
 
   rca
     .command("save")
@@ -33,7 +35,7 @@ export function registerRcaCommands(program: Command): void {
     .requiredOption("--testcase <id>", "Test case ID")
     .requiredOption(
       "--classification <type>",
-      "env_issue | flaky_selector | actual_bug | test_data_issue | network | auth_issue | timeout | unknown"
+      "env_issue | flaky_selector | actual_bug | test_data_issue | network | auth_issue | timeout | unknown",
     )
     .requiredOption("--confidence <n>", "Confidence 0.0–1.0", parseFloat)
     .requiredOption("--cause <text>", "Root cause explanation")
@@ -41,7 +43,7 @@ export function registerRcaCommands(program: Command): void {
     .option("--pattern <id>", "Link to failure_patterns ID")
     .option(
       "--action <type>",
-      "Suggested action: retry | fix_test | fix_app | fix_env | investigate | skip"
+      "Suggested action: retry | fix_test | fix_app | fix_env | investigate | skip",
     )
     .action((opts) => {
       const packId = resolveId(opts.pack);
@@ -69,7 +71,7 @@ export function registerRcaCommands(program: Command): void {
       const results = getRcaWithTestCases(packId);
 
       if (opts.json) {
-        console.log(JSON.stringify(results, null, 2));
+        console.log(JSON.stringify(results));
         return;
       }
 
@@ -91,7 +93,7 @@ export function registerRcaCommands(program: Command): void {
 
         console.log(
           `  ${classColor(String(r.classification).padEnd(16))} ` +
-            `${chalk.dim(`(${Math.round(Number(r.confidence) * 100)}%)`)} ${r.tc_title}`
+            `${chalk.dim(`(${Math.round(Number(r.confidence) * 100)}%)`)} ${r.tc_title}`,
         );
         console.log(`    ${chalk.dim("Cause:")} ${r.root_cause}`);
         if (r.suggested_action) {
@@ -108,7 +110,7 @@ export function registerRcaCommands(program: Command): void {
     .action((opts) => {
       const packId = resolveId(opts.pack);
       const summary = getRcaSummary(packId);
-      console.log(JSON.stringify(summary, null, 2));
+      console.log(JSON.stringify(summary));
     });
 
   rca
@@ -119,7 +121,7 @@ export function registerRcaCommands(program: Command): void {
       if (!result) {
         console.log(JSON.stringify({ rca: null }));
       } else {
-        console.log(JSON.stringify(result, null, 2));
+        console.log(JSON.stringify(result));
       }
     });
 
