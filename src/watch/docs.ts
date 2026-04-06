@@ -76,6 +76,7 @@ export function getDocsHtml(): string {
 <tr><td><code>testcase stats &lt;ticket&gt;</code></td><td>Show counts by type, status, ready/draft.</td></tr>
 <tr><td><code>testcase select --repo &lt;name&gt; --diff &lt;branch&gt;</code></td><td>Select test cases affected by code changes via coverage_map + import graph. <code>--ticket</code>, <code>--depth</code>, <code>--json</code>.</td></tr>
 <tr><td><code>testcase risk --ticket &lt;ref&gt;</code></td><td>Compute risk scores from failure patterns, code churn, flakiness, recency. Stored on <code>risk_score</code>. <code>--json</code>.</td></tr>
+<tr><td><code>testcase audit --ticket &lt;ref&gt;</code></td><td>Full audit: duplicates (Jaccard similarity), never-failed, stale (30+ days), orphaned. <code>--duplicates</code>, <code>--never-failed</code>, <code>--orphaned</code>, <code>--stale</code>, <code>--threshold</code>, <code>--json</code>.</td></tr>
 </table>
 <h4>Execution Priority</h4>
 <ol>
@@ -469,6 +470,36 @@ export function getDocsHtml(): string {
 </table>
 </div>
 
+<div class="doc-cmd">
+<h3>noob-tester auth</h3>
+<p>Authenticate with AntTest cloud for data synchronization. Supports API token and interactive email/password login.</p>
+<table>
+<tr><td><code>login</code></td><td>Authenticate with AntTest. <code>--token &lt;token&gt;</code> for API token login. <code>--url &lt;url&gt;</code> to set server URL (default: https://anttest.app). Without <code>--token</code>, prompts for email/password interactively.</td></tr>
+<tr><td><code>logout</code></td><td>Log out from AntTest. Deactivates the current auth session.</td></tr>
+<tr><td><code>whoami</code></td><td>Show current login status — user email, organization, server URL, auth method, and login time.</td></tr>
+</table>
+</div>
+
+<div class="doc-cmd">
+<h3>noob-tester settings</h3>
+<p>Manage application settings (key-value store). Used for repo provider, default configurations, etc.</p>
+<table>
+<tr><td><code>settings set &lt;key&gt; &lt;value&gt;</code></td><td>Set a setting. Validates <code>repo_provider</code> against: bitbucket, gitlab, github.</td></tr>
+<tr><td><code>settings get &lt;key&gt;</code></td><td>Get a setting value.</td></tr>
+<tr><td><code>settings list</code></td><td>List all settings. <code>--json</code> for JSON output.</td></tr>
+<tr><td><code>settings delete &lt;key&gt;</code></td><td>Delete a setting.</td></tr>
+</table>
+</div>
+
+<div class="doc-cmd">
+<h3>noob-tester sync</h3>
+<p>Sync local data to AntTest cloud. Pushes the latest run data (runs, plans, analyses, issues, test cases, run pack entries) for a ticket. Requires authentication via <code>login</code>.</p>
+<table>
+<tr><td><code>sync push --ticket &lt;ref&gt;</code></td><td>Push latest local data to AntTest. <code>--feature &lt;id&gt;</code> to target a specific feature (auto-creates if omitted). <code>--force</code> to skip confirmation. <code>--dry-run</code> to preview. <code>--json</code>.</td></tr>
+<tr><td><code>sync status --ticket &lt;ref&gt;</code></td><td>Show what would be synced — counts of runs, plans, analyses, issues, test cases, test steps, and run pack entries. <code>--json</code>.</td></tr>
+</table>
+</div>
+
 </div>
 
 <!-- SKILLS -->
@@ -477,7 +508,7 @@ export function getDocsHtml(): string {
 <h2 style="margin-bottom:16px">Skills</h2>
 
 <p style="color:var(--dim);margin-bottom:16px">Each skill works <strong>standalone</strong> or as part of a pipeline. Every skill MUST start by creating a session and run.</p>
-<p style="color:var(--dim);margin-bottom:16px"><strong>Full pipeline:</strong> <code>/noob-analyze</code> → <code>/noob-testcase</code> → <code>/noob-plan</code> → <code>/noob-explore</code> + <code>/noob-api-explore</code> (with a11y + risk ordering) → <code>/noob-rca</code> (classify failures + detect false positives) → <code>/noob-report</code></p>
+<p style="color:var(--dim);margin-bottom:16px"><strong>Full pipeline:</strong> <code>/noob-ticket-cache</code> → <code>/noob-repos-setup</code> → <code>/noob-analyze</code> → <code>/noob-testcase</code> → <code>/noob-plan</code> → <code>/noob-claim</code> → <code>/noob-explore</code> + <code>/noob-api-explore</code> (with a11y + risk ordering) → <code>/noob-rca</code> (classify failures + detect false positives) → <code>/noob-report</code></p>
 
 <div class="doc-cmd">
 <h3 style="color:var(--accent)">/noob-tester</h3>
@@ -634,6 +665,54 @@ export function getDocsHtml(): string {
 <li>Updates ticket with summary comment (via Atlassian MCP)</li>
 <li>Posts to Slack if requested</li>
 </ol>
+</div>
+
+<div class="doc-cmd">
+<h3 style="color:var(--yellow)">/noob-ticket-cache</h3>
+<p>Fetch and cache ALL ticket context (Jira, Confluence, MR/PR diffs) in one pass using a cache-first pattern. Run before any skill that needs ticket data — prevents redundant API calls across skills.</p>
+<h4>What it does</h4>
+<ol>
+<li>For each context type: checks cache first (<code>ticket-context get</code>), on miss calls MCP tool, saves immediately (<code>ticket-context save</code>)</li>
+<li>Fetches in order: ticket_info → remote_links → comments → parent_issue → grandparent_issue → linked_tickets → mr_metadata → mr_diff per MR → confluence pages</li>
+<li>All content is available for downstream skills via <code>ticket-context get</code></li>
+</ol>
+<h4>Rule</h4>
+<p><strong>NEVER call Jira/Confluence MCP tools directly.</strong> Always check cache first, only call MCP on a miss, then save immediately.</p>
+</div>
+
+<div class="doc-cmd">
+<h3 style="color:var(--accent)">/noob-mr-pr</h3>
+<p>Fetch MR/PR details for a ticket. Auto-detects provider (GitHub/GitLab/Bitbucket) from the URL and uses the appropriate CLI tool (<code>gh</code>/<code>glab</code>/<code>bb</code>).</p>
+<h4>What it does</h4>
+<ol>
+<li>Parses the MR/PR URL to detect provider and extract identifiers (owner, repo, number/IID)</li>
+<li>Fetches MR/PR metadata and diff using the provider-specific CLI</li>
+<li>Returns structured MR/PR details for downstream skills</li>
+</ol>
+</div>
+
+<div class="doc-cmd">
+<h3 style="color:var(--green)">/noob-repos-setup</h3>
+<p>Validate and set up a user-provided SSH repo URL for a ticket. Wraps <code>repos setup-for-ticket</code> — discovers, clones, syncs, and indexes the repo in one pass.</p>
+<h4>What it does</h4>
+<ol>
+<li>Validates the SSH repo URL format (<code>git@host:org/repo.git</code>) — stops if invalid</li>
+<li>Runs <code>noob-tester repos setup-for-ticket --ticket &lt;ID&gt; --url &lt;url&gt;</code></li>
+<li>Returns repo paths for downstream skills to use with Glob/Grep/Read</li>
+</ol>
+</div>
+
+<div class="doc-cmd">
+<h3 style="color:var(--purple)">/noob-claim</h3>
+<p>Claim test cases from run packs for execution. Three modes: claim next, claim by name, and retry.</p>
+<h4>Modes</h4>
+<ol>
+<li><strong>Claim next</strong> — uses <code>claim-smart</code> to pick the next unclaimed test case (priority: retry failed → resume pending → claim new)</li>
+<li><strong>Claim by name</strong> — claims a specific test case by title (substring match with validation)</li>
+<li><strong>Retry</strong> — retries a specific failed/blocked test case</li>
+</ol>
+<h4>Output</h4>
+<p>Returns <code>$ENTRY</code> JSON with the claimed test case (id, title, format, test_case_id, status). Pass to <code>/noob-explore</code> for execution.</p>
 </div>
 
 </div>
