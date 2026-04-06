@@ -11,6 +11,19 @@ function esc(s) {
   return s.replace(/&/g,"&amp;").replace(new RegExp("<","g"),"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+// Format plain-text LLM descriptions: escape HTML, bold known section headers, convert newlines to <br>
+function formatDescription(s) {
+  if (!s) return "";
+  const escaped = esc(s);
+  // Bold known RCA section headers (e.g. "Root Cause:", "Evidence:", "Failure Scenario:")
+  const withHeaders = escaped.replace(
+    /^([A-Z][A-Za-z &\\-]{2,40}:)(?=\\s|$)/gm,
+    '<strong style="color:var(--accent)">$1</strong>'
+  );
+  // Convert newlines to <br> tags for proper line-break rendering
+  return withHeaders.replace(/\\n/g, "<br>");
+}
+
 function timeAgo(dateStr) {
   if (!dateStr) return "-";
   const d = new Date(dateStr + "Z");

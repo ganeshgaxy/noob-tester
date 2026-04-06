@@ -4,7 +4,10 @@ import { getApiCanvasRendererScript } from "./api-canvas-renderer.js";
 import { getDashboardHelpersScript } from "./dashboard-helpers.js";
 import { getCanvasBaseScript } from "./canvas-base.js";
 
-export function getDashboardHtml(port: number, filterSessionId?: string): string {
+export function getDashboardHtml(
+  port: number,
+  filterSessionId?: string,
+): string {
   const wireframeScript = getWireframeScript();
   const apiCanvasScript = getApiCanvasRendererScript();
   const canvasScript = getCanvasRendererScript();
@@ -856,7 +859,7 @@ async function showIssueDetail(issueId) {
   if (i.description) {
     h += '<div style="margin-bottom:16px">';
     h += '<div class="section-header">Description</div>';
-    h += \`<div style="font-size:13px;color:var(--text);line-height:1.5">\${esc(i.description)}</div>\`;
+    h += \`<div style="font-size:13px;color:var(--text);line-height:1.7">\${formatDescription(i.description)}</div>\`;
     h += '</div>';
   }
 
