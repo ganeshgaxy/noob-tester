@@ -364,6 +364,58 @@ export function getDashboardHtml(
   .lightbox-caption { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 8px; text-align: center; max-width: 600px; font-family: var(--font-mono); }
   .lightbox-close { position: absolute; top: 16px; right: 20px; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all var(--transition); }
   .lightbox-close:hover { background: rgba(248,113,113,0.3); border-color: rgba(248,113,113,0.4); }
+
+  /* ── Swarm page ── */
+  .swarm-ticket-group { margin-bottom: 28px; }
+  .swarm-ticket-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .swarm-ticket-label { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; font-family: var(--font-mono); }
+  .swarm-ticket-badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; background: var(--green-dim); color: var(--green); font-weight: 600; }
+  .swarm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .swarm-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+  .swarm-card-header { padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface-raised); }
+  .swarm-card-id { font-family: var(--font-mono); font-size: 12px; color: var(--text); font-weight: 600; }
+  .swarm-card-port { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--accent-dim); color: var(--accent); font-weight: 600; font-family: var(--font-mono); }
+  .swarm-card-task { padding: 6px 14px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .swarm-stream-wrap { position: relative; background: #000; aspect-ratio: 4/3; overflow: hidden; }
+  .swarm-canvas { width: 100%; height: 100%; display: block; object-fit: contain; }
+  .swarm-stream-status { position: absolute; top: 6px; right: 8px; font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .swarm-stream-status.connecting { background: rgba(245,166,35,0.2); color: var(--yellow); }
+  .swarm-stream-status.live { background: rgba(0,200,83,0.2); color: var(--green); }
+  .swarm-stream-status.disconnected { background: rgba(238,0,0,0.15); color: var(--red); }
+  .swarm-no-port { display: flex; align-items: center; justify-content: center; height: 120px; color: var(--muted); font-size: 12px; background: var(--surface-raised); }
+  .swarm-empty { padding: 60px 24px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+  /* ── Swarm maximize button ── */
+  .swarm-maximize-btn { position: absolute; top: 6px; left: 8px; width: 28px; height: 28px; border-radius: 6px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; z-index: 5; }
+  .swarm-stream-wrap:hover .swarm-maximize-btn { opacity: 1; }
+  .swarm-maximize-btn:hover { background: rgba(0,0,0,0.7); border-color: rgba(255,255,255,0.3); }
+
+  .swarm-stream-status.ended { background: rgba(160,160,160,0.15); color: var(--muted); }
+
+  /* ── Swarm expand modal ── */
+  .swarm-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); z-index: 400; align-items: center; justify-content: center; }
+  .swarm-modal-overlay.open { display: flex; }
+  .swarm-modal-box { width: 80vw; max-width: 1200px; height: 75vh; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,0.5); }
+  .swarm-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .swarm-modal-title { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text); }
+  .swarm-modal-close { width: 28px; height: 28px; border-radius: 6px; background: var(--surface-raised); border: 1px solid var(--border); color: var(--text); font-size: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all var(--transition); }
+  .swarm-modal-close:hover { background: rgba(248,113,113,0.2); border-color: rgba(248,113,113,0.3); color: var(--red); }
+  .swarm-modal-body { flex: 1; display: flex; overflow: hidden; }
+  .swarm-modal-stream { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; min-width: 0; }
+  .swarm-modal-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .swarm-modal-info { width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); overflow-y: auto; padding: 16px; background: var(--surface); }
+  .swarm-info-section { margin-bottom: 16px; }
+  .swarm-info-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 6px; }
+  .swarm-info-value { font-size: 12px; color: var(--text); font-family: var(--font-mono); line-height: 1.5; }
+  .swarm-info-value .step-item { padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .swarm-info-value .step-item:last-child { border-bottom: none; }
+  .swarm-info-badge { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  .swarm-info-badge.bdd { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .swarm-info-badge.trad { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .swarm-info-badge.passed { background: rgba(34,197,94,0.15); color: #4ade80; }
+  .swarm-info-badge.failed { background: rgba(239,68,68,0.15); color: #f87171; }
+  .swarm-info-badge.claimed, .swarm-info-badge.running { background: rgba(250,204,21,0.15); color: #facc15; }
+  .swarm-info-loading { color: var(--muted); font-size: 12px; font-style: italic; }
 </style>
 </head>
 <body>
@@ -377,6 +429,7 @@ export function getDashboardHtml(
 
       <div class="nav-group-label">Testing</div>
       <div class="nav-btn" data-page="runs" onclick="switchPage('runs')"><i class="ph ph-compass nav-icon"></i>Explore</div>
+      <div class="nav-btn" data-page="swarm" onclick="switchPage('swarm')"><i class="ph ph-monitor-play nav-icon"></i>Swarm</div>
       <div class="nav-btn" data-page="issues" onclick="switchPage('issues')"><i class="ph ph-bug nav-icon"></i>Issues</div>
 
       <div class="nav-group-label">Planning</div>
@@ -444,6 +497,8 @@ let activeTab = "issues";
 let currentPage = "dashboard";
 
 function switchPage(page) {
+  // Clean up swarm WebSocket connections when leaving the swarm page
+  if (currentPage === "swarm" && page !== "swarm") swarmCleanup();
   currentPage = page;
   viewingSession = null;
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === page));
@@ -480,6 +535,11 @@ function render() {
 
   if (currentPage === "runs") {
     renderRunsPage();
+    return;
+  }
+
+  if (currentPage === "swarm") {
+    renderSwarmPage();
     return;
   }
 
@@ -5605,6 +5665,326 @@ async function renderTestAuditPage() {
 
   html += '</div>';
   setPage(html);
+}
+
+// ── Swarm page — live WebSocket streams for all active explore sessions ──
+
+// Track active WebSocket connections so we can close them when navigating away
+let swarmSockets = [];
+
+function swarmCleanup() {
+  for (const ws of swarmSockets) {
+    try { ws.close(); } catch {}
+  }
+  swarmSockets = [];
+}
+
+async function renderSwarmPage() {
+  // Clean up previous connections
+  swarmCleanup();
+
+  let data;
+  try {
+    data = await fetchJson("/api/swarm");
+  } catch (err) {
+    setPage('<div class="swarm-empty">Failed to load swarm data.</div>');
+    return;
+  }
+
+  const { byTicket, noTicket, total } = data;
+  const ticketIds = Object.keys(byTicket).sort();
+  const allGroups = [
+    ...ticketIds.map(t => ({ label: t, sessions: byTicket[t] })),
+    ...(noTicket.length > 0 ? [{ label: "__none__", sessions: noTicket }] : []),
+  ];
+
+  let html = '<div style="padding-bottom:24px">';
+
+  // Header bar
+  html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">';
+  html += '<div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">Swarm</div>';
+  html += \`<span style="font-size:12px;color:var(--dim)">\${total} active stream\${total !== 1 ? "s" : ""}</span>\`;
+  html += '<button class="action-btn" style="margin-left:auto" onclick="renderSwarmPage()"><i class="ph ph-arrows-clockwise"></i> Refresh</button>';
+  html += '</div>';
+
+  if (total === 0) {
+    html += '<div class="swarm-empty">No active explore sessions with a stream port.<br>Start a <code>noob-explore</code> session to see live streams here.</div>';
+    html += '</div>';
+    setPage(html);
+    return;
+  }
+
+  for (const group of allGroups) {
+    const { label, sessions } = group;
+    const displayLabel = label === "__none__" ? "No Ticket" : label;
+    html += '<div class="swarm-ticket-group">';
+    html += \`<div class="swarm-ticket-header">
+      <span class="swarm-ticket-label">\${esc(displayLabel)}</span>
+      <span class="swarm-ticket-badge">\${sessions.length} session\${sessions.length !== 1 ? "s" : ""}</span>
+    </div>\`;
+    html += '<div class="swarm-grid">';
+
+    for (const s of sessions) {
+      const canvasId = "swarm-canvas-" + s.id.replace(/-/g, "");
+      const statusId = "swarm-status-" + s.id.replace(/-/g, "");
+      html += \`<div class="swarm-card">
+        <div class="swarm-card-header">
+          <span class="swarm-card-id">\${s.id.slice(0, 8)}</span>
+          \${s.stream_port ? \`<span class="swarm-card-port">ws://localhost:\${s.stream_port}</span>\` : '<span class="swarm-card-port" style="background:var(--red-dim);color:var(--red)">no port</span>'}
+        </div>
+        <div class="swarm-card-task" title="\${esc(s.task_summary || '')}">
+          \${esc(s.task_summary || "no task summary")}
+        </div>
+        <div class="swarm-stream-wrap">\`;
+
+      if (s.stream_port) {
+        html += \`<canvas id="\${canvasId}" class="swarm-canvas"></canvas>
+          <span id="\${statusId}" class="swarm-stream-status connecting">Connecting…</span>
+          <button class="swarm-maximize-btn" onclick="swarmMaximize('\${s.id}', \${s.stream_port})" title="Maximize">⛶</button>\`;
+      } else {
+        html += '<div class="swarm-no-port">No stream port assigned</div>';
+      }
+
+      html += '</div></div>';
+    }
+
+    html += '</div></div>';
+  }
+
+  // Modal overlay (appended once)
+  html += \`</div>
+  <div id="swarm-modal" class="swarm-modal-overlay" onclick="if(event.target===this)swarmCloseModal()">
+    <div class="swarm-modal-box">
+      <div class="swarm-modal-header">
+        <span class="swarm-modal-title" id="swarm-modal-title">Session</span>
+        <button class="swarm-modal-close" onclick="swarmCloseModal()">✕</button>
+      </div>
+      <div class="swarm-modal-body">
+        <div class="swarm-modal-stream">
+          <canvas id="swarm-modal-canvas" class="swarm-modal-canvas"></canvas>
+        </div>
+        <div class="swarm-modal-info" id="swarm-modal-info">
+          <div class="swarm-info-loading">Loading test info…</div>
+        </div>
+      </div>
+    </div>
+  </div>\`;
+
+  setPage(html);
+
+  // After DOM is rendered, connect WebSockets
+  for (const group of allGroups) {
+    for (const s of group.sessions) {
+      if (!s.stream_port) continue;
+      swarmConnectStream(s.id, s.stream_port);
+    }
+  }
+}
+
+function swarmConnectStream(sessionId, port) {
+  const canvasId = "swarm-canvas-" + sessionId.replace(/-/g, "");
+  const statusId = "swarm-status-" + sessionId.replace(/-/g, "");
+
+  const canvas = document.getElementById(canvasId);
+  const statusEl = document.getElementById(statusId);
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  let reconnectDelay = 2000;
+  let ws = null;
+  let stopped = false;
+  let hasConnected = false; // true once we get at least one successful open
+  let attempts = 0;
+
+  function connect() {
+    if (stopped) return;
+    attempts++;
+    ws = new WebSocket("ws://localhost:" + port);
+    swarmSockets.push(ws);
+
+    if (statusEl) {
+      if (hasConnected) {
+        statusEl.textContent = "Reconnecting…"; statusEl.className = "swarm-stream-status disconnected";
+      } else {
+        statusEl.textContent = "Getting ready…"; statusEl.className = "swarm-stream-status connecting";
+      }
+    }
+
+    ws.onopen = () => {
+      hasConnected = true;
+      attempts = 0;
+      reconnectDelay = 2000;
+      if (statusEl) { statusEl.textContent = "Live"; statusEl.className = "swarm-stream-status live"; }
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = typeof evt.data === "string" ? JSON.parse(evt.data) : null;
+        if (!msg) return;
+
+        // agent-browser sends { type: "frame", data: "<base64 jpeg>" }
+        if (msg.type === "frame" && msg.data) {
+          const img = new Image();
+          img.onload = () => {
+            const c = document.getElementById(canvasId);
+            if (!c) { stopped = true; ws && ws.close(); return; }
+            if (c.width !== img.naturalWidth) c.width = img.naturalWidth;
+            if (c.height !== img.naturalHeight) c.height = img.naturalHeight;
+            c.getContext("2d").drawImage(img, 0, 0);
+            // Mirror to modal canvas if this session is maximized
+            if (window._swarmModalSessionId === sessionId) {
+              const mc = document.getElementById("swarm-modal-canvas");
+              if (mc) {
+                if (mc.width !== img.naturalWidth) mc.width = img.naturalWidth;
+                if (mc.height !== img.naturalHeight) mc.height = img.naturalHeight;
+                mc.getContext("2d").drawImage(img, 0, 0);
+              }
+            }
+          };
+          img.src = "data:image/jpeg;base64," + msg.data;
+        }
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      if (stopped) return;
+
+      function scheduleRetry() {
+        const msg = hasConnected ? "Reconnecting…" : "Getting ready…";
+        const cls = hasConnected ? "swarm-stream-status disconnected" : "swarm-stream-status connecting";
+        if (statusEl) { statusEl.textContent = msg; statusEl.className = cls; }
+        setTimeout(connect, Math.min(reconnectDelay, 30000));
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      }
+
+      // If we were live before, always check session status immediately
+      // If never connected, only check every 5th attempt (give agent time to start stream)
+      const shouldCheck = hasConnected || (attempts % 5 === 0 && attempts > 0);
+
+      if (!shouldCheck) {
+        scheduleRetry();
+        return;
+      }
+
+      fetch("/api/swarm").then(r => r.json()).then(data => {
+        let stillActive = false;
+        for (const ticket in (data.byTicket || {})) {
+          for (const s of data.byTicket[ticket]) {
+            if (s.id === sessionId && s.status === "active") stillActive = true;
+          }
+        }
+        for (const s of (data.noTicket || [])) {
+          if (s.id === sessionId && s.status === "active") stillActive = true;
+        }
+        if (!stillActive) {
+          stopped = true;
+          if (statusEl) { statusEl.textContent = "Session ended"; statusEl.className = "swarm-stream-status ended"; }
+          return;
+        }
+        scheduleRetry();
+      }).catch(() => { scheduleRetry(); });
+    };
+
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+
+  connect();
+}
+
+// ── Swarm maximize / modal ──
+window._swarmModalSessionId = null;
+
+function swarmMaximize(sessionId, port) {
+  window._swarmModalSessionId = sessionId;
+  const modal = document.getElementById("swarm-modal");
+  const title = document.getElementById("swarm-modal-title");
+  const infoPanel = document.getElementById("swarm-modal-info");
+  if (!modal) return;
+  title.textContent = "Session " + sessionId.slice(0, 8) + " — ws://localhost:" + port;
+  if (infoPanel) infoPanel.innerHTML = '<div class="swarm-info-loading">Loading test info…</div>';
+  modal.classList.add("open");
+  document.addEventListener("keydown", swarmModalEsc);
+
+  // Fetch test case details
+  fetch("/api/swarm/session-info?sessionId=" + encodeURIComponent(sessionId))
+    .then(r => r.json())
+    .then(data => {
+      if (!infoPanel) return;
+      let html = "";
+
+      // Run info
+      if (data.run) {
+        html += '<div class="swarm-info-section"><div class="swarm-info-label">Run</div>';
+        html += '<div class="swarm-info-value">' + esc(data.run.id ? data.run.id.slice(0, 8) : "—") + '</div></div>';
+      }
+
+      // Ticket info
+      if (data.ticket) {
+        html += '<div class="swarm-info-section"><div class="swarm-info-label">Ticket</div>';
+        html += '<div class="swarm-info-value">' + esc(data.ticket) + '</div></div>';
+      }
+
+      // Test case info
+      if (data.testCase) {
+        const tc = data.testCase;
+        html += '<div class="swarm-info-section"><div class="swarm-info-label">Test Case</div>';
+        html += '<div class="swarm-info-value">' + esc(tc.title || "—") + '</div></div>';
+
+        if (tc.status) {
+          html += '<div class="swarm-info-section"><div class="swarm-info-label">Status</div>';
+          html += '<div class="swarm-info-value"><span class="swarm-info-badge ' + tc.status + '">' + esc(tc.status.toUpperCase()) + '</span></div></div>';
+        }
+        if (tc.format) {
+          html += '<div class="swarm-info-section"><div class="swarm-info-label">Format</div>';
+          html += '<div class="swarm-info-value"><span class="swarm-info-badge ' + tc.format + '">' + esc(tc.format.toUpperCase()) + '</span></div></div>';
+        }
+
+        // BDD steps
+        if (tc.format === "bdd") {
+          if (tc.given && tc.given.length) {
+            html += '<div class="swarm-info-section"><div class="swarm-info-label">Given</div>';
+            html += '<div class="swarm-info-value">' + tc.given.map(function(s){ return '<div class="step-item">' + esc(s) + '</div>'; }).join("") + '</div></div>';
+          }
+          if (tc.when && tc.when.length) {
+            html += '<div class="swarm-info-section"><div class="swarm-info-label">When</div>';
+            html += '<div class="swarm-info-value">' + tc.when.map(function(s){ return '<div class="step-item">' + esc(s) + '</div>'; }).join("") + '</div></div>';
+          }
+          if (tc.then && tc.then.length) {
+            html += '<div class="swarm-info-section"><div class="swarm-info-label">Then</div>';
+            html += '<div class="swarm-info-value">' + tc.then.map(function(s){ return '<div class="step-item">' + esc(s) + '</div>'; }).join("") + '</div></div>';
+          }
+        }
+
+        // Traditional steps
+        if (tc.format !== "bdd") {
+          if (tc.steps && tc.steps.length) {
+            html += '<div class="swarm-info-section"><div class="swarm-info-label">Steps</div>';
+            html += '<div class="swarm-info-value">' + tc.steps.map(function(s, i){ return '<div class="step-item">' + (i+1) + ". " + esc(s) + '</div>'; }).join("") + '</div></div>';
+          }
+          if (tc.expected && tc.expected.length) {
+            html += '<div class="swarm-info-section"><div class="swarm-info-label">Expected</div>';
+            html += '<div class="swarm-info-value">' + tc.expected.map(function(s){ return '<div class="step-item">' + esc(s) + '</div>'; }).join("") + '</div></div>';
+          }
+        }
+      }
+
+      if (!html) html = '<div class="swarm-info-loading">No test case info available</div>';
+      infoPanel.innerHTML = html;
+    })
+    .catch(() => {
+      if (infoPanel) infoPanel.innerHTML = '<div class="swarm-info-loading">Failed to load test info</div>';
+    });
+}
+
+function swarmCloseModal() {
+  window._swarmModalSessionId = null;
+  const modal = document.getElementById("swarm-modal");
+  if (modal) modal.classList.remove("open");
+  document.removeEventListener("keydown", swarmModalEsc);
+}
+
+function swarmModalEsc(e) {
+  if (e.key === "Escape") swarmCloseModal();
 }
 </script>
 </body>

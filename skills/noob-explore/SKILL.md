@@ -38,6 +38,13 @@ SESSION_ID=$(echo "$INIT" | jq -r '.sessionId')
 RUN_ID=$(echo "$INIT" | jq -r '.runId')
 RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
 EVIDENCE_DIR=$(echo "$INIT" | jq -r '.evidenceDir')
+STREAM_PORT=$(echo "$INIT" | jq -r '.streamPort')
+
+# Enable live browser stream on the assigned port (disable first in case already streaming on a different port)
+if [ -n "$STREAM_PORT" ] && [ "$STREAM_PORT" != "null" ]; then
+  agent-browser stream disable 2>/dev/null
+  agent-browser stream enable --port "$STREAM_PORT"
+fi
 
 # Create UI map so ALL captures get --map
 MAP_ID=$(noob-tester uimap resolve --ticket <TICKET-ID> --target <TARGET_URL> | jq -r '.id // empty')
@@ -302,6 +309,7 @@ noob-tester runpack result $ENTRY_ID --status failed \
 
 ```bash
 noob-tester session heartbeat $SESSION_ID --phase 4
+agent-browser stream disable
 agent-browser close
 noob-tester session end $SESSION_ID --status completed
 # Run stays open for next invocation — only complete when ALL test cases done

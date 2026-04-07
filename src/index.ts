@@ -57,6 +57,7 @@ program
       "    claim-smart Smart claim — retry failed, resume pending, or claim new test case\n" +
       "    auth-resolve Resolve credentials for target+role (1Password, env, literal)\n" +
       "    api-request  Execute HTTP request, validate, store artifact, log result\n" +
+      "    repos setup-for-ticket  Discover + clone + sync + index all repos for a ticket (5+ commands → 1)\n" +
       "    setup       Full setup check — CLIs, skills, symlinks, 1Password, MCP, DB. --provider gitlab|bitbucket|both",
   )
   .version("0.1.0");

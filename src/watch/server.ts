@@ -3143,6 +3143,281 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
+    // ── Swarm API ──
+
+    if (url.pathname === "/api/swarm" && req.method === "GET") {
+      const db = getDb();
+      // Mark stale sessions first (same threshold as listSessions)
+      db.prepare(
+        `UPDATE sessions SET status = 'stale'
+         WHERE status = 'active'
+           AND last_heartbeat < datetime('now', '-5 minutes')`,
+      ).run();
+      // Get active explore sessions (sessions with the 'explore' label)
+      const rows = db
+        .prepare(
+          `SELECT id, task_summary, status, labels, ticket_refs, stream_port,
+                  created_at, last_heartbeat, current_phase, current_run_id
+           FROM sessions
+           WHERE status = 'active' AND stream_port IS NOT NULL
+           ORDER BY created_at ASC`,
+        )
+        .all() as Array<Record<string, unknown>>;
+
+      // Group by ticket_id
+      const byTicket: Record<string, unknown[]> = {};
+      const noTicket: unknown[] = [];
+      for (const row of rows) {
+        const tickets: string[] = row.ticket_refs
+          ? (() => {
+              try {
+                return JSON.parse(row.ticket_refs as string) as string[];
+              } catch {
+                return [];
+              }
+            })()
+          : [];
+        if (tickets.length === 0) {
+          noTicket.push(row);
+        } else {
+          for (const t of tickets) {
+            if (!byTicket[t]) byTicket[t] = [];
+            byTicket[t].push(row);
+          }
+        }
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ byTicket, noTicket, total: rows.length }));
+      return;
+    }
+
+    // ── Swarm Session Info API ──
+
+    if (url.pathname === "/api/swarm/session-info" && req.method === "GET") {
+      const sessionId = url.searchParams.get("sessionId");
+      if (!sessionId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end('{"error":"sessionId required"}');
+        return;
+      }
+
+      const db = getDb();
+      const session = db
+        .prepare(
+          "SELECT id, current_run_id, ticket_refs, stream_port, task_summary FROM sessions WHERE id = ?",
+        )
+        .get(sessionId) as
+        | {
+            id: string;
+            current_run_id: string | null;
+            ticket_refs: string | null;
+            stream_port: number | null;
+            task_summary: string | null;
+          }
+        | undefined;
+
+      if (!session) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end('{"error":"session not found"}');
+        return;
+      }
+
+      let ticket: string | null = null;
+      if (session.ticket_refs) {
+        try {
+          const refs = JSON.parse(session.ticket_refs) as string[];
+          ticket = refs[0] || null;
+        } catch {}
+      }
+
+      let run: { id: string } | null = null;
+      let testCase: Record<string, unknown> | null = null;
+
+      if (session.current_run_id) {
+        run = { id: session.current_run_id };
+
+        // Get the most recent test case for this run (prefer claimed/running, fallback to latest)
+        const claimed = db
+          .prepare(
+            `SELECT rpe.test_case_id, rpe.status as entry_status,
+                  tc.title, tc.format, tc.description,
+                  tc.bdd_given, tc.bdd_when, tc.bdd_then,
+                  tc.bdd_feature, tc.bdd_scenario,
+                  tc.trad_steps, tc.trad_expected,
+                  tc.preconditions
+           FROM run_pack_entries rpe
+           JOIN test_cases tc ON rpe.test_case_id = tc.id
+           WHERE rpe.run_id = ?
+           ORDER BY CASE rpe.status WHEN 'claimed' THEN 0 WHEN 'running' THEN 1 ELSE 2 END, rpe.started_at DESC
+           LIMIT 1`,
+          )
+          .get(session.current_run_id) as Record<string, unknown> | undefined;
+
+        if (claimed) {
+          const safeParseArr = (v: unknown): string[] => {
+            if (!v) return [];
+            try {
+              const a = JSON.parse(v as string);
+              return Array.isArray(a) ? a : [];
+            } catch {
+              return [];
+            }
+          };
+
+          testCase = {
+            title: claimed.title,
+            format: claimed.format,
+            status: claimed.entry_status,
+            description: claimed.description,
+            given: safeParseArr(claimed.bdd_given),
+            when: safeParseArr(claimed.bdd_when),
+            then: safeParseArr(claimed.bdd_then),
+            feature: claimed.bdd_feature,
+            scenario: claimed.bdd_scenario,
+            steps: safeParseArr(claimed.trad_steps),
+            expected: safeParseArr(claimed.trad_expected),
+            preconditions: safeParseArr(claimed.preconditions),
+          };
+        }
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          session: { id: session.id, task: session.task_summary },
+          run,
+          ticket,
+          testCase,
+        }),
+      );
+      return;
+    }
+
+    // ── Swarm Chat API (agent-browser -q chat) ──
+
+    if (url.pathname === "/api/swarm/chat" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on("end", async () => {
+        try {
+          const { sessionId, message } = JSON.parse(body) as {
+            sessionId?: string;
+            message?: string;
+          };
+          if (!sessionId) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end('{"error":"sessionId required"}');
+            return;
+          }
+
+          const db = getDb();
+          const session = db
+            .prepare(
+              "SELECT id, current_run_id, ticket_refs, stream_port FROM sessions WHERE id = ?",
+            )
+            .get(sessionId) as
+            | {
+                id: string;
+                current_run_id: string | null;
+                ticket_refs: string | null;
+                stream_port: number | null;
+              }
+            | undefined;
+
+          if (!session || !session.stream_port) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end('{"error":"session not found or no stream port"}');
+            return;
+          }
+
+          // Build context from the current claimed test case
+          let testContext = "";
+          if (session.current_run_id) {
+            const claimed = db
+              .prepare(
+                `SELECT rpe.*, tc.title as tc_title, tc.format as tc_format,
+                      tc.bdd_feature, tc.bdd_scenario, tc.bdd_given, tc.bdd_when, tc.bdd_then,
+                      tc.trad_steps, tc.trad_expected, tc.description as tc_description
+               FROM run_pack_entries rpe
+               JOIN test_cases tc ON rpe.test_case_id = tc.id
+               WHERE rpe.run_id = ? AND rpe.status = 'claimed'
+               LIMIT 1`,
+              )
+              .get(session.current_run_id) as
+              | Record<string, unknown>
+              | undefined;
+
+            if (claimed) {
+              testContext = `\nCurrent test case: "${claimed.tc_title || "unknown"}"`;
+              if (claimed.tc_format === "bdd") {
+                if (claimed.bdd_feature)
+                  testContext += `\nFeature: ${claimed.bdd_feature}`;
+                if (claimed.bdd_scenario)
+                  testContext += `\nScenario: ${claimed.bdd_scenario}`;
+                if (claimed.bdd_given)
+                  testContext += `\nGiven: ${claimed.bdd_given}`;
+                if (claimed.bdd_when)
+                  testContext += `\nWhen: ${claimed.bdd_when}`;
+                if (claimed.bdd_then)
+                  testContext += `\nThen: ${claimed.bdd_then}`;
+              } else {
+                if (claimed.trad_steps)
+                  testContext += `\nSteps: ${claimed.trad_steps}`;
+                if (claimed.trad_expected)
+                  testContext += `\nExpected: ${claimed.trad_expected}`;
+              }
+            }
+          }
+
+          const chatMsg =
+            message ||
+            `Describe what you see on the screen right now. What page is this? What is the current state?${testContext ? " Also relate it to the following test case context:" + testContext : ""}`;
+
+          // Run agent-browser -q chat
+          const { execFile } = await import("child_process");
+          const { promisify } = await import("util");
+          const execFileAsync = promisify(execFile);
+
+          try {
+            const { stdout } = await execFileAsync(
+              "agent-browser",
+              ["-q", "chat", chatMsg],
+              {
+                timeout: 30000,
+                env: { ...process.env },
+              },
+            );
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                summary: stdout.trim(),
+                testContext: testContext.trim(),
+              }),
+            );
+          } catch (execErr: unknown) {
+            const msg =
+              execErr instanceof Error ? execErr.message : String(execErr);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                error: "agent-browser chat failed",
+                detail: msg,
+              }),
+            );
+          }
+        } catch (parseErr: unknown) {
+          const msg =
+            parseErr instanceof Error ? parseErr.message : String(parseErr);
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid JSON body", detail: msg }));
+        }
+      });
+      return;
+    }
+
     // CORS preflight
     if (req.method === "OPTIONS") {
       res.setHeader(

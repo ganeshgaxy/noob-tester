@@ -175,6 +175,7 @@ Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's 
 | `/noob-rca`          | 5 — RCA         | "why did these tests fail?"                                           |
 | `/noob-report`       | 5 — Report      | "generate a report for PROJ-123"                                      |
 | `/noob-mr-pr`        | Utility         | "review the MR for PROJ-123"                                          |
+| `/noob-claim`        | 4 — Claiming    | "claim the next test case for PROJ-123"                               |
 | `/noob-repos-setup`  | Utility         | "set up repos for PROJ-123"                                           |
 | `/noob-ticket-cache` | Utility         | ticket context caching (called internally by other skills)            |
 
@@ -203,6 +204,8 @@ Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's 
 
 **`/noob-mr-pr`** — Utility. Reviews a GitLab MR or Bitbucket PR for a ticket — reads the diff, checks against acceptance criteria, surfaces concerns.
 
+**`/noob-claim`** — Phase 4, Claiming. Claims test cases from run packs for execution. Three modes: claim next (uses `claim-smart` — retry failed → resume pending → claim new), claim by name (substring match with validation), and retry a specific test. Auto-creates session and run pack if not provided. Returns a `$ENTRY` JSON object for `/noob-explore` to execute.
+
 **`/noob-repos-setup`** — Utility. Ensures all repos for a ticket are registered, cloned/pulled, and indexed. Called internally by analysis and planning skills.
 
 **`/noob-ticket-cache`** — Utility. Manages the ticket context cache (ticket info, MR diffs, comments, linked tickets). Prevents redundant Atlassian MCP and glab calls across skills.
@@ -214,6 +217,7 @@ Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's 
 /noob-analyze PROJ-123                    # Phase 1: Analysis + impact
 /noob-plan PROJ-123                       # Phase 2: Test plan from MR diffs
 /noob-testcase PROJ-123                   # Phase 3: Generate test cases
+/noob-claim PROJ-123                      # Phase 4: Claim next test case
 /noob-explore https://staging.app.com     # Phase 4: Browser test (ui/ui_api)
 /noob-api-explore PROJ-123                # Phase 4: API tests (api layer, all at once)
 /noob-rca                                 # Phase 5: Classify failures

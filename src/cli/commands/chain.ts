@@ -25,6 +25,7 @@ import {
   addEntryLog,
   addEntryObservation,
 } from "../../db/repositories/runpacks.js";
+import { allocateStreamPort } from "../../db/repositories/sessions.js";
 
 function evidenceDir(): string {
   const dir = join(dataDir(), "evidence");
@@ -95,15 +96,23 @@ export function registerChainCommands(program: Command): void {
       }
 
       // 1. Session start
-      const sessionId = uuid();
+      // End any previous active sessions for this ticket so only one is live at a time
       db.prepare(
-        `INSERT INTO sessions (id, status, task_summary, labels, ticket_refs)
-         VALUES (?, 'active', ?, ?, ?)`,
+        `UPDATE sessions SET status = 'completed', ended_at = datetime('now')
+         WHERE status = 'active' AND ticket_refs = ?`,
+      ).run(JSON.stringify([ticket]));
+
+      const sessionId = uuid();
+      const streamPort = allocateStreamPort();
+      db.prepare(
+        `INSERT INTO sessions (id, status, task_summary, labels, ticket_refs, stream_port)
+         VALUES (?, 'active', ?, ?, ?, ?)`,
       ).run(
         sessionId,
         task,
         JSON.stringify(labels.split(",")),
         JSON.stringify([ticket]),
+        streamPort,
       );
 
       // 2. Run resolve
@@ -120,6 +129,11 @@ export function registerChainCommands(program: Command): void {
         if (existing) {
           runId = existing.id;
           runResumed = true;
+          // Update the resumed run to point to the new session
+          db.prepare("UPDATE runs SET session_id = ? WHERE id = ?").run(
+            sessionId,
+            runId,
+          );
         }
       }
 
@@ -204,6 +218,7 @@ export function registerChainCommands(program: Command): void {
           runResumed,
           packResumed,
           evidenceDir: evidenceDir(),
+          streamPort,
         }),
       );
     });

@@ -29,7 +29,7 @@ export function registerSessionCommands(program: Command): void {
     )
     .option("--metadata <json>", "Extra metadata as JSON")
     .action((opts) => {
-      const id = createSession({
+      const { id, streamPort } = createSession({
         taskSummary: opts.task,
         labels: opts.labels
           ? (opts.labels as string).split(",").map((s: string) => s.trim())
@@ -39,7 +39,7 @@ export function registerSessionCommands(program: Command): void {
           : undefined,
         metadata: opts.metadata ? JSON.parse(opts.metadata) : undefined,
       });
-      console.log(JSON.stringify({ sessionId: id }));
+      console.log(JSON.stringify({ sessionId: id, streamPort }));
     });
 
   session
