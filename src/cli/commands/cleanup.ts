@@ -10,7 +10,9 @@ import { deleteAllSecrets } from "../../secrets/store.js";
 function deleteRunData(db: ReturnType<typeof getDb>, runIds: string[]): void {
   if (runIds.length === 0) return;
   const ph = runIds.map(() => "?").join(",");
-  db.prepare(`DELETE FROM run_pack_entries WHERE run_id IN (${ph})`).run(...runIds);
+  db.prepare(`DELETE FROM run_pack_entries WHERE run_id IN (${ph})`).run(
+    ...runIds,
+  );
   db.prepare(`DELETE FROM raw_outputs WHERE run_id IN (${ph})`).run(...runIds);
   db.prepare(`DELETE FROM issues WHERE run_id IN (${ph})`).run(...runIds);
   db.prepare(`DELETE FROM test_steps WHERE run_id IN (${ph})`).run(...runIds);
@@ -18,15 +20,24 @@ function deleteRunData(db: ReturnType<typeof getDb>, runIds: string[]): void {
   db.prepare(`DELETE FROM analyses WHERE run_id IN (${ph})`).run(...runIds);
   db.prepare(`DELETE FROM action_log WHERE run_id IN (${ph})`).run(...runIds);
   // Nullify FK refs in failure_patterns before deleting runs
-  db.prepare(`UPDATE failure_patterns SET first_seen_run = NULL WHERE first_seen_run IN (${ph})`).run(...runIds);
-  db.prepare(`UPDATE failure_patterns SET last_seen_run = NULL WHERE last_seen_run IN (${ph})`).run(...runIds);
+  db.prepare(
+    `UPDATE failure_patterns SET first_seen_run = NULL WHERE first_seen_run IN (${ph})`,
+  ).run(...runIds);
+  db.prepare(
+    `UPDATE failure_patterns SET last_seen_run = NULL WHERE last_seen_run IN (${ph})`,
+  ).run(...runIds);
   db.prepare(`DELETE FROM runs WHERE id IN (${ph})`).run(...runIds);
 }
 
 /** Helper: delete a session and all its linked data. */
-function deleteSessionWithData(db: ReturnType<typeof getDb>, sessionId: string): number {
+function deleteSessionWithData(
+  db: ReturnType<typeof getDb>,
+  sessionId: string,
+): number {
   // Clear current_run_id ref first
-  db.prepare("UPDATE sessions SET current_run_id = NULL WHERE id = ?").run(sessionId);
+  db.prepare("UPDATE sessions SET current_run_id = NULL WHERE id = ?").run(
+    sessionId,
+  );
 
   const runs = db
     .prepare("SELECT id FROM runs WHERE session_id = ?")
@@ -51,13 +62,19 @@ export function registerCleanupCommands(program: Command): void {
     .option("-p, --port <port>", "Port to kill", "4040")
     .action((opts) => {
       try {
-        const pids = execSync(`lsof -ti:${opts.port}`, { encoding: "utf-8" }).trim();
+        const pids = execSync(`lsof -ti:${opts.port}`, {
+          encoding: "utf-8",
+        }).trim();
         if (!pids) {
           console.log(chalk.dim(`No process found on port ${opts.port}.`));
           return;
         }
         execSync(`lsof -ti:${opts.port} | xargs kill -9`, { stdio: "ignore" });
-        console.log(chalk.green(`Killed process(es) on port ${opts.port}: ${pids.replace(/\n/g, ", ")}`));
+        console.log(
+          chalk.green(
+            `Killed process(es) on port ${opts.port}: ${pids.replace(/\n/g, ", ")}`,
+          ),
+        );
       } catch {
         console.log(chalk.dim(`No process found on port ${opts.port}.`));
       }
@@ -67,11 +84,15 @@ export function registerCleanupCommands(program: Command): void {
 
   cleanup
     .command("all")
-    .description("Delete runs, sessions, analyses, test cases, issues (keeps secrets, repos, index)")
+    .description(
+      "Delete runs, sessions, analyses, test cases, issues (keeps secrets, repos, index)",
+    )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
       if (!opts.yes) {
-        console.log(chalk.red("This will delete ALL data. Run with --yes to confirm."));
+        console.log(
+          chalk.red("This will delete ALL data. Run with --yes to confirm."),
+        );
         return;
       }
 
@@ -79,28 +100,59 @@ export function registerCleanupCommands(program: Command): void {
       db.pragma("foreign_keys = OFF");
       db.transaction(() => {
         for (const table of [
-          "run_artifacts", "ui_map_forms", "ui_map_navigations", "ui_map_elements", "ui_map_pages", "ui_maps",
-          "run_pack_entries", "raw_outputs", "issues", "test_steps", "test_plans",
-          "test_cases", "tech_issues", "analyses", "action_log", "runs", "sessions", "failure_patterns",
-          "rca_results", "a11y_issues", "coverage_map", "visual_diffs", "visual_baselines",
-          "impact_areas", "coverage_gaps", "phase_transitions", "blockers", "reports",
-          "ticket_context_index", "resource_stats",
-          "api_map_chains", "api_map_responses", "api_map_params", "api_map_endpoints", "api_maps",
+          "run_artifacts",
+          "ui_map_forms",
+          "ui_map_navigations",
+          "ui_map_elements",
+          "ui_map_pages",
+          "ui_maps",
+          "run_pack_entries",
+          "raw_outputs",
+          "issues",
+          "test_steps",
+          "test_plans",
+          "test_cases",
+          "tech_issues",
+          "analyses",
+          "action_log",
+          "runs",
+          "sessions",
+          "failure_patterns",
+          "rca_results",
+          "a11y_issues",
+          "coverage_map",
+          "visual_diffs",
+          "visual_baselines",
+          "impact_areas",
+          "coverage_gaps",
+          "phase_transitions",
+          "blockers",
+          "reports",
+          "ticket_context_index",
+          "resource_stats",
+          "api_map_chains",
+          "api_map_responses",
+          "api_map_params",
+          "api_map_endpoints",
+          "api_maps",
+          "default_files",
         ]) {
-          try { db.prepare(`DELETE FROM ${table}`).run(); } catch {}
+          try {
+            db.prepare(`DELETE FROM ${table}`).run();
+          } catch {}
         }
       })();
       db.pragma("foreign_keys = ON");
 
-      // Clean ticket context files from disk
-      const contextDir = join(dataDir(), "ticket-context");
-      if (existsSync(contextDir)) rmSync(contextDir, { recursive: true, force: true });
+      // Clean data directories from disk
+      for (const dir of ["ticket-context", "evidence", "files"]) {
+        const p = join(dataDir(), dir);
+        if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+      }
 
-      // Clean evidence files from disk
-      const evidenceDir = join(dataDir(), "evidence");
-      if (existsSync(evidenceDir)) rmSync(evidenceDir, { recursive: true, force: true });
-
-      console.log(chalk.green("All data deleted (keeps secrets, repos, index)."));
+      console.log(
+        chalk.green("All data deleted (keeps secrets, repos, index)."),
+      );
     });
 
   // ── Clean a specific session ──
@@ -111,26 +163,36 @@ export function registerCleanupCommands(program: Command): void {
     .option("--yes", "Skip confirmation")
     .action((sessionId, opts) => {
       const db = getDb();
-      const session = db.prepare("SELECT id FROM sessions WHERE id = ?").get(sessionId);
+      const session = db
+        .prepare("SELECT id FROM sessions WHERE id = ?")
+        .get(sessionId);
       if (!session) {
         console.log(chalk.red(`Session ${sessionId} not found.`));
         return;
       }
 
       const runCount = (
-        db.prepare("SELECT COUNT(*) as c FROM runs WHERE session_id = ?").get(sessionId) as { c: number }
+        db
+          .prepare("SELECT COUNT(*) as c FROM runs WHERE session_id = ?")
+          .get(sessionId) as { c: number }
       ).c;
 
       if (!opts.yes) {
         console.log(
-          chalk.yellow(`This will delete session ${sessionId.slice(0, 8)} and ${runCount} linked run(s). Run with --yes to confirm.`)
+          chalk.yellow(
+            `This will delete session ${sessionId.slice(0, 8)} and ${runCount} linked run(s). Run with --yes to confirm.`,
+          ),
         );
         return;
       }
 
       db.transaction(() => {
         const deleted = deleteSessionWithData(db, sessionId);
-        console.log(chalk.green(`Deleted session ${sessionId.slice(0, 8)} and ${deleted} run(s).`));
+        console.log(
+          chalk.green(
+            `Deleted session ${sessionId.slice(0, 8)} and ${deleted} run(s).`,
+          ),
+        );
       })();
     });
 
@@ -146,7 +208,7 @@ export function registerCleanupCommands(program: Command): void {
       // Mark stale
       db.prepare(
         `UPDATE sessions SET status = 'stale'
-         WHERE status = 'active' AND last_heartbeat < datetime('now', '-5 minutes')`
+         WHERE status = 'active' AND last_heartbeat < datetime('now', '-5 minutes')`,
       ).run();
 
       const staleSessions = db
@@ -159,7 +221,11 @@ export function registerCleanupCommands(program: Command): void {
       }
 
       if (!opts.yes) {
-        console.log(chalk.yellow(`Found ${staleSessions.length} stale/crashed session(s). Run with --yes to delete.`));
+        console.log(
+          chalk.yellow(
+            `Found ${staleSessions.length} stale/crashed session(s). Run with --yes to delete.`,
+          ),
+        );
         return;
       }
 
@@ -170,7 +236,11 @@ export function registerCleanupCommands(program: Command): void {
         }
       })();
 
-      console.log(chalk.green(`Deleted ${staleSessions.length} session(s) and ${totalRuns} run(s).`));
+      console.log(
+        chalk.green(
+          `Deleted ${staleSessions.length} session(s) and ${totalRuns} run(s).`,
+        ),
+      );
     });
 
   // ── Clean all secrets ──
@@ -181,7 +251,9 @@ export function registerCleanupCommands(program: Command): void {
     .option("--yes", "Skip confirmation")
     .action((opts) => {
       if (!opts.yes) {
-        console.log(chalk.red("This will delete ALL secrets. Run with --yes to confirm."));
+        console.log(
+          chalk.red("This will delete ALL secrets. Run with --yes to confirm."),
+        );
         return;
       }
 
@@ -193,11 +265,17 @@ export function registerCleanupCommands(program: Command): void {
 
   cleanup
     .command("nuke")
-    .description("Delete EVERYTHING — all data, secrets, targets, repos, index. Full reset.")
+    .description(
+      "Delete EVERYTHING — all data, secrets, targets, repos, index. Full reset.",
+    )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
       if (!opts.yes) {
-        console.log(chalk.red("This will delete EVERYTHING including secrets, targets, repos, and codebase index. Run with --yes to confirm."));
+        console.log(
+          chalk.red(
+            "This will delete EVERYTHING including secrets, targets, repos, and codebase index. Run with --yes to confirm.",
+          ),
+        );
         return;
       }
 
@@ -206,29 +284,48 @@ export function registerCleanupCommands(program: Command): void {
       db.transaction(() => {
         // Explicit critical tables first (belt-and-suspenders — never miss secrets)
         const criticalTables = [
-          "secrets", "targets",
-          "rca_results", "a11y_issues", "coverage_map", "visual_diffs", "visual_baselines",
-          "resource_stats", "ticket_context_index", "reports",
-          "api_map_chains", "api_map_responses", "api_map_params", "api_map_endpoints", "api_maps",
+          "secrets",
+          "targets",
+          "rca_results",
+          "a11y_issues",
+          "coverage_map",
+          "visual_diffs",
+          "visual_baselines",
+          "resource_stats",
+          "ticket_context_index",
+          "reports",
+          "api_map_chains",
+          "api_map_responses",
+          "api_map_params",
+          "api_map_endpoints",
+          "api_maps",
         ];
         for (const t of criticalTables) {
-          try { db.prepare(`DELETE FROM "${t}"`).run(); } catch {}
+          try {
+            db.prepare(`DELETE FROM "${t}"`).run();
+          } catch {}
         }
 
         // Then dynamically get ALL remaining user tables
         const tables = db
-          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_%' AND name NOT LIKE 'code_fts%' AND name NOT LIKE 'code_embeddings%' AND name NOT LIKE 'code_chunk_embeddings%' AND name NOT LIKE 'sqlite_%'")
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_%' AND name NOT LIKE 'code_fts%' AND name NOT LIKE 'code_embeddings%' AND name NOT LIKE 'code_chunk_embeddings%' AND name NOT LIKE 'sqlite_%'",
+          )
           .all() as Array<{ name: string }>;
         for (const t of tables) {
-          try { db.prepare(`DELETE FROM "${t.name}"`).run(); } catch {}
+          try {
+            db.prepare(`DELETE FROM "${t.name}"`).run();
+          } catch {}
         }
         // Clear FTS index
-        try { db.prepare("DELETE FROM code_fts").run(); } catch {}
+        try {
+          db.prepare("DELETE FROM code_fts").run();
+        } catch {}
       })();
       db.pragma("foreign_keys = ON");
 
       // Remove ALL data directories from disk
-      const dirs = ["repos", "evidence", "ticket-context"];
+      const dirs = ["repos", "evidence", "ticket-context", "files"];
       for (const dir of dirs) {
         const fullPath = join(dataDir(), dir);
         if (existsSync(fullPath)) {
@@ -245,7 +342,9 @@ export function registerCleanupCommands(program: Command): void {
 
   cleanup
     .command("repos")
-    .description("Delete all repos, groups, codebase index, and synced files from disk")
+    .description(
+      "Delete all repos, groups, codebase index, and synced files from disk",
+    )
     .option("--name <name>", "Delete only a specific repo")
     .option("--yes", "Skip confirmation")
     .action((opts) => {
@@ -261,20 +360,34 @@ export function registerCleanupCommands(program: Command): void {
 
       if (opts.name) {
         // Single repo
-        const repo = db.prepare("SELECT * FROM repos WHERE name = ?").get(opts.name) as { id: string; local_path: string | null } | undefined;
+        const repo = db
+          .prepare("SELECT * FROM repos WHERE name = ?")
+          .get(opts.name) as
+          | { id: string; local_path: string | null }
+          | undefined;
         if (!repo) {
           console.log(chalk.red(`Repo "${opts.name}" not found.`));
           return;
         }
         db.prepare("DELETE FROM code_fts WHERE repo_name = ?").run(opts.name);
-        db.prepare("DELETE FROM import_graph WHERE repo_name = ?").run(opts.name);
-        db.prepare("DELETE FROM coverage_map WHERE repo_name = ?").run(opts.name);
-        db.prepare("DELETE FROM repo_group_members WHERE repo_id = ?").run(repo.id);
+        db.prepare("DELETE FROM import_graph WHERE repo_name = ?").run(
+          opts.name,
+        );
+        db.prepare("DELETE FROM coverage_map WHERE repo_name = ?").run(
+          opts.name,
+        );
+        db.prepare("DELETE FROM repo_group_members WHERE repo_id = ?").run(
+          repo.id,
+        );
         db.prepare("DELETE FROM repos WHERE id = ?").run(repo.id);
         // Clear cached stats for this repo
         try {
-          db.prepare("DELETE FROM resource_stats WHERE key LIKE ?").run(`repo:${opts.name}:%`);
-          db.prepare("DELETE FROM resource_stats WHERE key LIKE ?").run(`coverage:${opts.name}`);
+          db.prepare("DELETE FROM resource_stats WHERE key LIKE ?").run(
+            `repo:${opts.name}:%`,
+          );
+          db.prepare("DELETE FROM resource_stats WHERE key LIKE ?").run(
+            `coverage:${opts.name}`,
+          );
         } catch {}
         if (repo.local_path && existsSync(repo.local_path)) {
           rmSync(repo.local_path, { recursive: true, force: true });
@@ -292,7 +405,9 @@ export function registerCleanupCommands(program: Command): void {
           db.prepare("DELETE FROM repos").run();
           // Clear all repo/coverage cached stats
           try {
-            db.prepare("DELETE FROM resource_stats WHERE key LIKE 'repo:%' OR key LIKE 'coverage:%'").run();
+            db.prepare(
+              "DELETE FROM resource_stats WHERE key LIKE 'repo:%' OR key LIKE 'coverage:%'",
+            ).run();
           } catch {}
         })();
         db.pragma("foreign_keys = ON");
@@ -301,7 +416,9 @@ export function registerCleanupCommands(program: Command): void {
         if (existsSync(reposDir)) {
           rmSync(reposDir, { recursive: true, force: true });
         }
-        console.log(chalk.green("All repos, groups, index, and synced files deleted."));
+        console.log(
+          chalk.green("All repos, groups, index, and synced files deleted."),
+        );
       }
     });
 
@@ -317,14 +434,24 @@ export function registerCleanupCommands(program: Command): void {
     .option("--yes", "Skip confirmation")
     .action((opts) => {
       if (!opts.yes) {
-        console.log(chalk.yellow("This will delete tech issues. Run with --yes to confirm."));
+        console.log(
+          chalk.yellow(
+            "This will delete tech issues. Run with --yes to confirm.",
+          ),
+        );
         return;
       }
       const db = getDb();
       let sql = "DELETE FROM tech_issues WHERE 1=1";
       const params: unknown[] = [];
-      if (opts.ticket) { sql += " AND ticket_ref = ?"; params.push(opts.ticket); }
-      if (opts.status) { sql += " AND status = ?"; params.push(opts.status); }
+      if (opts.ticket) {
+        sql += " AND ticket_ref = ?";
+        params.push(opts.ticket);
+      }
+      if (opts.status) {
+        sql += " AND status = ?";
+        params.push(opts.status);
+      }
       const result = db.prepare(sql).run(...params);
       console.log(chalk.green(`Deleted ${result.changes} tech issue(s).`));
     });
@@ -362,7 +489,9 @@ export function registerCleanupCommands(program: Command): void {
       }
 
       const result = db.prepare(sql).run(...params);
-      console.log(chalk.green(`Deleted ${result.changes} run pack entry(ies).`));
+      console.log(
+        chalk.green(`Deleted ${result.changes} run pack entry(ies).`),
+      );
     });
 
   // ── Clean test cases ──
@@ -372,7 +501,10 @@ export function registerCleanupCommands(program: Command): void {
     .description("Delete test cases")
     .option("--ticket <ref>", "Delete only test cases for a specific ticket")
     .option("--run <runId>", "Delete only test cases for a specific run")
-    .option("--status <status>", "Delete only test cases with this status (e.g. passed, failed)")
+    .option(
+      "--status <status>",
+      "Delete only test cases with this status (e.g. passed, failed)",
+    )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
       const db = getDb();

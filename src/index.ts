@@ -8,6 +8,7 @@ import { registerSetupCommand } from "./cli/commands/setup.js";
 import { registerSessionCommands } from "./cli/commands/session.js";
 import { registerWatchCommand } from "./cli/commands/watch.js";
 import { registerSecretsCommands } from "./cli/commands/secrets.js";
+import { registerFilesCommands } from "./cli/commands/files.js";
 import { registerReposCommands } from "./cli/commands/repos.js";
 import { registerTechIssueCommands } from "./cli/commands/tech-issue.js";
 import { registerMetricsCommands } from "./cli/commands/metrics.js";
@@ -40,6 +41,7 @@ program
       "    uimap       UI maps — scan (stable selectors: role+text/placeholder/url), pages, navs, forms\n" +
       "    apimap      API maps — endpoints, params, responses, chains, health tracking\n" +
       "    secrets     Manage credentials per target/role (literal, env:, op:)\n" +
+      "    files       Manage default local files for agent-browser upload\n" +
       "    session     Track active testing sessions across terminals\n" +
       "    tech-issue  Track technical issues, workarounds, and recovery attempts\n" +
       "    ticket-context  Cache ticket info, MR diffs, linked data across skills\n" +
@@ -70,6 +72,7 @@ registerReportCommands(program);
 registerSessionCommands(program);
 registerWatchCommand(program);
 registerSecretsCommands(program);
+registerFilesCommands(program);
 registerTestCaseCommands(program);
 registerReposCommands(program);
 registerTechIssueCommands(program);

@@ -12,6 +12,8 @@ import {
   readlinkSync,
   mkdirSync,
   symlinkSync,
+  copyFileSync,
+  writeFileSync,
 } from "fs";
 import { extname, resolve as resolvePath, join } from "path";
 import { homedir } from "os";
@@ -246,6 +248,156 @@ export function startWatchServer(opts: WatchOptions): void {
           );
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ imported }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── Default Files API ──
+
+    if (url.pathname === "/api/files" && req.method === "GET") {
+      const db = getDb();
+      const rows = db
+        .prepare(
+          "SELECT id, label, file_path, file_type, mime_type, file_size, description, created_at, updated_at FROM default_files ORDER BY file_type, label",
+        )
+        .all();
+      // Check if files still exist on disk
+      const enriched = (rows as any[]).map((r) => ({
+        ...r,
+        exists: existsSync(r.file_path),
+      }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(enriched));
+      return;
+    }
+
+    const fileMimeMap: Record<string, string> = {
+      ".pdf": "application/pdf",
+      ".doc": "application/msword",
+      ".docx":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ".csv": "text/csv",
+      ".txt": "text/plain",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".svg": "image/svg+xml",
+      ".webp": "image/webp",
+      ".mp4": "video/mp4",
+      ".webm": "video/webm",
+      ".json": "application/json",
+      ".xml": "application/xml",
+      ".zip": "application/zip",
+    };
+
+    if (url.pathname === "/api/files" && req.method === "POST") {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        try {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          const {
+            label,
+            file_type,
+            mime_type,
+            description,
+            file_name,
+            file_data,
+            file_path,
+          } = JSON.parse(raw);
+          if (!label) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "label is required" }));
+            return;
+          }
+          const id = uuidv4();
+          const filesDir = join(dataDir(), "files");
+          mkdirSync(filesDir, { recursive: true });
+          let destPath: string;
+          let size: number;
+          let detectedMime = mime_type || "";
+
+          if (file_data && file_name) {
+            // Browser upload: base64-encoded file content
+            const buf = Buffer.from(file_data, "base64");
+            size = buf.length;
+            destPath = join(filesDir, id + "-" + file_name);
+            writeFileSync(destPath, buf);
+            if (!detectedMime) {
+              const ext = extname(file_name).toLowerCase();
+              detectedMime = fileMimeMap[ext] || "application/octet-stream";
+            }
+          } else if (file_path) {
+            // CLI/path-based: copy from local path
+            const resolved = resolvePath(file_path);
+            if (!existsSync(resolved)) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "File not found: " + resolved }));
+              return;
+            }
+            size = statSync(resolved).size;
+            const origName = resolved.split("/").pop() || "file";
+            destPath = join(filesDir, id + "-" + origName);
+            copyFileSync(resolved, destPath);
+            if (!detectedMime) {
+              const ext = extname(resolved).toLowerCase();
+              detectedMime = fileMimeMap[ext] || "application/octet-stream";
+            }
+          } else {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                error: "file_data+file_name or file_path is required",
+              }),
+            );
+            return;
+          }
+
+          const db = getDb();
+          db.prepare(
+            "INSERT INTO default_files (id, label, file_path, file_type, mime_type, file_size, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          ).run(
+            id,
+            label,
+            destPath,
+            file_type || "document",
+            detectedMime,
+            size,
+            description || null,
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ id, label, file_path: destPath }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/files" && req.method === "DELETE") {
+      let body = "";
+      req.on("data", (chunk: string) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { id } = JSON.parse(body);
+          if (!id) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "id required" }));
+            return;
+          }
+          const db = getDb();
+          db.prepare("DELETE FROM default_files WHERE id = ?").run(id);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ deleted: true }));
         } catch (err) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err) }));

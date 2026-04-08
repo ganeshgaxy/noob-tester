@@ -1600,6 +1600,28 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_org ON auth_sessions(org_id);
     );
   }
 
+  // Default files — local files available for agent-browser upload
+  if (!applied.has("051-default-files")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS default_files (
+  id              TEXT PRIMARY KEY,
+  label           TEXT NOT NULL,
+  file_path       TEXT NOT NULL,
+  file_type       TEXT NOT NULL DEFAULT 'document',
+  mime_type       TEXT,
+  file_size       INTEGER DEFAULT 0,
+  description     TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_df_type ON default_files(file_type);
+CREATE INDEX IF NOT EXISTS idx_df_label ON default_files(label);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "051-default-files",
+    );
+  }
+
   // Denormalize test case title into run_pack_entries for faster queries
   if (!applied.has("049-runpack-tc-title")) {
     try {

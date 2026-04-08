@@ -446,6 +446,7 @@ export function getDashboardHtml(
       <div class="nav-btn" data-page="uimaps" onclick="switchPage('uimaps')"><i class="ph ph-browser nav-icon"></i>UI Maps</div>
       <div class="nav-btn" data-page="apimaps" onclick="switchPage('apimaps')"><i class="ph ph-plugs-connected nav-icon"></i>API Maps</div>
       <div class="nav-btn" data-page="secrets" onclick="switchPage('secrets')"><i class="ph ph-key nav-icon"></i>Secrets</div>
+      <div class="nav-btn" data-page="files" onclick="switchPage('files')"><i class="ph ph-file-arrow-up nav-icon"></i>Files</div>
 
       <div class="nav-group-label">Reporting</div>
       <div class="nav-btn" data-page="reports" onclick="switchPage('reports')"><i class="ph ph-file-text nav-icon"></i>Reports</div>
@@ -585,6 +586,11 @@ function render() {
 
   if (currentPage === "secrets") {
     renderSecretsPage();
+    return;
+  }
+
+  if (currentPage === "files") {
+    renderFilesPage();
     return;
   }
 
@@ -5216,6 +5222,122 @@ async function revealSecret(target, role, key) {
   }
 }
 
+// ── Default Files Page ──
+
+const FILE_TYPE_LABELS = {
+  document: { icon: "ph-file-text", color: "var(--accent)" },
+  image: { icon: "ph-image", color: "var(--green)" },
+  spreadsheet: { icon: "ph-table", color: "var(--yellow)" },
+  pdf: { icon: "ph-file-pdf", color: "var(--red)" },
+  video: { icon: "ph-video-camera", color: "var(--purple, #a371f7)" },
+  archive: { icon: "ph-file-zip", color: "var(--dim)" },
+  other: { icon: "ph-file", color: "var(--dim)" },
+};
+
+async function renderFilesPage() {
+  const files = await fetchJson("/api/files");
+  const app = document.getElementById("app");
+
+  // Stats
+  const byType = {};
+  for (const f of files) {
+    byType[f.file_type] = (byType[f.file_type] || 0) + 1;
+  }
+  const totalSize = files.reduce(function(s, f) { return s + (f.file_size || 0); }, 0);
+
+  let html = '<div class="panel" style="margin-bottom:16px">';
+  html += '<div class="panel-title">Default Files for Upload</div>';
+  if (files.length > 0) {
+    html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
+    html += '<div class="stat"><div class="stat-value">' + files.length + '</div><div class="stat-label">Files</div></div>';
+    html += '<div class="stat"><div class="stat-value">' + Object.keys(byType).length + '</div><div class="stat-label">Types</div></div>';
+    html += '<div class="stat"><div class="stat-value">' + formatBytes(totalSize) + '</div><div class="stat-label">Total Size</div></div>';
+    html += '</div>';
+  }
+  html += '<div style="font-size:12px;color:var(--dim)">Register local files here so agents can use <code>agent-browser upload &lt;selector&gt; &lt;file_path&gt;</code> during test execution.</div>';
+  html += '</div>';
+
+  html += '<div class="split-view wide-left">';
+
+  // LEFT — file cards
+  html += '<div class="split-left">';
+  if (files.length === 0) {
+    html += '<div class="empty">No files registered. Add one using the form on the right.</div>';
+  } else {
+    for (const f of files) {
+      const meta = FILE_TYPE_LABELS[f.file_type] || FILE_TYPE_LABELS.other;
+      const existsBadge = f.exists
+        ? '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(63,185,80,0.15);color:var(--green)">exists</span>'
+        : '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(248,81,73,0.15);color:var(--red)">missing</span>';
+      html += '<div class="session-card">';
+      html += '<div class="session-header">';
+      html += '<span style="display:flex;align-items:center;gap:6px"><i class="ph ' + meta.icon + '" style="color:' + meta.color + ';font-size:16px"></i><span class="session-id" style="font-size:14px">' + esc(f.label) + '</span></span>';
+      html += '<span style="display:flex;align-items:center;gap:6px">' + existsBadge + '<button class="secret-delete" onclick="event.stopPropagation();deleteFileUI(' + "'" + f.id + "','" + esc(f.label).replace(/'/g, '') + "'" + ')">Delete</button></span>';
+      html += '</div>';
+      html += '<div style="font-size:12px;color:var(--dim);margin-top:4px;font-family:monospace;word-break:break-all">' + esc(f.file_path) + '</div>';
+      html += '<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--dim)">';
+      html += '<span style="padding:1px 6px;border-radius:8px;background:rgba(210,153,34,0.15);color:var(--yellow)">' + esc(f.file_type) + '</span>';
+      if (f.mime_type) html += '<span>' + esc(f.mime_type) + '</span>';
+      if (f.file_size) html += '<span>' + formatBytes(f.file_size) + '</span>';
+      html += '</div>';
+      if (f.description) html += '<div style="font-size:12px;color:var(--dim);margin-top:4px">' + esc(f.description) + '</div>';
+      html += '</div>';
+    }
+  }
+  html += '</div>';
+
+  // RIGHT — add file form
+  html += '<div class="split-right panel">';
+  html += '<div class="panel-title">Add File</div>';
+  html += '<div class="add-form" style="flex-direction:column">';
+  html += '<input id="add-file-label" placeholder="Label (e.g. Sample Resume)" />';
+  html += '<input id="add-file-input" type="file" style="padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-size:12px" />';
+  html += '<select id="add-file-type">';
+  html += '<option value="document">Document</option>';
+  html += '<option value="pdf">PDF</option>';
+  html += '<option value="image">Image</option>';
+  html += '<option value="spreadsheet">Spreadsheet</option>';
+  html += '<option value="video">Video</option>';
+  html += '<option value="archive">Archive</option>';
+  html += '<option value="other">Other</option>';
+  html += '</select>';
+  html += '<input id="add-file-desc" placeholder="Description (optional)" />';
+  html += '<button onclick="addFileUI()">Add File</button>';
+  html += '</div>';
+
+  html += '<div style="margin-top:20px;font-size:12px;color:var(--dim)">';
+  html += '<div class="panel-title">Usage in Skills</div>';
+  html += '<code style="display:block;margin-top:4px;font-size:11px;white-space:pre-wrap">noob-tester files list<br>agent-browser upload &lt;selector&gt; &lt;file_path&gt;</code>';
+  html += '</div>';
+  html += '</div>';
+
+  html += '</div>';
+  setPage(html);
+}
+
+async function addFileUI() {
+  const label = document.getElementById("add-file-label").value;
+  const fileInput = document.getElementById("add-file-input");
+  const file_type = document.getElementById("add-file-type").value;
+  const description = document.getElementById("add-file-desc").value;
+  if (!label) { alert("Label is required"); return; }
+  if (!fileInput.files || !fileInput.files.length) { alert("Please select a file"); return; }
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+  reader.onload = async function() {
+    const base64 = reader.result.split(",")[1];
+    await postJson("/api/files", { label, file_name: file.name, file_data: base64, file_type, description: description || undefined });
+    renderFilesPage();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function deleteFileUI(id, label) {
+  if (!confirm("Delete file " + label + "?")) return;
+  await fetchApi("/api/files", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+  renderFilesPage();
+}
+
 // ── Coverage Page ──
 
 let covSelectedRepo = "";
@@ -5930,10 +6052,6 @@ function swarmMaximize(sessionId, port) {
         html += '<div class="swarm-info-section"><div class="swarm-info-label">Test Case</div>';
         html += '<div class="swarm-info-value">' + esc(tc.title || "—") + '</div></div>';
 
-        if (tc.status) {
-          html += '<div class="swarm-info-section"><div class="swarm-info-label">Status</div>';
-          html += '<div class="swarm-info-value"><span class="swarm-info-badge ' + tc.status + '">' + esc(tc.status.toUpperCase()) + '</span></div></div>';
-        }
         if (tc.format) {
           html += '<div class="swarm-info-section"><div class="swarm-info-label">Format</div>';
           html += '<div class="swarm-info-value"><span class="swarm-info-badge ' + tc.format + '">' + esc(tc.format.toUpperCase()) + '</span></div></div>';
