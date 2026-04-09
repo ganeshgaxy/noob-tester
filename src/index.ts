@@ -27,6 +27,7 @@ import { registerChainCommands } from "./cli/commands/chain.js";
 import { registerSettingsCommands } from "./cli/commands/settings.js";
 import { registerAuthCommands } from "./cli/commands/auth.js";
 import { registerSyncCommands } from "./cli/commands/sync.js";
+import { registerQaPoolCommands } from "./cli/commands/qa-pool.js";
 
 program
   .name("noob-tester")
@@ -91,6 +92,7 @@ registerChainCommands(program);
 registerSettingsCommands(program);
 registerAuthCommands(program);
 registerSyncCommands(program);
+registerQaPoolCommands(program);
 registerSetupCommand(program);
 
 // Evidence path command

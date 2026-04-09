@@ -1643,6 +1643,26 @@ CREATE INDEX IF NOT EXISTS idx_df_label ON default_files(label);
       "049-runpack-tc-title",
     );
   }
+
+  // qa-pool — ticketed multi-agent orchestration table
+  if (!applied.has("052-qa-pool")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS qa_pool_agents (
+  id          TEXT PRIMARY KEY,
+  ticket_id   TEXT NOT NULL,
+  agent_path  TEXT NOT NULL,
+  target      TEXT,
+  role        TEXT NOT NULL DEFAULT 'default',
+  file        TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_qpa_ticket ON qa_pool_agents(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_qpa_agent ON qa_pool_agents(agent_path);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "052-qa-pool",
+    );
+  }
 }
 
 function tryLoadVss(db: Database.Database): void {

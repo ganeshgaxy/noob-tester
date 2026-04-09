@@ -431,6 +431,7 @@ export function getDashboardHtml(
       <div class="nav-btn" data-page="runs" onclick="switchPage('runs')"><i class="ph ph-compass nav-icon"></i>Explore</div>
       <div class="nav-btn" data-page="swarm" onclick="switchPage('swarm')"><i class="ph ph-monitor-play nav-icon"></i>Swarm</div>
       <div class="nav-btn" data-page="issues" onclick="switchPage('issues')"><i class="ph ph-bug nav-icon"></i>Issues</div>
+      <div class="nav-btn" data-page="qapool" onclick="switchPage('qapool')"><i class="ph ph-robot nav-icon"></i>Pool</div>
 
       <div class="nav-group-label">Planning</div>
       <div class="nav-btn" data-page="analyses" onclick="switchPage('analyses')"><i class="ph ph-magnifying-glass-plus nav-icon"></i>Analyses</div>
@@ -581,6 +582,11 @@ function render() {
 
   if (currentPage === "metrics") {
     renderMetricsPage();
+    return;
+  }
+
+  if (currentPage === "qapool") {
+    renderQaPoolPage();
     return;
   }
 
@@ -5233,6 +5239,127 @@ const FILE_TYPE_LABELS = {
   archive: { icon: "ph-file-zip", color: "var(--dim)" },
   other: { icon: "ph-file", color: "var(--dim)" },
 };
+
+// ── QA Pool Page ──
+
+let qaPoolSelectedTicket = "";
+
+async function renderQaPoolPage() {
+  const data = await fetchJson("/api/qa-pool");
+  const { byTicket, ticketIds } = data;
+
+  let html = '<div class="panel" style="margin-bottom:16px">';
+  html += '<div class="breadcrumb">';
+  if (qaPoolSelectedTicket) {
+    html += '<span class="breadcrumb-item" onclick="qaPoolSelectedTicket=\\'\\';renderQaPoolPage()">Pool</span>';
+    html += '<span class="breadcrumb-sep">|</span>';
+    html += '<span class="breadcrumb-item current">' + esc(qaPoolSelectedTicket) + '</span>';
+  } else {
+    html += '<span class="breadcrumb-item current">Pool</span>';
+  }
+  html += '</div>';
+  if (ticketIds.length > 0) {
+    html += '<div style="display:flex;gap:16px;margin-bottom:8px">';
+    html += '<div class="stat"><div class="stat-value">' + ticketIds.length + '</div><div class="stat-label">Tickets</div></div>';
+    const total = data.agents.length;
+    html += '<div class="stat"><div class="stat-value">' + total + '</div><div class="stat-label">Agents</div></div>';
+  }
+  html += '</div>';
+
+  if (ticketIds.length === 0) {
+    html += '<div class="panel"><div class="empty">No agents configured yet.<br><code style="font-size:11px">noob-tester qa-pool add --ticket JIRA-123 --agent .claude/agents/field-agent.md</code></div></div>';
+    setPage(html);
+    return;
+  }
+
+  html += '<div class="split-view wide-left">';
+
+  // LEFT — ticket list or agent list for selected ticket
+  html += '<div class="split-left">';
+  if (!qaPoolSelectedTicket) {
+    // Show all tickets
+    for (const tid of ticketIds) {
+      const agents = byTicket[tid];
+      html += '<div class="session-card" onclick="qaPoolSelectedTicket=\\'' + esc(tid) + '\\';renderQaPoolPage()" style="cursor:pointer">';
+      html += '<div class="session-header">';
+      html += '<span class="session-id">' + esc(tid) + '</span>';
+      html += '<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:var(--accent-dim);color:var(--accent)">' + agents.length + ' agent' + (agents.length !== 1 ? 's' : '') + '</span>';
+      html += '</div>';
+      const paths = agents.map(function(a) { return a.agent_path.split('/').pop(); }).join(', ');
+      html += '<div style="font-size:11px;color:var(--dim);margin-top:4px">' + esc(paths) + '</div>';
+      html += '</div>';
+    }
+  } else {
+    // Show agents for selected ticket
+    const agents = byTicket[qaPoolSelectedTicket] || [];
+    if (agents.length === 0) {
+      html += '<div class="empty">No agents for this ticket.</div>';
+    }
+    for (const a of agents) {
+      const existsBadge = a.agentExists
+        ? '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(63,185,80,0.15);color:var(--green)">found</span>'
+        : '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(248,81,73,0.15);color:var(--red)">missing</span>';
+      html += '<div class="session-card">';
+      html += '<div class="session-header">';
+      html += '<span style="display:flex;align-items:center;gap:6px"><i class="ph ph-robot" style="color:var(--accent);font-size:16px"></i><span class="session-id" style="font-size:13px">' + esc(a.agent_path.split('/').pop()) + '</span></span>';
+      html += '<span style="display:flex;align-items:center;gap:6px">' + existsBadge + '<button class="secret-delete" onclick="event.stopPropagation();deleteQaPoolAgent(\\'' + a.id + '\\')">Remove</button></span>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:var(--dim);margin-top:4px;font-family:monospace;word-break:break-all">' + esc(a.agent_path) + '</div>';
+      html += '<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--dim);flex-wrap:wrap">';
+      if (a.target) html += '<span><i class="ph ph-target" style="margin-right:3px"></i>' + esc(a.target) + '</span>';
+      if (a.role && a.role !== 'default') html += '<span><i class="ph ph-user-circle" style="margin-right:3px"></i>' + esc(a.role) + '</span>';
+      if (a.file) html += '<span><i class="ph ph-file" style="margin-right:3px"></i>' + esc(a.file) + '</span>';
+      html += '</div>';
+      html += '<div style="margin-top:8px;padding:8px;background:var(--bg);border-radius:var(--radius-xs);font-size:11px;font-family:monospace;color:var(--dim);word-break:break-all">' + esc(a.invocation) + '</div>';
+      html += '</div>';
+    }
+  }
+  html += '</div>';
+
+  // RIGHT — detail / info panel
+  html += '<div class="split-right panel">';
+  if (!qaPoolSelectedTicket) {
+    html += '<div class="panel-title">Select a Ticket</div>';
+    html += '<div style="font-size:12px;color:var(--dim);line-height:1.6">Click a ticket on the left to view its configured agents and invocation strings.</div>';
+    html += '<div style="margin-top:16px">';
+    html += '<div class="panel-title">CLI Reference</div>';
+    html += '<code style="display:block;font-size:11px;white-space:pre-wrap;color:var(--dim)">noob-tester qa-pool add \\\\\\n  --ticket JIRA-123 \\\\\\n  --agent .claude/agents/field-agent.md \\\\\\n  --target staging-login \\\\\\n  --role admin</code>';
+    html += '</div>';
+    html += '<div style="margin-top:16px">';
+    html += '<div class="panel-title">Subcommands</div>';
+    html += '<code style="display:block;font-size:11px;white-space:pre-wrap;color:var(--dim)">qa-pool add    Add an agent config\\nqa-pool list   List agents for a ticket\\nqa-pool remove Remove an agent by ID\\nqa-pool run    Print invocation strings</code>';
+    html += '</div>';
+  } else {
+    const agents = byTicket[qaPoolSelectedTicket] || [];
+    html += '<div class="panel-title">' + esc(qaPoolSelectedTicket) + '</div>';
+    html += '<div style="display:flex;gap:16px;margin-bottom:12px">';
+    html += '<div class="stat"><div class="stat-value">' + agents.length + '</div><div class="stat-label">Agents</div></div>';
+    const missing = agents.filter(function(a) { return !a.agentExists; }).length;
+    if (missing > 0) {
+      html += '<div class="stat"><div class="stat-value" style="color:var(--red)">' + missing + '</div><div class="stat-label">Missing</div></div>';
+    }
+    html += '</div>';
+    html += '<div class="panel-title" style="margin-top:12px">Run Invocations</div>';
+    html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px">Copy these to dispatch agents via noob-explore:</div>';
+    for (const a of agents) {
+      html += '<div style="margin-bottom:8px;padding:8px;background:var(--bg);border-radius:var(--radius-xs);font-size:11px;font-family:monospace;color:var(--text);word-break:break-all;border:1px solid var(--border)">' + esc(a.invocation) + '</div>';
+    }
+    html += '<div style="margin-top:12px">';
+    html += '<div class="panel-title">Run via CLI</div>';
+    html += '<code style="display:block;font-size:11px;white-space:pre-wrap;color:var(--dim)">noob-tester qa-pool run --ticket ' + esc(qaPoolSelectedTicket) + '</code>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  html += '</div>';
+  setPage(html);
+}
+
+async function deleteQaPoolAgent(id) {
+  if (!confirm("Remove this agent config?")) return;
+  await fetchApi("/api/qa-pool", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+  renderQaPoolPage();
+}
 
 async function renderFilesPage() {
   const files = await fetchJson("/api/files");

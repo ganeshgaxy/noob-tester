@@ -37,6 +37,10 @@ import {
   refreshAllStats,
   getStat,
 } from "../db/repositories/resource-stats.js";
+import {
+  removeAgent as removeQaPoolAgent,
+  buildInvocation,
+} from "../db/repositories/qa-pool.js";
 
 interface WatchOptions {
   port: number;
@@ -250,6 +254,58 @@ export function startWatchServer(opts: WatchOptions): void {
           res.end(JSON.stringify({ imported }));
         } catch (err) {
           res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── QA Pool API ──
+
+    if (url.pathname === "/api/qa-pool" && req.method === "GET") {
+      const db = getDb();
+      const agents = db
+        .prepare(
+          "SELECT * FROM qa_pool_agents ORDER BY ticket_id, created_at ASC",
+        )
+        .all() as any[];
+      const enriched = agents.map((a) => ({
+        ...a,
+        invocation: buildInvocation(a),
+        agentExists: existsSync(a.agent_path),
+      }));
+      const byTicket: Record<string, any[]> = {};
+      for (const a of enriched) {
+        if (!byTicket[a.ticket_id]) byTicket[a.ticket_id] = [];
+        byTicket[a.ticket_id].push(a);
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          agents: enriched,
+          byTicket,
+          ticketIds: Object.keys(byTicket).sort(),
+        }),
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/qa-pool" && req.method === "DELETE") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { id } = JSON.parse(body);
+          if (!id) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "id required" }));
+            return;
+          }
+          const removed = removeQaPoolAgent(id);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: removed }));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err) }));
         }
       });
@@ -3097,6 +3153,16 @@ export function startWatchServer(opts: WatchOptions): void {
           id: "noob-ticket-cache",
           pluginName: "noob-ticket-cache",
           skillPath: "skills/noob-ticket-cache",
+        },
+        {
+          id: "noob-claim",
+          pluginName: "noob-claim",
+          skillPath: "skills/noob-claim",
+        },
+        {
+          id: "noob-pool",
+          pluginName: "noob-pool",
+          skillPath: "skills/noob-pool",
         },
       ];
 

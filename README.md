@@ -32,6 +32,7 @@ An AI-powered QA testing system that integrates with Claude Code as a persistent
    - [Tech Issues](#tech-issues)
    - [RCA](#rca)
    - [Report](#report)
+   - [QA Pool (Agent Orchestration)](#qa-pool-agent-orchestration)
    - [Sync](#sync)
    - [Settings](#settings)
    - [Cleanup](#cleanup)
@@ -176,6 +177,7 @@ Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's 
 | `/noob-report`       | 5 — Report      | "generate a report for PROJ-123"                                      |
 | `/noob-mr-pr`        | Utility         | "review the MR for PROJ-123"                                          |
 | `/noob-claim`        | 4 — Claiming    | "claim the next test case for PROJ-123"                               |
+| `/noob-pool`         | 4 — Parallel    | "run pool agents for PROJ-123" — dispatch multiple agents in parallel |
 | `/noob-repos-setup`  | Utility         | "set up repos for PROJ-123"                                           |
 | `/noob-ticket-cache` | Utility         | ticket context caching (called internally by other skills)            |
 
@@ -205,6 +207,8 @@ Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's 
 **`/noob-mr-pr`** — Utility. Reviews a GitLab MR or Bitbucket PR for a ticket — reads the diff, checks against acceptance criteria, surfaces concerns.
 
 **`/noob-claim`** — Phase 4, Claiming. Claims test cases from run packs for execution. Three modes: claim next (uses `claim-smart` — retry failed → resume pending → claim new), claim by name (substring match with validation), and retry a specific test. Auto-creates session and run pack if not provided. Returns a `$ENTRY` JSON object for `/noob-explore` to execute.
+
+**`/noob-pool`** — Phase 4, Parallel dispatch. Reads `qa_pool_agents` config for the ticket, enumerates all pending test cases (sorted by priority: `direct_functional` → `impact_regression` → `general_regression`), checks the most recent run pack to skip already-claimed/running/passed test cases, then fires one `claude` sub-agent per test case as a background process (fire-and-forget). Supports a `MAX_SPAWNS` limit (default 5, overridable). Each agent invocation targets a specific test case by name — eliminating all race conditions. Monitor results in the Pool page of the watch dashboard.
 
 **`/noob-repos-setup`** — Utility. Ensures all repos for a ticket are registered, cloned/pulled, and indexed. Called internally by analysis and planning skills.
 
@@ -808,6 +812,48 @@ noob-tester secrets find "admin@example.com"
 | `session list`                                                             | List all (marks stale after 5min)              |
 | `session list --active`                                                    | Only active sessions                           |
 
+### `noob-tester qa-pool` — Agent Orchestration
+
+Map multiple specialized agents to a single ticket and dispatch them in parallel with zero race conditions. Each agent is a Claude Code agent `.md` file (e.g., a UI tester, API tester, or security tester). The orchestrator enumerates all pending test cases first and assigns each one explicitly to an agent — no two agents compete for the same test case.
+
+**Why use this?** When you have a large ticket with many test cases, you can run multiple agents in parallel — each targeting a specific test case — and monitor all results in the Pool dashboard.
+
+| Command                                    | Description                                                                   |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `qa-pool add --ticket <id> --agent <path>` | Associate an agent with a ticket. `--target`, `--role`, `--file` optional     |
+| `qa-pool list --ticket <id>`               | List all agents for a ticket. `--json` for raw output                         |
+| `qa-pool remove <id>`                      | Remove a specific agent entry by its ID                                       |
+| `qa-pool update <id>`                      | Update fields: `--agent <path>`, `--target <name>`, `--role <role>`, `--file` |
+| `qa-pool run --ticket <id>`                | Print the invocation strings for all agents on a ticket. `--json`             |
+
+```bash
+# Register two agents for PROJ-123
+noob-tester qa-pool add \
+  --ticket PROJ-123 \
+  --agent .claude/agents/ui-agent.md \
+  --target staging-login \
+  --role admin
+
+noob-tester qa-pool add \
+  --ticket PROJ-123 \
+  --agent .claude/agents/api-agent.md \
+  --target staging-login \
+  --role api
+
+# View all registered agents for a ticket
+noob-tester qa-pool list --ticket PROJ-123
+# [abc12345] @.claude/agents/ui-agent.md  target: staging-login  role: admin
+# [def67890] @.claude/agents/api-agent.md target: staging-login  role: api
+
+# Update the target before running
+noob-tester qa-pool update abc12345 --target prod-login
+
+# Print invocation strings (useful for inspection)
+noob-tester qa-pool run --ticket PROJ-123 --json
+```
+
+**To dispatch agents,** use the `/noob-pool` skill in Claude Code — it reads the config, enumerates pending test cases, and fires one `claude` process per test case (background, fire-and-forget). See the [noob-pool skill](#noob-pool) for full details.
+
 ### `noob-tester watch` — Live web dashboard
 
 ```bash
@@ -830,6 +876,7 @@ noob-tester watch --session <id>     # focus on one session
 - **UI Maps** — force-directed canvas sitemap (zoom, pan, drag nodes/clusters). Click a page → modal with element map canvas + screenshot + elements/forms/navigations
 - **Metrics** — aggregate usage stats
 - **Secrets** — targets → roles → secrets with reveal/add/delete, 1Password import
+- **Pool** — agent orchestration dashboard. Left panel lists tickets with registered agents; right panel shows agent cards (agent path, target, role) with invocation strings and delete actions. Updates live as agents are dispatched via `/noob-pool`
 - **Docs** — tabbed CLI command reference (CLI Commands, Skills, Concepts)
 
 **Issue detail modal** — click any issue anywhere → full modal with: severity/category badges, description, location, screenshot, console output, network data, per-action artifacts (from `run_artifacts` table), related run info, test case, analyses, technical issues with workarounds, UI map sitemap canvas (affected page highlighted), element list, metadata.
@@ -1213,7 +1260,7 @@ Sessions auto-register, claim different test cases, share the DB.
 
 All data in `~/.noob-tester/noob-tester.db` (SQLite, WAL mode).
 
-**Tables:** runs, sessions, action_log, analyses, test_plans, test_steps, issues, failure_patterns, raw_outputs, test_cases, run_pack_entries, run_artifacts, tech_issues, ui_maps, ui_map_pages, ui_map_elements, ui_map_navigations, ui_map_forms, targets, secrets, repos, repo_groups, repo_group_members, code_fts, import_graph
+**Tables:** runs, sessions, action_log, analyses, test_plans, test_steps, issues, failure_patterns, raw_outputs, test_cases, run_pack_entries, run_artifacts, tech_issues, ui_maps, ui_map_pages, ui_map_elements, ui_map_navigations, ui_map_forms, targets, secrets, repos, repo_groups, repo_group_members, code_fts, import_graph, qa_pool_agents
 
 ## License
 
