@@ -1,11 +1,37 @@
 ---
 name: noob-explore
-description: Execute UI test cases via browser automation. Uses run packs for tracking, UI maps for learning, capture-page for evidence. One test case per invocation.
+description: Execute ONE pre-claimed UI test case via browser automation. Accepts $CLAIM from noob-claim. Uses run packs for tracking, UI maps for learning, capture-page for evidence. Supports telemetry collection (trace, profiler, console logs, errors).
 ---
 
 # UI Test Execution
 
-Execute ONE test case per invocation via browser automation. Invoke repeatedly for all cases.
+Execute **ONE** pre-claimed test case per invocation via browser automation.
+
+Use `noob-claim` first to claim a test case. Pass `$CLAIM` to this skill for execution.
+
+## Telemetry Configuration
+
+Optional inputs (all have defaults — omit to use defaults):
+
+| Input             | Default    | Description                                              |
+| ----------------- | ---------- | -------------------------------------------------------- |
+| `DEVICE`          | `web`      | Browser device type (`web`, `mobile`, `tablet`)          |
+| `DIMENSION`       | `standard` | Viewport dimension preset (`standard`, `wide`, `narrow`) |
+| `ENABLE_TRACE`    | `true`     | Collect Playwright trace for entire test case run        |
+| `ENABLE_PROFILER` | `true`     | Collect CPU profile for entire test case run             |
+| `ENABLE_CONSOLE`  | `true`     | Collect console logs (JSON) per step                     |
+| `ENABLE_ERRORS`   | `true`     | Collect page errors per step                             |
+
+Set these at the top of the script before any other commands:
+
+```bash
+DEVICE="${DEVICE:-web}"
+DIMENSION="${DIMENSION:-standard}"
+ENABLE_TRACE="${ENABLE_TRACE:-true}"
+ENABLE_PROFILER="${ENABLE_PROFILER:-true}"
+ENABLE_CONSOLE="${ENABLE_CONSOLE:-true}"
+ENABLE_ERRORS="${ENABLE_ERRORS:-true}"
+```
 
 ## JSON Output Shapes (jq reference)
 
@@ -20,6 +46,42 @@ noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.status !=
 noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
 ```
 
+## Prerequisites
+
+Inputs from noob-claim (or noob-pool):
+
+```bash
+# Try to read from claim file passed by orchestrator (noob-pool), or use default
+CLAIM_FILE="${CLAIM_FILE:-/tmp/claim.json}"
+
+# Support claim file path passed in invocation (e.g., "from /tmp/pool-claim-0.json")
+# Extract from environment if available
+if [[ "$INVOCATION" == *"/tmp/pool-claim"* ]]; then
+  CLAIM_FILE=$(echo "$INVOCATION" | grep -oP '/tmp/pool.*\.json')
+fi
+
+if [ ! -f "$CLAIM_FILE" ]; then
+  echo "ERROR: Claim file not found at $CLAIM_FILE"
+  exit 1
+fi
+
+CLAIM=$(cat "$CLAIM_FILE")
+
+ENTRY_ID=$(echo "$CLAIM" | jq -r '.entry.id')
+TC_ID=$(echo "$CLAIM" | jq -r '.entry.tc_id')
+TC_TITLE=$(echo "$CLAIM" | jq -r '.entry.tc.title')
+TC_FORMAT=$(echo "$CLAIM" | jq -r '.entry.tc.format')
+RUNPACK_ID=$(echo "$CLAIM" | jq -r '.entry.runpack_id')
+
+# BDD or Traditional steps (depending on TC format)
+BDD_GIVEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_given // empty')
+BDD_WHEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_when // empty')
+BDD_THEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_then // empty')
+TRAD_STEPS=$(echo "$CLAIM" | jq '.entry.tc.trad_steps // empty')
+```
+
+---
+
 ## 1. Resolve Target URL + Initialize + UI Map
 
 **Before init, resolve the target URL from the secret target name.** Do NOT guess or hardcode URLs.
@@ -33,10 +95,9 @@ if [ -z "$TARGET_URL" ] || [ "$TARGET_URL" = "null" ]; then
   exit 1
 fi
 
-INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "$TARGET_URL" --task "Exploring: <brief>" --labels "explore" --secret-target <target-name> --secret-role <role> --capture screenshot,snapshot,console,har)
+INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "$TARGET_URL" --task "Exploring: $TC_TITLE" --labels "explore" --secret-target <target-name> --secret-role <role> --capture screenshot,snapshot,console,har)
 SESSION_ID=$(echo "$INIT" | jq -r '.sessionId')
 RUN_ID=$(echo "$INIT" | jq -r '.runId')
-RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
 EVIDENCE_DIR=$(echo "$INIT" | jq -r '.evidenceDir')
 STREAM_PORT=$(echo "$INIT" | jq -r '.streamPort')
 
@@ -46,6 +107,18 @@ if [ -n "$STREAM_PORT" ] && [ "$STREAM_PORT" != "null" ]; then
   agent-browser stream enable --port "$STREAM_PORT"
 fi
 
+# ── Telemetry: start trace and profiler for the entire test case run ──────────
+TRACE_PATH=""
+PROFILE_PATH=""
+if [ "$ENABLE_TRACE" = "true" ]; then
+  TRACE_PATH="$EVIDENCE_DIR/trace-${ENTRY_ID}.json"
+  agent-browser trace start "$TRACE_PATH"
+fi
+if [ "$ENABLE_PROFILER" = "true" ]; then
+  PROFILE_PATH="$EVIDENCE_DIR/profile-${ENTRY_ID}.json"
+  agent-browser profiler start "$PROFILE_PATH"
+fi
+
 # Create UI map so ALL captures get --map
 MAP_ID=$(noob-tester uimap resolve --ticket <TICKET-ID> --target <TARGET_URL> | jq -r '.id // empty')
 if [ -z "$MAP_ID" ]; then
@@ -53,23 +126,9 @@ if [ -z "$MAP_ID" ]; then
 fi
 ```
 
-### Extract Test Case Entry
-
-`$ENTRY` contains: `id`, `tc_title`, `tc_format`, `test_case_id`, `status`.
-
-Extract values:
-
-```bash
-ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
-TC_TITLE=$(echo "$ENTRY" | jq -r '.tc_title')
-TC_FORMAT=$(echo "$ENTRY" | jq -r '.tc_format')
-```
-
 ### Begin Execution
 
 ```bash
-ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
-
 agent-browser open $TARGET_URL
 noob-tester session heartbeat $SESSION_ID --phase 4 --run-id $RUN_ID
 ```
@@ -117,19 +176,37 @@ CAPTURE_LOGIN=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser ge
 
 # Step A: Read the snapshot to discover the actual @eN refs for email, password, and login button
 SNAPSHOT_FILE=$(echo "$CAPTURE_LOGIN" | jq -r '.files.snapshot')
+LOGIN_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
 cat "$SNAPSHOT_FILE"
 
-# Step B: Find the refs — look for textbox/input with "Email"/"Password" labels and the login button
-# Then fill using those refs. Do NOT copy the commands below literally — replace @eN with the real refs you found.
-agent-browser fill '@emailRef' "$EMAIL"
-agent-browser fill '@passwordRef' "$PASSWORD"
+# Step B: Discover element refs from snapshot — search for email, password, and login/submit button
+# Extract ref numbers using regex pattern matching
+EMAIL_REF=$(echo "$LOGIN_SNAPSHOT" | grep -i "email\|username" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+PASSWORD_REF=$(echo "$LOGIN_SNAPSHOT" | grep -i "password" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+LOGIN_REF=$(echo "$LOGIN_SNAPSHOT" | grep -iE "log in|login|sign in|submit" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+
+# Use discovered refs for login
+if [ -n "$EMAIL_REF" ]; then
+  agent-browser fill "@${EMAIL_REF}" "$EMAIL"
+  noob-tester runpack log $ENTRY_ID --text "Login: filled email field using discovered ref @${EMAIL_REF}"
+fi
+if [ -n "$PASSWORD_REF" ]; then
+  agent-browser fill "@${PASSWORD_REF}" "$PASSWORD"
+  noob-tester runpack log $ENTRY_ID --text "Login: filled password field using discovered ref @${PASSWORD_REF}"
+fi
 
 noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action 2 \
   --pack $RUNPACK_ID --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> --desc "Login form filled" --page-name "login-filled" \
   --map $MAP_ID --page-title "Login"
 
-# Step C: Click the login/submit button using its @eN ref from the snapshot
-agent-browser click '@loginRef'
+# Step C: Click the login/submit button using discovered @eN ref
+if [ -n "$LOGIN_REF" ]; then
+  agent-browser click "@${LOGIN_REF}"
+  noob-tester runpack log $ENTRY_ID --text "Login: clicked submit button using discovered ref @${LOGIN_REF}"
+else
+  noob-tester runpack log $ENTRY_ID --text "Login: WARN — could not discover login button ref, attempting keyboard Enter"
+  agent-browser press Enter
+fi
 agent-browser wait 3000
 
 noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action 3 \
@@ -139,12 +216,9 @@ noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action
 
 If login fails (URL still on /login, error message visible) → log tech issue, end session, exit. Do NOT guess credentials.
 
-## 3. Extract Test Case Info
+## 3. Test Case Info Ready
 
-```bash
-TC_TITLE=$(echo "$ENTRY" | jq -r '.tc_title')
-TC_FORMAT=$(echo "$ENTRY" | jq -r '.tc_format')
-```
+TC data is already extracted from `$CLAIM` in prerequisites.
 
 ## 4. EVERY Page Load
 
@@ -176,9 +250,22 @@ UPLOAD_PATH=$(echo "$FILES" | jq -r '.[] | select(.file_type == "pdf") | .file_p
 # Or by label:
 UPLOAD_PATH=$(echo "$FILES" | jq -r '.[] | select(.label == "Sample Resume") | .file_path' | head -1)
 
-# 3. Upload using agent-browser — target the file input element from the snapshot
-# Read the snapshot first to find the file input ref (e.g. @e12)
-agent-browser upload '@fileInputRef' "$UPLOAD_PATH"
+# 3. Upload using agent-browser — discover the file input element from the snapshot
+# Capture page first to get snapshot, then search for file input element
+UPLOAD_CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action $ACTION_N \
+  --pack $RUNPACK_ID --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
+  --desc "Before file upload" --page-name "pre-upload" --map $MAP_ID)
+UPLOAD_SNAPSHOT=$(cat "$(echo "$UPLOAD_CAPTURE" | jq -r '.files.snapshot')")
+
+# Search snapshot for file input element
+FILE_INPUT_REF=$(echo "$UPLOAD_SNAPSHOT" | grep -i "file\|upload\|browse" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+
+if [ -n "$FILE_INPUT_REF" ]; then
+  agent-browser upload "@${FILE_INPUT_REF}" "$UPLOAD_PATH"
+  noob-tester runpack log $ENTRY_ID --text "File upload: uploaded using discovered ref @${FILE_INPUT_REF}"
+else
+  noob-tester runpack log $ENTRY_ID --text "File upload: WARN — could not discover file input element, skipping upload"
+fi
 agent-browser wait 2000
 
 # 4. Capture after upload to verify
@@ -200,8 +287,234 @@ For each step:
 
 1. **Perform action** — `agent-browser click/fill/navigate`
 2. **Capture page** — `noob-tester capture-page ...` (auto-logs + auto-observes the `--desc`)
-3. **READ the capture output** — the snapshot contains the full accessibility tree. **Analyse it.** Look at what elements are on the page, what's visible, what's missing, what state toggles/fields are in. This is your primary source of truth for the page state.
-4. **Log and observe based on your analysis** — this is NOT optional:
+3. **Collect console logs and errors** (per step) — run immediately after capture:
+
+```bash
+# Collect per-step telemetry (run after each capture-page call)
+STEP_CONSOLE=""
+STEP_ERRORS=""
+if [ "$ENABLE_CONSOLE" = "true" ]; then
+  STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
+fi
+if [ "$ENABLE_ERRORS" = "true" ]; then
+  STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
+fi
+# Log any console errors or page errors found in this step
+if [ -n "$STEP_CONSOLE" ] && [ "$STEP_CONSOLE" != "[]" ]; then
+  noob-tester runpack log $ENTRY_ID --text "Console (step $ACTION_N): $STEP_CONSOLE"
+fi
+if [ -n "$STEP_ERRORS" ] && [ "$STEP_ERRORS" != "[]" ]; then
+  noob-tester runpack log $ENTRY_ID --text "Page errors (step $ACTION_N): $STEP_ERRORS"
+fi
+```
+
+### BDD Steps Implementation
+
+```bash
+ACTION_N=4
+LAST_SNAPSHOT=""
+
+# ── GIVEN (Setup) ───────────────────────────────────────────────────────────
+if [ -n "$BDD_GIVEN" ] && [ "$BDD_GIVEN" != "null" ]; then
+  GIVEN_COUNT=$(echo "$BDD_GIVEN" | jq 'length')
+  for ((i = 0; i < GIVEN_COUNT; i++)); do
+    GIVEN_STEP=$(echo "$BDD_GIVEN" | jq -r ".[$i]")
+    echo "Given: $GIVEN_STEP"
+
+    # Execute setup action (navigate, click, fill as described in GIVEN_STEP)
+    # Use last snapshot to discover element refs if needed
+    KEYWORD=$(echo "$GIVEN_STEP" | grep -oiE 'navigate|go to|click|fill|type|enter|select|check|uncheck' | head -1)
+    ACTION_TARGET=$(echo "$GIVEN_STEP" | sed -E "s/.*\b(navigate|go to|click|fill|type|enter|select|check|uncheck)\s+.*\b(the|a|an)?\s*//i" | cut -d' ' -f1-3)
+    
+    if [ -n "$ACTION_TARGET" ] && [ -n "$LAST_SNAPSHOT" ]; then
+      DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$(echo "$ACTION_TARGET" | cut -d' ' -f1)" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+      if [ -n "$DISCOVERED_REF" ]; then
+        ELEMENT_REF="@${DISCOVERED_REF}"
+        case "$KEYWORD" in
+          click) agent-browser click "$ELEMENT_REF" ;;
+          fill|type|enter) agent-browser fill "$ELEMENT_REF" "test-value" ;;
+          select) agent-browser select "$ELEMENT_REF" "option" ;;
+          check) agent-browser check "$ELEMENT_REF" ;;
+          uncheck) agent-browser uncheck "$ELEMENT_REF" ;;
+        esac
+      fi
+    fi
+
+    CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action $ACTION_N \
+      --pack $RUNPACK_ID --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
+      --desc "Given: $GIVEN_STEP" --page-name "given-$i" --map $MAP_ID)
+    
+    SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
+    cat "$SNAPSHOT_FILE"
+    
+    noob-tester runpack log $ENTRY_ID --text "Given step $i: $GIVEN_STEP"
+    noob-tester runpack observe $ENTRY_ID --text "<describe the page state after this setup step>"
+    
+    ACTION_N=$((ACTION_N + 1))
+  done
+fi
+
+# ── WHEN (Action) ───────────────────────────────────────────────────────────
+if [ -n "$BDD_WHEN" ] && [ "$BDD_WHEN" != "null" ]; then
+  WHEN_COUNT=$(echo "$BDD_WHEN" | jq 'length')
+  for ((i = 0; i < WHEN_COUNT; i++)); do
+    WHEN_STEP=$(echo "$BDD_WHEN" | jq -r ".[$i]")
+    echo "When: $WHEN_STEP"
+
+    # Discover element and perform action based on step description
+    KEYWORD=$(echo "$WHEN_STEP" | grep -oiE 'click|fill|type|enter|select|submit|press|visit|navigate|go' | head -1)
+    ACTION_TARGET=$(echo "$WHEN_STEP" | sed -E "s/.*\b(click|fill|type|enter|select|submit|press|visit|navigate|go)\s+.*\b(the|a|an)?\s*//i" | cut -d' ' -f1-3)
+    
+    if [ -n "$ACTION_TARGET" ] && [ -n "$LAST_SNAPSHOT" ]; then
+      DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$(echo "$ACTION_TARGET" | cut -d' ' -f1)" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+      if [ -n "$DISCOVERED_REF" ]; then
+        ELEMENT_REF="@${DISCOVERED_REF}"
+        noob-tester runpack log $ENTRY_ID --text "When step $i: discovered element $ELEMENT_REF for action '$KEYWORD'"
+        
+        case "$KEYWORD" in
+          click|submit) agent-browser click "$ELEMENT_REF" ;;
+          fill|type|enter) 
+            FILL_VALUE=$(echo "$WHEN_STEP" | sed -E 's/.*\b(fill|type|enter)\s+.*\b(with|the value)?\s+["\x27]?([^"'"'"']*)["\x27]?.*/\3/')
+            if [ -n "$FILL_VALUE" ] && [ "$FILL_VALUE" != "$WHEN_STEP" ]; then
+              agent-browser fill "$ELEMENT_REF" "$FILL_VALUE"
+            fi
+            ;;
+          select) agent-browser select "$ELEMENT_REF" "option" ;;
+        esac
+      fi
+    elif echo "$KEYWORD" | grep -qi "visit\|navigate\|go"; then
+      # Handle navigation (extract URL or assume relative path)
+      TARGET_URL=$(echo "$WHEN_STEP" | sed -E 's/.*\b(visit|navigate|go)\s+(to\s+)?//i' | head -1)
+      if [ -n "$TARGET_URL" ]; then
+        agent-browser navigate "$TARGET_URL"
+      fi
+    fi
+
+    CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action $ACTION_N \
+      --pack $RUNPACK_ID --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
+      --desc "When: $WHEN_STEP" --page-name "when-$i" --map $MAP_ID)
+    
+    SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
+    cat "$SNAPSHOT_FILE"
+    
+    noob-tester runpack log $ENTRY_ID --text "When step $i: $WHEN_STEP — URL: $(agent-browser get url)"
+    noob-tester runpack observe $ENTRY_ID --text "<describe what changed on the page>"
+    
+    if [ "$ENABLE_CONSOLE" = "true" ]; then
+      STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
+      if [ "$STEP_CONSOLE" != "[]" ]; then
+        noob-tester runpack log $ENTRY_ID --text "Console (when-$i): $STEP_CONSOLE"
+      fi
+    fi
+    if [ "$ENABLE_ERRORS" = "true" ]; then
+      STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
+      if [ "$STEP_ERRORS" != "[]" ]; then
+        noob-tester runpack log $ENTRY_ID --text "Page errors (when-$i): $STEP_ERRORS"
+      fi
+    fi
+    
+    ACTION_N=$((ACTION_N + 1))
+  done
+fi
+
+# ── THEN (Assert) ───────────────────────────────────────────────────────────
+if [ -n "$BDD_THEN" ] && [ "$BDD_THEN" != "null" ]; then
+  THEN_COUNT=$(echo "$BDD_THEN" | jq 'length')
+  for ((i = 0; i < THEN_COUNT; i++)); do
+    THEN_STEP=$(echo "$BDD_THEN" | jq -r ".[$i]")
+    echo "Then: $THEN_STEP"
+
+    CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action $ACTION_N \
+      --pack $RUNPACK_ID --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
+      --desc "Then: $THEN_STEP" --page-name "then-$i" --map $MAP_ID)
+    
+    SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
+    cat "$SNAPSHOT_FILE"
+    
+    noob-tester runpack log $ENTRY_ID --text "Then step $i: $THEN_STEP"
+    noob-tester runpack observe $ENTRY_ID --text "<describe whether the expected state is present>"
+    
+    if [ "$ENABLE_CONSOLE" = "true" ]; then
+      STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
+      if [ "$STEP_CONSOLE" != "[]" ]; then
+        noob-tester runpack log $ENTRY_ID --text "Console (then-$i): $STEP_CONSOLE"
+      fi
+    fi
+    if [ "$ENABLE_ERRORS" = "true" ]; then
+      STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
+      if [ "$STEP_ERRORS" != "[]" ]; then
+        noob-tester runpack log $ENTRY_ID --text "Page errors (then-$i): $STEP_ERRORS"
+      fi
+    fi
+    
+    ACTION_N=$((ACTION_N + 1))
+  done
+fi
+```
+
+### Traditional Steps Implementation
+
+```bash
+# ── TRADITIONAL STEPS ───────────────────────────────────────────────────────
+if [ -n "$TRAD_STEPS" ] && [ "$TRAD_STEPS" != "null" ]; then
+  STEP_COUNT=$(echo "$TRAD_STEPS" | jq 'length')
+  for ((i = 0; i < STEP_COUNT; i++)); do
+    STEP_TEXT=$(echo "$TRAD_STEPS" | jq -r ".[$i].step")
+    EXPECTED=$(echo "$TRAD_STEPS"  | jq -r ".[$i].expected")
+    echo "Step $i: $STEP_TEXT"
+    echo "  Expected: $EXPECTED"
+
+    # Discover element and perform action
+    KEYWORD=$(echo "$STEP_TEXT" | grep -oiE 'click|fill|type|enter|select|navigate|visit|go' | head -1)
+    ACTION_TARGET=$(echo "$STEP_TEXT" | sed -E "s/.*\b(click|fill|type|enter|select|navigate|visit|go)\s+.*\b(the|a|an)?\s*//i" | cut -d' ' -f1-3)
+    
+    if [ -n "$ACTION_TARGET" ] && [ -n "$LAST_SNAPSHOT" ]; then
+      DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$(echo "$ACTION_TARGET" | cut -d' ' -f1)" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+      if [ -n "$DISCOVERED_REF" ]; then
+        ELEMENT_REF="@${DISCOVERED_REF}"
+        
+        case "$KEYWORD" in
+          click) agent-browser click "$ELEMENT_REF" ;;
+          fill|type|enter) agent-browser fill "$ELEMENT_REF" "test-value" ;;
+          select) agent-browser select "$ELEMENT_REF" "option" ;;
+        esac
+      fi
+    fi
+
+    CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action $ACTION_N \
+      --pack $RUNPACK_ID --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
+      --desc "Step $i: $STEP_TEXT" --page-name "step-$i" --map $MAP_ID)
+    
+    SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
+    cat "$SNAPSHOT_FILE"
+    
+    noob-tester runpack log $ENTRY_ID --text "Step $i: $STEP_TEXT — URL: $(agent-browser get url)"
+    noob-tester runpack observe $ENTRY_ID --text "<describe whether '$EXPECTED' is present on the page>"
+    
+    if [ "$ENABLE_CONSOLE" = "true" ]; then
+      STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
+      if [ "$STEP_CONSOLE" != "[]" ]; then
+        noob-tester runpack log $ENTRY_ID --text "Console (step-$i): $STEP_CONSOLE"
+      fi
+    fi
+    if [ "$ENABLE_ERRORS" = "true" ]; then
+      STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
+      if [ "$STEP_ERRORS" != "[]" ]; then
+        noob-tester runpack log $ENTRY_ID --text "Page errors (step-$i): $STEP_ERRORS"
+      fi
+    fi
+    
+    ACTION_N=$((ACTION_N + 1))
+  done
+fi
+```
+
+4. **READ the capture output** — the snapshot contains the full accessibility tree. **Analyse it.** Look at what elements are on the page, what's visible, what's missing, what state toggles/fields are in. This is your primary source of truth for the page state.
+5. **Log and observe based on your analysis** — this is NOT optional:
 
 ```bash
 # After EVERY capture, read the snapshot and log what you found:
@@ -319,23 +632,46 @@ noob-tester runpack result $ENTRY_ID --status failed \
 
 ## 7. Record Result
 
+Before recording the result, stop the trace and profiler (they cover the entire run):
+
+```bash
+# ── Telemetry: stop trace and profiler before recording result ────────────────
+if [ "$ENABLE_TRACE" = "true" ] && [ -n "$TRACE_PATH" ]; then
+  agent-browser trace stop "$TRACE_PATH" 2>/dev/null || true
+fi
+if [ "$ENABLE_PROFILER" = "true" ] && [ -n "$PROFILE_PATH" ]; then
+  agent-browser profiler stop "$PROFILE_PATH" 2>/dev/null || true
+fi
+
+# Build telemetry config JSON
+TELEMETRY_CONFIG=$(printf '{"trace":%s,"profiler":%s,"console":%s,"errors":%s,"device":"%s","dimension":"%s"}' \
+  "$ENABLE_TRACE" "$ENABLE_PROFILER" "$ENABLE_CONSOLE" "$ENABLE_ERRORS" "$DEVICE" "$DIMENSION")
+```
+
+Then record the result (include telemetry paths and config):
+
 ```bash
 # Passed
 noob-tester runpack result $ENTRY_ID --status passed \
-  --results '{"summary":"..."}' --observations '["obs1","obs2"]'
+  --results '{"summary":"..."}' --observations '["obs1","obs2"]' \
+  --device "$DEVICE" --dimension "$DIMENSION" \
+  --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
+  --telemetry-config "$TELEMETRY_CONFIG"
 
 # Failed (with root cause)
 noob-tester runpack result $ENTRY_ID --status failed \
   --results '{"error":"...","root_cause":"..."}' \
-  --issues '[{"severity":"high","title":"...","description":"Root cause traced to src/x.ts"}]'
+  --issues '[{"severity":"high","title":"...","description":"Root cause traced to src/x.ts"}]' \
+  --device "$DEVICE" --dimension "$DIMENSION" \
+  --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
+  --telemetry-config "$TELEMETRY_CONFIG"
 ```
 
 **After recording the result, go DIRECTLY to Step 8 (End Session). Do NOT:**
 
-- Call `claim-smart` again — this is ONE test case per invocation
-- Call `runpack populate` — entries are added one at a time by `claim-smart`
-- Call `runpack list` to check remaining tests — the next invocation handles that
-- Retry in the same invocation — start a new invocation using Step 1 Mode B
+- Claim another test case — this is ONE test case per invocation
+- Retry in the same invocation — start a new invocation using noob-claim Mode B
+- The orchestrator (noob-pool or manual invocation) calls noob-claim for the next test case
 
 ## 8. End Session
 

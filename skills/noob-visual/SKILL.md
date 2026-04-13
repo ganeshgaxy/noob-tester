@@ -113,7 +113,7 @@ noob-tester session heartbeat $SESSION_ID --phase 4 --run-id $RUN_ID
 TRACE_PATH=""
 PROFILE_PATH=""
 if [ "$ENABLE_TRACE" = "true" ]; then
-  TRACE_PATH="$EVIDENCE_DIR/trace-${ENTRY_ID}.zip"
+  TRACE_PATH="$EVIDENCE_DIR/trace-${ENTRY_ID}.json"
   agent-browser trace start "$TRACE_PATH"
 fi
 if [ "$ENABLE_PROFILER" = "true" ]; then
@@ -202,9 +202,7 @@ If login fails (URL still on /login, error visible) → log issue, mark entry sk
 ```bash
 STEP_INDEX=0
 STEP_FAILED=0
-
-# Track console logs and errors per step
-STEP_TELEMETRY="[]"
+LAST_SNAPSHOT=""
 
 if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]" ]; then
   STEP_COUNT=$(echo "$STEPS_JSON" | jq 'length')
@@ -221,6 +219,26 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
 
     echo "Step $i [$S_ACTION] $S_LABEL: $S_DESC"
 
+    # ── Element Discovery (BEFORE action if selector not provided) ──────────
+    # If S_SELECTOR is empty, read the previous snapshot to find the element
+    # that matches the step description. Extract its @eN ref and use it.
+    ELEMENT_REF="$S_SELECTOR"
+    if [ -z "$ELEMENT_REF" ] || [ "$ELEMENT_REF" = "null" ]; then
+      # Use the last snapshot (from previous step) to discover the element
+      if [ -n "$LAST_SNAPSHOT" ]; then
+        # Search snapshot for element matching $S_DESC (case-insensitive substring match)
+        # Snapshot format: [ref=eN] "description" or [ref=eN] description
+        DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$(echo "$S_DESC" | cut -d' ' -f1)" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+        if [ -n "$DISCOVERED_REF" ]; then
+          ELEMENT_REF="@${DISCOVERED_REF}"
+          noob-tester runpack log $ENTRY_ID --text "Step $i: discovered element $ELEMENT_REF matching '$S_DESC'"
+        else
+          noob-tester runpack log $ENTRY_ID --text "Step $i: WARN — could not discover element for '$S_DESC' in snapshot, skipping action"
+          ELEMENT_REF=""
+        fi
+      fi
+    fi
+
     # ── Perform action ──────────────────────────────────────────────────────
     case "$S_ACTION" in
       navigate)
@@ -229,33 +247,15 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
         fi
         ;;
       click)
-        # Click using either explicit selector or fuzzy text matching
-        if [ -n "$S_SELECTOR" ] && [ "$S_SELECTOR" != "null" ]; then
-          agent-browser click "$S_SELECTOR"
-        else
-          # Fuzzy click by text from description (e.g. "Click Libraries" → find button containing "Libraries")
-          # Extract clickable text from description (last noun/phrase after "Click" or "click")
-          CLICK_TEXT=$(echo "$S_DESC" | sed -E 's/.*[Cc]lick[^a-zA-Z]*//' | sed 's/ in .*//' | xargs)
-          if [ -n "$CLICK_TEXT" ]; then
-            # Try to find by button role + name, then link, then generic element
-            agent-browser find role button --name "$CLICK_TEXT" click 2>/dev/null || \
-            agent-browser find role link --name "$CLICK_TEXT" click 2>/dev/null || \
-            agent-browser find text "$CLICK_TEXT" click 2>/dev/null || \
-            echo "WARNING: Could not find element for: $S_DESC"
-          fi
+        if [ -n "$ELEMENT_REF" ] && [ "$ELEMENT_REF" != "null" ]; then
+          agent-browser click "$ELEMENT_REF"
         fi
         ;;
       fill)
-        if [ -n "$S_SELECTOR" ] && [ "$S_SELECTOR" != "null" ]; then
+        if [ -n "$ELEMENT_REF" ] && [ "$ELEMENT_REF" != "null" ]; then
+          agent-browser fill "$ELEMENT_REF" "$S_VALUE"
+        elif [ -n "$S_SELECTOR" ] && [ "$S_SELECTOR" != "null" ]; then
           agent-browser fill "$S_SELECTOR" "$S_VALUE"
-        else
-          # Fuzzy fill by text matching (extract field name from description)
-          FIELD_TEXT=$(echo "$S_DESC" | sed -E 's/.*[Ff]ill[^a-zA-Z]*//' | sed 's/ with .*//' | xargs)
-          if [ -n "$FIELD_TEXT" ] && [ -n "$S_VALUE" ]; then
-            agent-browser find role textbox --name "$FIELD_TEXT" fill "$S_VALUE" 2>/dev/null || \
-            agent-browser find role searchbox --name "$FIELD_TEXT" fill "$S_VALUE" 2>/dev/null || \
-            echo "WARNING: Could not find textbox for: $S_DESC"
-          fi
         fi
         ;;
       login)
@@ -278,6 +278,7 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
 
     # ── Snapshot Reading — read after every capture ─────────────────────────
     SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
     cat "$SNAPSHOT_FILE"
     # ↑ READ: verify action succeeded, find refs for next step, note page state
 
@@ -295,8 +296,6 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
     fi
 
     # Collect per-step console logs and errors
-    STEP_CONSOLE="[]"
-    STEP_ERRORS="[]"
     if [ "$ENABLE_CONSOLE" = "true" ]; then
       STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
       if [ "$STEP_CONSOLE" != "[]" ]; then
@@ -309,10 +308,6 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
         noob-tester runpack log $ENTRY_ID --text "Page errors (step $i / $S_LABEL): $STEP_ERRORS"
       fi
     fi
-
-    # Add telemetry to step tracking
-    STEP_TEL=$(printf '{"step_index":%d,"label":"%s","console_logs":%s,"console_errors":%s}' "$i" "$(echo "$S_LABEL" | sed 's/"/\\"/g')" "$STEP_CONSOLE" "$STEP_ERRORS")
-    STEP_TELEMETRY=$(echo "$STEP_TELEMETRY" | jq ". += [$STEP_TEL]")
 
     # ── Step Validation ─────────────────────────────────────────────────────
     # After reading the snapshot, verify the action had the expected effect.
@@ -335,6 +330,7 @@ fi
 ```bash
 STEP_INDEX=0
 STEP_FAILED=0
+LAST_SNAPSHOT=""
 
 # ── GIVEN (Setup) ───────────────────────────────────────────────────────────
 if [ -n "$BDD_GIVEN" ] && [ "$BDD_GIVEN" != "null" ]; then
@@ -349,6 +345,7 @@ if [ -n "$BDD_GIVEN" ] && [ "$BDD_GIVEN" != "null" ]; then
       --pack <RUNPACK_ID> --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
       --desc "Given: $GIVEN_STEP" --page-name "given-$i" --prev-page $PREV_PAGE_ID)
     SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
     cat "$SNAPSHOT_FILE"
     # ↑ READ: confirm setup state, find refs for When steps
     PREV_PAGE_ID=$(echo "$CAPTURE" | jq -r '.pageId // empty')
@@ -372,12 +369,44 @@ if [ -n "$BDD_WHEN" ] && [ "$BDD_WHEN" != "null" ]; then
     # Read the snapshot from last capture to find the @eN ref for this action.
     # The step text ($WHEN_STEP) describes what to click/fill — find it in snapshot.
     # agent-browser click '@eN'   ← use the ref you discovered, not a hardcoded selector
+    ELEMENT_REF=""
+    if [ -n "$LAST_SNAPSHOT" ]; then
+      # Extract key action words from the step (click, type, select, etc.)
+      # then search snapshot for matching element
+      KEYWORD=$(echo "$WHEN_STEP" | grep -oiE 'click|fill|type|enter|select|press' | head -1)
+      # Get the object of the action (what to click/fill)
+      ACTION_TARGET=$(echo "$WHEN_STEP" | sed -E "s/.*\b(click|fill|type|enter|select|press)\s+.*\b(the|a|an)?\s*//i" | cut -d' ' -f1-3)
+      if [ -n "$ACTION_TARGET" ]; then
+        # Search snapshot for element matching the target description
+        DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$ACTION_TARGET" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+        if [ -n "$DISCOVERED_REF" ]; then
+          ELEMENT_REF="@${DISCOVERED_REF}"
+          noob-tester runpack log $ENTRY_ID --text "When step $i: discovered element $ELEMENT_REF for action '$KEYWORD $ACTION_TARGET'"
+        fi
+      fi
+    fi
+
+    # Perform the action using discovered or explicit ref
+    if [ -n "$ELEMENT_REF" ]; then
+      if echo "$WHEN_STEP" | grep -qi "click"; then
+        agent-browser click "$ELEMENT_REF"
+      elif echo "$WHEN_STEP" | grep -qi "fill\|type\|enter"; then
+        # Extract the value to fill (if present)
+        FILL_VALUE=$(echo "$WHEN_STEP" | sed -E 's/.*\b(fill|type|enter)\s+.*\b(with|the value)?\s+["\x27]?([^"'"'"']*)["\x27]?.*/\3/')
+        if [ -n "$FILL_VALUE" ] && [ "$FILL_VALUE" != "$WHEN_STEP" ]; then
+          agent-browser fill "$ELEMENT_REF" "$FILL_VALUE"
+        else
+          agent-browser click "$ELEMENT_REF"  # fallback if value extraction fails
+        fi
+      fi
+    fi
 
     # Capture after action + read snapshot to verify it worked
     CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action $ACTION_N \
       --pack <RUNPACK_ID> --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
       --desc "When: $WHEN_STEP" --page-name "when-$i" --prev-page $PREV_PAGE_ID)
     SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
     cat "$SNAPSHOT_FILE"
     # ↑ READ: verify action result, note what changed, find refs for Then steps
 
@@ -420,6 +449,7 @@ if [ -n "$BDD_THEN" ] && [ "$BDD_THEN" != "null" ]; then
       --pack <RUNPACK_ID> --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
       --desc "Then: $THEN_STEP" --page-name "then-$i" --prev-page $PREV_PAGE_ID)
     SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
     cat "$SNAPSHOT_FILE"
     # ↑ READ: verify expected state is present, log findings
 
@@ -453,6 +483,7 @@ fi
 ```bash
 STEP_INDEX=0
 STEP_FAILED=0
+LAST_SNAPSHOT=""
 
 if [ -n "$TRAD_STEPS" ] && [ "$TRAD_STEPS" != "null" ]; then
   STEP_COUNT=$(echo "$TRAD_STEPS" | jq 'length')
@@ -464,11 +495,31 @@ if [ -n "$TRAD_STEPS" ] && [ "$TRAD_STEPS" != "null" ]; then
 
     # Execute action described in $STEP_TEXT
     # Read last snapshot to find @eN refs — never hardcode selectors
+    # Extract action keywords and targets, then discover element refs
+    KEYWORD=$(echo "$STEP_TEXT" | grep -oiE 'click|fill|type|enter|select|press' | head -1)
+    ACTION_TARGET=$(echo "$STEP_TEXT" | sed -E "s/.*\b(click|fill|type|enter|select|press)\s+.*\b(the|a|an)?\s*//i" | cut -d' ' -f1-3)
+    
+    if [ -n "$ACTION_TARGET" ] && [ -n "$LAST_SNAPSHOT" ]; then
+      DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$ACTION_TARGET" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
+      if [ -n "$DISCOVERED_REF" ] && [ -n "$KEYWORD" ]; then
+        ELEMENT_REF="@${DISCOVERED_REF}"
+        if echo "$KEYWORD" | grep -qi "click"; then
+          agent-browser click "$ELEMENT_REF"
+        elif echo "$KEYWORD" | grep -qi "fill\|type\|enter"; then
+          # Attempt to extract fill value from step text
+          FILL_VALUE=$(echo "$STEP_TEXT" | sed -E 's/.*\b(fill|type|enter)\s+.*\b(with|value)?\s+["\x27]?([^"'"'"']*)["\x27]?.*/\3/')
+          if [ -n "$FILL_VALUE" ] && [ "$FILL_VALUE" != "$STEP_TEXT" ]; then
+            agent-browser fill "$ELEMENT_REF" "$FILL_VALUE"
+          fi
+        fi
+      fi
+    fi
 
     CAPTURE=$(noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action $ACTION_N \
       --pack <RUNPACK_ID> --entry $ENTRY_ID --session $SESSION_ID --ticket <TICKET-ID> \
       --desc "Step $i: $STEP_TEXT" --page-name "step-$i" --prev-page $PREV_PAGE_ID)
     SNAPSHOT_FILE=$(echo "$CAPTURE" | jq -r '.files.snapshot')
+    LAST_SNAPSHOT=$(cat "$SNAPSHOT_FILE")
     cat "$SNAPSHOT_FILE"
     # ↑ READ: verify $EXPECTED is visible on the page
 
@@ -603,12 +654,9 @@ TELEMETRY_CONFIG=$(printf '{"trace":%s,"profiler":%s,"console":%s,"errors":%s,"d
   "$ENABLE_TRACE" "$ENABLE_PROFILER" "$ENABLE_CONSOLE" "$ENABLE_ERRORS" "$DEVICE" "$DIMENSION")
 
 # ── Record result ────────────────────────────────────────────────────────────
-RESULT_JSON=$(printf '{"tc":"%s","type":"%s","format":"%s","step_telemetry":%s}' \
-  "$(echo "$TC_TITLE" | sed 's/"/\\"/g')" "$TC_TYPE" "$TC_FORMAT" "$STEP_TELEMETRY")
-
 if [ $STEP_FAILED -eq 0 ]; then
   noob-tester visual-run entry-update "$ENTRY_ID" --status passed \
-    --result "$RESULT_JSON" \
+    --result "{\"tc\":\"$TC_TITLE\",\"type\":\"$TC_TYPE\",\"format\":\"$TC_FORMAT\"}" \
     --device "$DEVICE" --dimension "$DIMENSION" \
     --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
     --telemetry-config "$TELEMETRY_CONFIG"
