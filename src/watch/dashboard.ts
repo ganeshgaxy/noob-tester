@@ -6402,12 +6402,21 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
       } catch (e) {}
     }
 
+    // Fetch telemetry from result_json
+    let stepTelemetry = [];
+    try {
+      if (result.step_telemetry && Array.isArray(result.step_telemetry)) {
+        stepTelemetry = result.step_telemetry;
+      }
+    } catch (e) {}
+
     if (stepsJson && stepsJson.length > 0) {
       for (let i = 0; i < stepsJson.length; i++) {
         const step = stepsJson[i];
         const label = step.label || step.description || \`Step \${i + 1}\`;
-        const stepConsole = step.console_logs || [];
-        const stepErrors = step.console_errors || [];
+        const telemetry = stepTelemetry.find(t => t.step_index === i) || {};
+        const stepConsole = (telemetry.console_logs && Array.isArray(telemetry.console_logs)) ? telemetry.console_logs : [];
+        const stepErrors = (telemetry.console_errors && Array.isArray(telemetry.console_errors)) ? telemetry.console_errors : [];
 
         out += \`<div style="padding:10px;background:var(--surface);border-radius:4px;border-left:3px solid var(--accent-dim)">\`;
         out += \`<div style="font-weight:500;color:var(--text);font-size:12px;margin-bottom:4px">\${i + 1}. \${esc(label)}</div>\`;

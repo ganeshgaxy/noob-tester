@@ -203,6 +203,9 @@ If login fails (URL still on /login, error visible) → log issue, mark entry sk
 STEP_INDEX=0
 STEP_FAILED=0
 
+# Track console logs and errors per step
+STEP_TELEMETRY="[]"
+
 if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]" ]; then
   STEP_COUNT=$(echo "$STEPS_JSON" | jq 'length')
 
@@ -292,6 +295,8 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
     fi
 
     # Collect per-step console logs and errors
+    STEP_CONSOLE="[]"
+    STEP_ERRORS="[]"
     if [ "$ENABLE_CONSOLE" = "true" ]; then
       STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
       if [ "$STEP_CONSOLE" != "[]" ]; then
@@ -304,6 +309,10 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
         noob-tester runpack log $ENTRY_ID --text "Page errors (step $i / $S_LABEL): $STEP_ERRORS"
       fi
     fi
+
+    # Add telemetry to step tracking
+    STEP_TEL=$(printf '{"step_index":%d,"label":"%s","console_logs":%s,"console_errors":%s}' "$i" "$(echo "$S_LABEL" | sed 's/"/\\"/g')" "$STEP_CONSOLE" "$STEP_ERRORS")
+    STEP_TELEMETRY=$(echo "$STEP_TELEMETRY" | jq ". += [$STEP_TEL]")
 
     # ── Step Validation ─────────────────────────────────────────────────────
     # After reading the snapshot, verify the action had the expected effect.
@@ -594,9 +603,12 @@ TELEMETRY_CONFIG=$(printf '{"trace":%s,"profiler":%s,"console":%s,"errors":%s,"d
   "$ENABLE_TRACE" "$ENABLE_PROFILER" "$ENABLE_CONSOLE" "$ENABLE_ERRORS" "$DEVICE" "$DIMENSION")
 
 # ── Record result ────────────────────────────────────────────────────────────
+RESULT_JSON=$(printf '{"tc":"%s","type":"%s","format":"%s","step_telemetry":%s}' \
+  "$(echo "$TC_TITLE" | sed 's/"/\\"/g')" "$TC_TYPE" "$TC_FORMAT" "$STEP_TELEMETRY")
+
 if [ $STEP_FAILED -eq 0 ]; then
   noob-tester visual-run entry-update "$ENTRY_ID" --status passed \
-    --result "{\"tc\":\"$TC_TITLE\",\"type\":\"$TC_TYPE\",\"format\":\"$TC_FORMAT\"}" \
+    --result "$RESULT_JSON" \
     --device "$DEVICE" --dimension "$DIMENSION" \
     --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
     --telemetry-config "$TELEMETRY_CONFIG"
