@@ -748,6 +748,70 @@ evtSource.onmessage = (e) => {
   if (currentPage === "dashboard" && !viewingSession) updateDashboardInPlace();
 };
 
+// ── Lightbox functions ──
+let lbState = { images: [], currentIndex: 0 };
+
+function openLightbox(images, startIndex = 0) {
+  lbState.images = images || [];
+  lbState.currentIndex = Math.max(0, Math.min(startIndex, images.length - 1));
+  const overlay = document.getElementById('lightbox-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    updateLightboxContent();
+  }
+}
+
+function closeLightbox() {
+  const overlay = document.getElementById('lightbox-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function updateLightboxContent() {
+  const imgEl = document.getElementById('lightbox-img');
+  const counterEl = document.getElementById('lightbox-counter');
+  const prevBtn = document.getElementById('lightbox-prev');
+  const nextBtn = document.getElementById('lightbox-next');
+  const captionEl = document.getElementById('lightbox-caption');
+
+  if (!imgEl) return;
+
+  const currentImg = lbState.images[lbState.currentIndex];
+  if (currentImg) {
+    imgEl.src = currentImg;
+    imgEl.onerror = () => { imgEl.alt = 'Failed to load image'; };
+  }
+
+  if (counterEl) {
+    counterEl.textContent = \`\${lbState.currentIndex + 1} / \${lbState.images.length}\`;
+  }
+
+  if (prevBtn) prevBtn.style.opacity = lbState.currentIndex === 0 ? '0.5' : '1';
+  if (nextBtn) nextBtn.style.opacity = lbState.currentIndex === lbState.images.length - 1 ? '0.5' : '1';
+  if (captionEl) captionEl.textContent = '';
+}
+
+function lbPrev() {
+  if (lbState.currentIndex > 0) {
+    lbState.currentIndex--;
+    updateLightboxContent();
+  }
+}
+
+function lbNext() {
+  if (lbState.currentIndex < lbState.images.length - 1) {
+    lbState.currentIndex++;
+    updateLightboxContent();
+  }
+}
+
+// Keyboard navigation for lightbox
+document.addEventListener('keydown', (e) => {
+  if (document.getElementById('lightbox-overlay')?.style.display !== 'flex') return;
+  if (e.key === 'ArrowLeft') lbPrev();
+  if (e.key === 'ArrowRight') lbNext();
+  if (e.key === 'Escape') closeLightbox();
+});
+
 function render() {
   if (!state) return;
 
@@ -6994,12 +7058,19 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
   if (tab === 'screenshots') {
     if (isBaseline) {
       if (entryScreenshots.length > 0) {
-        out += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
+        out += '<div style="display:flex;flex-direction:column;gap:16px">';
         for (const ss of entryScreenshots) {
           const imgSrc = "/api/artifact?path=" + encodeURIComponent(ss.file_path);
-          out += \`<div style="text-align:center">
-            <div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:500">\${esc(ss.step_label || "Step " + ss.step_index)}</div>
-            <img src="\${imgSrc}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
+          const stepNum = ss.step_index !== undefined ? ss.step_index : 0;
+          const stepLabel = ss.step_label || \`Step \${stepNum}\`;
+          out += \`<div style="padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
+            <div style="margin-bottom:10px">
+              <div style="font-size:12px;font-weight:600;color:var(--text)"><i class="ph ph-image" style="margin-right:4px"></i>Step \${stepNum}: \${esc(stepLabel)}</div>
+              <div style="font-size:11px;color:var(--dim);margin-top:2px">Viewport: \${esc(ss.viewport || 'unknown')}</div>
+            </div>
+            <div style="text-align:center;background:var(--bg);padding:8px;border-radius:4px">
+              <img src="\${imgSrc}" style="max-width:100%;max-height:400px;border-radius:4px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
+            </div>
           </div>\`;
         }
         out += '</div>';
@@ -7036,12 +7107,19 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
           </div>\`;
         }
       } else if (entryScreenshots.length > 0) {
-        out += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
+        out += '<div style="display:flex;flex-direction:column;gap:16px">';
         for (const ss of entryScreenshots) {
           const imgSrc = "/api/artifact?path=" + encodeURIComponent(ss.file_path);
-          out += \`<div style="text-align:center">
-            <div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:500">\${esc(ss.step_label || "Step " + ss.step_index)}</div>
-            <img src="\${imgSrc}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
+          const stepNum = ss.step_index !== undefined ? ss.step_index : 0;
+          const stepLabel = ss.step_label || \`Step \${stepNum}\`;
+          out += \`<div style="padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
+            <div style="margin-bottom:10px">
+              <div style="font-size:12px;font-weight:600;color:var(--text)"><i class="ph ph-image" style="margin-right:4px"></i>Step \${stepNum}: \${esc(stepLabel)}</div>
+              <div style="font-size:11px;color:var(--dim);margin-top:2px">Viewport: \${esc(ss.viewport || 'unknown')}</div>
+            </div>
+            <div style="text-align:center;background:var(--bg);padding:8px;border-radius:4px">
+              <img src="\${imgSrc}" style="max-width:100%;max-height:400px;border-radius:4px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
+            </div>
           </div>\`;
         }
         out += '</div>';
