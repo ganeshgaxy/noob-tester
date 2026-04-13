@@ -1,21 +1,176 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "fs";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  copyFileSync,
+  renameSync,
+  cpSync,
+} from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
 let _db: Database.Database | null = null;
 let _vssAvailable = false;
 
-/** Directory where noob-tester stores its data. */
-export function dataDir(): string {
-  const dir = join(homedir(), ".noob-tester");
+// ── Workspace helpers ──
+
+const NOOB_ROOT = () => join(homedir(), ".noob-tester");
+const CONFIG_PATH = () => join(NOOB_ROOT(), "config.json");
+
+/**
+ * In-memory workspace override set by setActiveWorkspace().
+ * Takes priority over both process.env.NOOB_WORKSPACE and config.json so that
+ * UI workspace switches (which call setActiveWorkspace) are reflected immediately
+ * within the running server process without needing a restart.
+ */
+let _activeWorkspaceOverride: string | null = null;
+
+/** Return the active workspace name.
+ *  Priority: in-memory override → NOOB_WORKSPACE env var → config.json → "default"
+ */
+export function getActiveWorkspace(): string {
+  if (_activeWorkspaceOverride) return _activeWorkspaceOverride;
+  if (process.env.NOOB_WORKSPACE) return process.env.NOOB_WORKSPACE;
+  try {
+    const cfg = JSON.parse(readFileSync(CONFIG_PATH(), "utf-8"));
+    return cfg.workspace || "default";
+  } catch {
+    return "default";
+  }
+}
+
+/** Root directory that contains all workspace sub-directories. */
+export function workspacesDir(): string {
+  const dir = join(NOOB_ROOT(), "workspaces");
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-/** Dedicated evidence directory for all artifacts. */
+/** Persist the active workspace name to config.json and reset the DB singleton.
+ *  Also updates the in-memory override so the running server process immediately
+ *  serves data from the new workspace without needing a restart.
+ */
+export function setActiveWorkspace(name: string): void {
+  // Set in-memory override first — this is what getActiveWorkspace() checks
+  // before the env var and config.json, so all subsequent DB/path calls in
+  // this process will use the new workspace immediately.
+  _activeWorkspaceOverride = name;
+
+  const root = NOOB_ROOT();
+  mkdirSync(root, { recursive: true });
+  let cfg: Record<string, unknown> = {};
+  try {
+    cfg = JSON.parse(readFileSync(CONFIG_PATH(), "utf-8"));
+  } catch {
+    /* first run */
+  }
+  writeFileSync(
+    CONFIG_PATH(),
+    JSON.stringify({ ...cfg, workspace: name }, null, 2),
+  );
+  resetDb();
+}
+
+/** Close the DB singleton so the next getDb() opens the correct workspace DB. */
+export function resetDb(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
+  _vssAvailable = false;
+}
+
+/** List all workspaces that have a directory under workspacesDir(). */
+export function listWorkspaces(): Array<{ name: string; current: boolean }> {
+  const root = workspacesDir();
+  const current = getActiveWorkspace();
+  try {
+    return readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => ({ name: d.name, current: d.name === current }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Rename an existing workspace directory.
+ * If the renamed workspace is the current active one, updates config.json to
+ * point at the new name and resets the DB singleton.
+ */
+export function renameWorkspace(from: string, to: string): void {
+  if (from === "default")
+    throw new Error('Cannot rename the "default" workspace');
+  if (!/^[a-zA-Z0-9_-]+$/.test(to))
+    throw new Error("Workspace name must be alphanumeric (a-z, 0-9, -, _)");
+
+  const root = workspacesDir();
+  const fromDir = join(root, from);
+  const toDir = join(root, to);
+
+  if (!existsSync(fromDir)) throw new Error(`Workspace "${from}" not found`);
+  if (existsSync(toDir)) throw new Error(`Workspace "${to}" already exists`);
+
+  renameSync(fromDir, toDir);
+
+  // If it was the active workspace, point the config at the new name
+  if (getActiveWorkspace() === from) {
+    setActiveWorkspace(to);
+  }
+}
+
+/**
+ * Copy the DB and evidence directory from one workspace into another.
+ * The target workspace is created (with its evidence/ sub-dir) if it doesn't
+ * exist yet. Existing files in the target are overwritten.
+ * The active workspace is NOT changed — the caller decides whether to switch.
+ */
+export function copyWorkspace(from: string, to: string): void {
+  if (from === to) throw new Error("Source and target workspace are the same");
+  if (!/^[a-zA-Z0-9_-]+$/.test(to))
+    throw new Error("Workspace name must be alphanumeric (a-z, 0-9, -, _)");
+
+  const root = workspacesDir();
+  const fromDir = join(root, from);
+  const toDir = join(root, to);
+
+  // "default" workspace dir may not exist yet (created lazily by getDb)
+  if (from !== "default" && !existsSync(fromDir))
+    throw new Error(`Workspace "${from}" not found`);
+
+  // Ensure target directory structure exists
+  mkdirSync(join(toDir, "evidence"), { recursive: true });
+
+  // Copy the database file (if it exists in the source workspace)
+  const fromDb = join(fromDir, "noob-tester.db");
+  const toDb = join(toDir, "noob-tester.db");
+  if (existsSync(fromDb)) {
+    // If the target is the currently-open DB, close it first
+    if (getActiveWorkspace() === to) resetDb();
+    copyFileSync(fromDb, toDb);
+  }
+
+  // Copy the evidence directory recursively (merge into target)
+  const fromEvidence = join(fromDir, "evidence");
+  const toEvidence = join(toDir, "evidence");
+  if (existsSync(fromEvidence)) {
+    cpSync(fromEvidence, toEvidence, { recursive: true });
+  }
+}
+
+/** Directory where noob-tester stores its data (workspace-scoped). */
+export function dataDir(): string {
+  const dir = join(workspacesDir(), getActiveWorkspace());
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Dedicated evidence directory for all artifacts (workspace-scoped). */
 export function evidenceDir(): string {
-  const dir = join(homedir(), ".noob-tester", "evidence");
+  const dir = join(dataDir(), "evidence");
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -24,7 +179,18 @@ export function evidenceDir(): string {
 export function getDb(): Database.Database {
   if (_db) return _db;
 
+  // Auto-migrate legacy root DB to the "default" workspace on first run.
+  // Only for "default" — new workspaces should start with a fresh empty DB.
+  const legacyDb = join(NOOB_ROOT(), "noob-tester.db");
   const dbPath = join(dataDir(), "noob-tester.db");
+  if (
+    !existsSync(dbPath) &&
+    existsSync(legacyDb) &&
+    getActiveWorkspace() === "default"
+  ) {
+    copyFileSync(legacyDb, dbPath);
+  }
+
   _db = new Database(dbPath);
 
   _db.pragma("journal_mode = WAL");
@@ -1661,6 +1827,184 @@ CREATE INDEX IF NOT EXISTS idx_qpa_agent ON qa_pool_agents(agent_path);
     `);
     db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
       "052-qa-pool",
+    );
+  }
+
+  // Visual testing — dedicated test cases, runs, screenshots, and comparisons
+  if (!applied.has("053-visual-testing")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS visual_test_cases (
+  id                TEXT PRIMARY KEY,
+  ticket_id         TEXT NOT NULL,
+  title             TEXT NOT NULL,
+  description       TEXT,
+  type              TEXT NOT NULL DEFAULT 'direct_functional',
+  format            TEXT NOT NULL DEFAULT 'bdd',
+  viewport          TEXT NOT NULL DEFAULT '1280x720',
+  default_threshold REAL NOT NULL DEFAULT 0.1,
+
+  -- BDD format
+  bdd_feature       TEXT,
+  bdd_scenario      TEXT,
+  bdd_given         TEXT,
+  bdd_when          TEXT,
+  bdd_then          TEXT,
+
+  -- Traditional format
+  trad_steps        TEXT,
+  trad_expected     TEXT,
+
+  -- Visual-specific: steps with screenshot/diff config
+  visual_steps_json TEXT NOT NULL DEFAULT '[]',
+
+  -- Metadata
+  preconditions     TEXT,
+  impacted_files    TEXT,
+  labels            TEXT DEFAULT '[]',
+  test_layer        TEXT NOT NULL DEFAULT 'ui',
+  ready             INTEGER NOT NULL DEFAULT 0,
+  status            TEXT NOT NULL DEFAULT 'active',
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_vtc_ticket ON visual_test_cases(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_vtc_status ON visual_test_cases(status);
+CREATE INDEX IF NOT EXISTS idx_vtc_type ON visual_test_cases(type);
+CREATE INDEX IF NOT EXISTS idx_vtc_ready ON visual_test_cases(ready);
+
+CREATE TABLE IF NOT EXISTS visual_runs (
+  id            TEXT PRIMARY KEY,
+  ticket_id     TEXT NOT NULL,
+  mode          TEXT NOT NULL,
+  target_url    TEXT NOT NULL,
+  secret_target TEXT,
+  secret_role   TEXT,
+  session_id    TEXT,
+  status        TEXT NOT NULL DEFAULT 'running',
+  summary_json  TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vr_ticket ON visual_runs(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_vr_mode ON visual_runs(mode);
+CREATE INDEX IF NOT EXISTS idx_vr_status ON visual_runs(status);
+
+CREATE TABLE IF NOT EXISTS visual_run_entries (
+  id                TEXT PRIMARY KEY,
+  visual_run_id     TEXT NOT NULL REFERENCES visual_runs(id),
+  visual_tc_id      TEXT NOT NULL,
+  ticket_id         TEXT NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending',
+  result_json       TEXT,
+  device            TEXT DEFAULT 'web',
+  dimension         TEXT DEFAULT 'standard',
+  trace_path        TEXT,
+  profile_path      TEXT,
+  telemetry_config  TEXT,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vre_run ON visual_run_entries(visual_run_id);
+CREATE INDEX IF NOT EXISTS idx_vre_tc ON visual_run_entries(visual_tc_id);
+CREATE INDEX IF NOT EXISTS idx_vre_ticket ON visual_run_entries(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_vre_status ON visual_run_entries(status);
+
+CREATE TABLE IF NOT EXISTS visual_screenshots (
+  id             TEXT PRIMARY KEY,
+  visual_run_id  TEXT NOT NULL,
+  visual_tc_id   TEXT NOT NULL,
+  ticket_id      TEXT NOT NULL,
+  step_index     INTEGER NOT NULL,
+  step_label     TEXT NOT NULL,
+  viewport       TEXT NOT NULL DEFAULT '1280x720',
+  file_path      TEXT NOT NULL,
+  target_url     TEXT,
+  mode           TEXT NOT NULL,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_vs_run ON visual_screenshots(visual_run_id);
+CREATE INDEX IF NOT EXISTS idx_vs_tc ON visual_screenshots(visual_tc_id);
+CREATE INDEX IF NOT EXISTS idx_vs_ticket ON visual_screenshots(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_vs_mode ON visual_screenshots(mode);
+
+CREATE TABLE IF NOT EXISTS visual_comparisons (
+  id             TEXT PRIMARY KEY,
+  visual_run_id  TEXT NOT NULL,
+  visual_tc_id   TEXT NOT NULL,
+  ticket_id      TEXT NOT NULL,
+  step_index     INTEGER NOT NULL,
+  step_label     TEXT NOT NULL,
+  viewport       TEXT NOT NULL DEFAULT '1280x720',
+  baseline_id    TEXT NOT NULL REFERENCES visual_screenshots(id),
+  current_id     TEXT NOT NULL REFERENCES visual_screenshots(id),
+  diff_path      TEXT,
+  diff_score     REAL,
+  threshold      REAL NOT NULL DEFAULT 0.1,
+  passed         INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_vc_run ON visual_comparisons(visual_run_id);
+CREATE INDEX IF NOT EXISTS idx_vc_tc ON visual_comparisons(visual_tc_id);
+CREATE INDEX IF NOT EXISTS idx_vc_ticket ON visual_comparisons(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_vc_passed ON visual_comparisons(passed);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "053-visual-testing",
+    );
+  }
+
+  // Telemetry columns — device, dimension, trace/profile paths, per-step console & errors
+  if (!applied.has("054-telemetry")) {
+    db.exec(`
+ALTER TABLE run_pack_entries ADD COLUMN device TEXT NOT NULL DEFAULT 'web';
+ALTER TABLE run_pack_entries ADD COLUMN dimension TEXT NOT NULL DEFAULT 'standard';
+ALTER TABLE run_pack_entries ADD COLUMN trace_path TEXT;
+ALTER TABLE run_pack_entries ADD COLUMN profile_path TEXT;
+ALTER TABLE run_pack_entries ADD COLUMN telemetry_config TEXT;
+
+ALTER TABLE visual_run_entries ADD COLUMN device TEXT NOT NULL DEFAULT 'web';
+ALTER TABLE visual_run_entries ADD COLUMN dimension TEXT NOT NULL DEFAULT 'standard';
+ALTER TABLE visual_run_entries ADD COLUMN trace_path TEXT;
+ALTER TABLE visual_run_entries ADD COLUMN profile_path TEXT;
+ALTER TABLE visual_run_entries ADD COLUMN telemetry_config TEXT;
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "054-telemetry",
+    );
+  }
+
+  // Add launch_dir column to qa_pool_agents
+  if (!applied.has("055-qa-pool-launch-dir")) {
+    db.exec(`
+ALTER TABLE qa_pool_agents ADD COLUMN launch_dir TEXT;
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "055-qa-pool-launch-dir",
+    );
+  }
+
+  // Update visual_test_cases to support BDD/traditional format + visual steps
+  if (!applied.has("056-visual-testcase-format")) {
+    db.exec(`
+ALTER TABLE visual_test_cases ADD COLUMN type TEXT NOT NULL DEFAULT 'direct_functional';
+ALTER TABLE visual_test_cases ADD COLUMN format TEXT NOT NULL DEFAULT 'bdd';
+ALTER TABLE visual_test_cases ADD COLUMN bdd_feature TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN bdd_scenario TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN bdd_given TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN bdd_when TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN bdd_then TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN trad_steps TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN trad_expected TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN visual_steps_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE visual_test_cases ADD COLUMN preconditions TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN impacted_files TEXT;
+ALTER TABLE visual_test_cases ADD COLUMN test_layer TEXT NOT NULL DEFAULT 'ui';
+ALTER TABLE visual_test_cases ADD COLUMN ready INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_vtc_type ON visual_test_cases(type);
+CREATE INDEX IF NOT EXISTS idx_vtc_ready ON visual_test_cases(ready);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "056-visual-testcase-format",
     );
   }
 }

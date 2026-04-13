@@ -65,6 +65,11 @@ export function getDashboardHtml(
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 
+  .ws-picker { padding: 12px; border-bottom: 1px solid var(--border); }
+  .ws-label { font-size: 10px; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+  .ws-row { display: flex; }
+  .ws-row select { flex: 1; padding: 6px 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; cursor: pointer; }
+
   .sidebar-nav { flex: 1; padding: 8px 6px; overflow-y: auto; }
   .nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 12px; font-size: 13px; font-weight: 400; cursor: pointer; background: none; border: none; border-radius: var(--radius-sm); color: var(--dim); transition: color var(--transition), background var(--transition); }
   .nav-btn .nav-icon { font-size: 16px; width: 20px; text-align: center; color: var(--muted); }
@@ -423,10 +428,12 @@ export function getDashboardHtml(
   <div class="sidebar">
     <div class="sidebar-logo">
       <h1>noob<span class="brand-accent">.</span>tester<span class="version">v0.1</span></h1>
-      <div style="margin-top:12px;padding:8px;background:var(--surface);border-radius:var(--radius-sm)">
-        <div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:600;margin-bottom:4px">Workspace</div>
-        <select id="workspace-select" onchange="switchWorkspace(this.value)" style="width:100%;padding:6px 8px;background:var(--border);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;cursor:pointer">
-          <option value="">Loading...</option>
+    </div>
+    <div class="ws-picker">
+      <div class="ws-label">Workspace</div>
+      <div class="ws-row">
+        <select id="ws-select" onchange="switchWorkspace(this.value)" title="Switch workspace">
+          <option value="default">default</option>
         </select>
       </div>
     </div>
@@ -536,15 +543,15 @@ loadWorkspaces();
 async function loadWorkspaces() {
   try {
     const data = await fetchJson("/api/workspaces");
-    const select = document.getElementById("workspace-select");
+    const select = document.getElementById("ws-select");
     if (!select) return;
 
     select.innerHTML = "";
-    for (const ws of data.workspaces) {
+    for (const ws of (data.workspaces || [])) {
       const opt = document.createElement("option");
-      opt.value = ws;
-      opt.textContent = ws;
-      if (ws === data.current) opt.selected = true;
+      opt.value = ws.name || ws;
+      opt.textContent = ws.name || ws;
+      if ((ws.name || ws) === data.current) opt.selected = true;
       select.appendChild(opt);
     }
   } catch (err) {
