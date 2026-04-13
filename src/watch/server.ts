@@ -648,6 +648,27 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
+    if (url.pathname === "/api/workspaces" && req.method === "GET") {
+      const workspaces = listWorkspaces();
+      const current = getActiveWorkspace();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ workspaces, current }));
+      return;
+    }
+
+    if (url.pathname === "/api/workspaces/switch" && req.method === "POST") {
+      const workspace = url.searchParams.get("name");
+      if (!workspace) {
+        res.writeHead(400);
+        res.end('{"error":"name required"}');
+        return;
+      }
+      setActiveWorkspace(workspace);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, workspace }));
+      return;
+    }
+
     if (url.pathname === "/api/visual-runs/entries" && req.method === "GET") {
       const runId = url.searchParams.get("run");
       if (!runId) {

@@ -423,6 +423,12 @@ export function getDashboardHtml(
   <div class="sidebar">
     <div class="sidebar-logo">
       <h1>noob<span class="brand-accent">.</span>tester<span class="version">v0.1</span></h1>
+      <div style="margin-top:12px;padding:8px;background:var(--surface);border-radius:var(--radius-sm)">
+        <div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:600;margin-bottom:4px">Workspace</div>
+        <select id="workspace-select" onchange="switchWorkspace(this.value)" style="width:100%;padding:6px 8px;background:var(--border);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;cursor:pointer">
+          <option value="">Loading...</option>
+        </select>
+      </div>
     </div>
     <div class="sidebar-nav">
       <div class="nav-btn active" data-page="dashboard" onclick="switchPage('dashboard')"><i class="ph ph-squares-four nav-icon"></i>Dashboard</div>
@@ -521,6 +527,40 @@ evtSource.onmessage = (e) => {
   // Only update dashboard list in-place (not when viewing a session detail)
   if (currentPage === "dashboard" && !viewingSession) updateDashboardInPlace();
 };
+
+// Load workspaces on startup
+loadWorkspaces();
+
+// ── Workspace Management ─────────────────────────────────────────────────────
+
+async function loadWorkspaces() {
+  try {
+    const data = await fetchJson("/api/workspaces");
+    const select = document.getElementById("workspace-select");
+    if (!select) return;
+
+    select.innerHTML = "";
+    for (const ws of data.workspaces) {
+      const opt = document.createElement("option");
+      opt.value = ws;
+      opt.textContent = ws;
+      if (ws === data.current) opt.selected = true;
+      select.appendChild(opt);
+    }
+  } catch (err) {
+    console.error("Failed to load workspaces:", err);
+  }
+}
+
+async function switchWorkspace(wsName) {
+  if (!wsName) return;
+  try {
+    await fetchJson("/api/workspaces/switch?name=" + encodeURIComponent(wsName), { method: "POST" });
+    window.location.reload();
+  } catch (err) {
+    console.error("Failed to switch workspace:", err);
+  }
+}
 
 function render() {
   if (!state) return;
