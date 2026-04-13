@@ -28,9 +28,6 @@ An AI-powered QA testing system that integrates with Claude Code as a persistent
    - [Metrics](#metrics)
    - [Risk & Audit](#risk--audit)
    - [Accessibility & Visual](#accessibility--visual)
-   - [Visual Test Cases](#visual-test-cases)
-   - [Visual Runs](#visual-runs)
-   - [Workspaces](#workspaces)
    - [Ticket Context](#ticket-context)
    - [Tech Issues](#tech-issues)
    - [RCA](#rca)
@@ -177,15 +174,10 @@ Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's 
 | `/noob-explore`      | 4 — UI Testing  | "test the login page at https://staging.app.com"                      |
 | `/noob-api-explore`  | 4 — API Testing | "run the API tests for PROJ-123"                                      |
 | `/noob-rca`          | 5 — RCA         | "why did these tests fail?"                                           |
-| `/noob-report`             | 5 — Report         | "generate a report for PROJ-123"                                          |
-| `/noob-mr-pr`              | Utility            | "review the MR for PROJ-123"                                              |
-| `/noob-claim`              | 4 — Claiming       | "claim the next test case for PROJ-123"                                   |
-| `/noob-pool`               | 4 — Parallel       | "run pool agents for PROJ-123" — dispatch multiple agents in parallel     |
-| `/noob-visual-testcase`    | 3 — Visual Gen     | "generate visual test cases for PROJ-123"                                 |
-| `/noob-visual-claim`       | 4 — Visual Claim   | "claim next visual test case for PROJ-123"                                |
-| `/noob-visual`             | 4 — Visual Execute | "run visual baseline for PROJ-123" or "run visual verification"           |
-| `/noob-visual-rca`         | 5 — Visual RCA     | "classify visual test failures for PROJ-123"                              |
-| `/noob-visual-pool`        | 4 — Visual Pool    | "dispatch visual test agents for PROJ-123" — run all visual tests in parallel |
+| `/noob-report`       | 5 — Report      | "generate a report for PROJ-123"                                      |
+| `/noob-mr-pr`        | Utility         | "review the MR for PROJ-123"                                          |
+| `/noob-claim`        | 4 — Claiming    | "claim the next test case for PROJ-123"                               |
+| `/noob-pool`         | 4 — Parallel    | "run pool agents for PROJ-123" — dispatch multiple agents in parallel |
 | `/noob-repos-setup`  | Utility         | "set up repos for PROJ-123"                                           |
 | `/noob-ticket-cache` | Utility         | ticket context caching (called internally by other skills)            |
 
@@ -217,16 +209,6 @@ Skills are markdown instruction files (`SKILL.md`) installed into Claude Code's 
 **`/noob-claim`** — Phase 4, Claiming. Claims test cases from run packs for execution. Three modes: claim next (uses `claim-smart` — retry failed → resume pending → claim new), claim by name (substring match with validation), and retry a specific test. Auto-creates session and run pack if not provided. Returns a `$ENTRY` JSON object for `/noob-explore` to execute.
 
 **`/noob-pool`** — Phase 4, Parallel dispatch. Reads `qa_pool_agents` config for the ticket, enumerates all pending test cases (sorted by priority: `direct_functional` → `impact_regression` → `general_regression`), checks the most recent run pack to skip already-claimed/running/passed test cases, then fires one `claude` sub-agent per test case as a background process (fire-and-forget). Supports a `MAX_SPAWNS` limit (default 5, overridable). Each agent invocation targets a specific test case by name — eliminating all race conditions. Monitor results in the Pool page of the watch dashboard.
-
-**`/noob-visual-testcase`** — Phase 3, Visual. Generates visual test cases from a Jira ticket — reads ticket context, parent/sibling issues, MR diff to determine what to visually verify. Creates BDD or traditional test cases with `--visual-steps` config (which steps take screenshots, diffType, fullPage, selector, threshold) via `visual-tc create`. Three types: `direct_functional` (this ticket's UI changes), `impact_regression` (affected components), `general_regression` (critical unchanged flows).
-
-**`/noob-visual-claim`** — Phase 4, Visual. Creates or resumes a visual run for a ticket and atomically claims the next pending test case entry. Baseline mode: creates a new run, populates all ready visual test cases, claims first. Verification mode: creates a verification run against existing baselines. Writes claim to `/tmp/visual-claim.json` for `/noob-visual` to consume.
-
-**`/noob-visual`** — Phase 4, Visual execution. Executes ONE pre-claimed visual test case per invocation. Navigates the UI interactively — reads snapshots for real `@eN` element refs (never hardcoded selectors), captures page after every action, logs observations and console/page errors per step. At screenshot steps: takes PNG, records via `visual-run capture`. In verification mode: diffs against baseline using `agent-browser diff screenshot`, records result. Full telemetry: trace + CPU profile for the entire run. One test case per invocation — repeat via `/noob-visual-claim` + `/noob-visual` loop.
-
-**`/noob-visual-rca`** — Phase 5, Visual. Classifies visual test failures — distinguishes real regressions from environment noise (anti-aliasing, font rendering, dynamic content). Assigns root cause and confidence per failed entry.
-
-**`/noob-visual-pool`** — Phase 4, Visual parallel. Dispatches multiple `/noob-visual` agents in parallel — one per pending visual run entry. Reduces total time for large visual test suites.
 
 **`/noob-repos-setup`** — Utility. Ensures all repos for a ticket are registered, cloned/pulled, and indexed. Called internally by analysis and planning skills.
 
@@ -770,52 +752,6 @@ noob-tester visual list --unreviewed
 noob-tester visual review $DIFF_ID --regression
 noob-tester visual accept $DIFF_ID  # promote as new baseline
 ```
-
-### `noob-tester visual-tc` — Visual test cases
-
-Manage visual test cases — BDD/traditional format with per-step screenshot config. Used by `/noob-visual-testcase` to create and `/noob-visual` to execute.
-
-| Command | Description |
-| ------- | ----------- |
-| `visual-tc create` | Create a visual test case. Required: `--ticket`, `--title`, `--type` (direct_functional\|impact_regression\|general_regression), `--format` (bdd\|traditional), `--viewport` (e.g. 1280x720), `--threshold` (0.0–1.0), `--visual-steps` (JSON). BDD: `--bdd-feature`, `--bdd-scenario`, `--bdd-given`, `--bdd-when`, `--bdd-then`. Traditional: `--trad-steps`, `--trad-expected`. Optional: `--description`, `--preconditions`, `--impacted-files`, `--labels`, `--ready`. |
-| `visual-tc list --ticket <id>` | List visual test cases for a ticket. `--json`. |
-| `visual-tc get <id>` | Get a visual test case by ID (full parsed JSON). |
-| `visual-tc update <id>` | Patch fields (same options as create, all optional). `--ready` / `--draft`. |
-| `visual-tc steps <id>` | Show which steps capture screenshots and how. |
-| `visual-tc bdd <id>` | Show BDD/traditional step details. |
-| `visual-tc ready <id>` | Mark as ready for execution. |
-| `visual-tc draft <id>` | Revert to draft. |
-| `visual-tc archive <id>` | Soft-delete. |
-
-### `noob-tester visual-run` — Visual run lifecycle
-
-Start runs, populate entries, record screenshots, compare against baselines. Used by `/noob-visual-claim` and `/noob-visual`.
-
-| Command | Description |
-| ------- | ----------- |
-| `visual-run start` | Start a run. Required: `--ticket`, `--mode` (baseline\|verification), `--target-url`. Optional: `--secret-target`, `--secret-role`, `--session`. Returns `{ visualRunId }`. |
-| `visual-run entry-create` | Add one test case to a run. Required: `--run`, `--tc`, `--ticket`. Returns `{ entryId }`. |
-| `visual-run entry-update <entryId>` | Update entry status. Required: `--status` (running\|passed\|failed\|skipped). Optional: `--result`, `--device`, `--dimension`, `--trace-path`, `--profile-path`, `--telemetry-config`. |
-| `visual-run claim-next <runId>` | Atomically claim the next pending entry. `--name` for title filter. Returns `{ claimed, entry: { id, tc: {...} } }`. |
-| `visual-run capture` | Record a screenshot. Required: `--run`, `--tc`, `--ticket`, `--step-index`, `--step-label`, `--viewport`, `--file`, `--mode`. Returns `{ screenshotId }`. |
-| `visual-run find-baseline` | Find latest baseline for ticket+tc+step+viewport fingerprint. Returns `{ found, baseline }`. |
-| `visual-run compare` | Record a diff result. Required: `--run`, `--tc`, `--ticket`, `--step-index`, `--step-label`, `--viewport`, `--baseline-id`, `--current-id`, `--threshold`. Optional: `--diff-path`, `--diff-score`, `--passed`. |
-| `visual-run complete <runId>` | Mark completed, compute summary (total/passed/failed/no_baseline). |
-| `visual-run get <runId>` | Get run details. `--entries`, `--screenshots`, `--comparisons`. |
-| `visual-run list --ticket <id>` | List runs for a ticket. `--json`. |
-
-### `noob-tester workspace` — Workspace management
-
-Isolate DB, evidence, secrets, and repos per workspace. Useful for separating environments (staging vs prod) or parallel projects.
-
-| Command | Description |
-| ------- | ----------- |
-| `workspace current` | Show active workspace name. |
-| `workspace list` | List all workspaces. |
-| `workspace create <name>` | Create a new workspace (alphanumeric, hyphens, underscores). |
-| `workspace switch <name>` | Switch active workspace. Auto-creates if missing. Writes to `~/.noob-tester/config.json`. Also accepts `NOOB_WORKSPACE` env var. |
-| `workspace copy <from> <to>` | Copy DB + evidence from one workspace into another. `--switch` to activate target after. |
-| `workspace delete <name> --confirm` | Delete workspace and all its data (irreversible). Cannot delete `default`. |
 
 ### `noob-tester secrets` — Manage credentials
 

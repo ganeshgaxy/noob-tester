@@ -8,7 +8,6 @@ export interface QaPoolAgent {
   target: string | null;
   role: string;
   file: string | null;
-  launch_dir: string | null;
   created_at: string;
 }
 
@@ -18,22 +17,13 @@ export function addAgent(
   target: string | null,
   role: string,
   file: string | null,
-  launchDir: string | null = null,
 ): string {
   const db = getDb();
   const id = uuid();
   db.prepare(
-    `INSERT INTO qa_pool_agents (id, ticket_id, agent_path, target, role, file, launch_dir)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    ticketId,
-    agentPath,
-    target ?? null,
-    role,
-    file ?? null,
-    launchDir ?? null,
-  );
+    `INSERT INTO qa_pool_agents (id, ticket_id, agent_path, target, role, file)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, ticketId, agentPath, target ?? null, role, file ?? null);
   return id;
 }
 
@@ -61,7 +51,6 @@ export interface UpdateAgentFields {
   target?: string | null;
   role?: string;
   file?: string | null;
-  launch_dir?: string | null;
 }
 
 /**
@@ -88,10 +77,6 @@ export function updateAgent(id: string, fields: UpdateAgentFields): boolean {
   if (fields.file !== undefined) {
     setClauses.push("file = ?");
     values.push(fields.file ?? null);
-  }
-  if (fields.launch_dir !== undefined) {
-    setClauses.push("launch_dir = ?");
-    values.push(fields.launch_dir ?? null);
   }
 
   if (setClauses.length === 0) return false;

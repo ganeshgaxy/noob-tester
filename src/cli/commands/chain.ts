@@ -292,7 +292,6 @@ export function registerChainCommands(program: Command): void {
       const snapshotPath = join(dir, `snapshot-${pageName}.txt`);
       const screenshotPath = join(dir, `screenshot-${pageName}.png`);
       const consolePath = join(dir, `console-${pageName}.txt`);
-      const errorsPath = join(dir, `errors-${pageName}.txt`);
       const harPath = join(dir, `har-${pageName}.json`);
 
       const captured: string[] = [];
@@ -313,13 +312,6 @@ export function registerChainCommands(program: Command): void {
       if (consoleContent) {
         writeFileSync(consolePath, consoleContent);
         captured.push("console");
-      }
-
-      // Capture errors
-      const errorsContent = runCmd(`agent-browser errors`);
-      if (errorsContent) {
-        writeFileSync(errorsPath, errorsContent);
-        captured.push("errors");
       }
 
       // Capture HAR
@@ -362,7 +354,6 @@ export function registerChainCommands(program: Command): void {
       if (captured.includes("screenshot"))
         storeArtifact("screenshot", screenshotPath);
       if (captured.includes("console")) storeArtifact("console", consolePath);
-      if (captured.includes("errors")) storeArtifact("errors", errorsPath);
       if (captured.includes("har")) storeArtifact("har", harPath);
 
       // Auto-log capture to entry timeline + observation

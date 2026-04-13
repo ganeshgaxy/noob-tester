@@ -385,52 +385,6 @@ export function getDocsHtml(): string {
 
 
 <div class="doc-cmd">
-<h3>noob-tester visual-tc</h3>
-<p>Manage visual test cases — BDD/traditional format with per-step screenshot config (diffType, fullPage, selector, threshold). Used by <code>/noob-visual-testcase</code> to create and <code>/noob-visual</code> to execute.</p>
-<table>
-<tr><td><code>visual-tc create</code></td><td>Create a visual test case. Required: <code>--ticket</code>, <code>--title</code>, <code>--type</code> (direct_functional|impact_regression|general_regression), <code>--format</code> (bdd|traditional), <code>--viewport</code> (e.g. 1280x720), <code>--threshold</code> (0.0–1.0), <code>--visual-steps</code> (JSON array). BDD options: <code>--bdd-feature</code>, <code>--bdd-scenario</code>, <code>--bdd-given</code>, <code>--bdd-when</code>, <code>--bdd-then</code>. Traditional: <code>--trad-steps</code>, <code>--trad-expected</code>. Optional: <code>--description</code>, <code>--preconditions</code>, <code>--impacted-files</code>, <code>--labels</code>, <code>--ready</code>.</td></tr>
-<tr><td><code>visual-tc list --ticket &lt;id&gt;</code></td><td>List visual test cases for a ticket. <code>--json</code> for machine output.</td></tr>
-<tr><td><code>visual-tc get &lt;id&gt;</code></td><td>Get a visual test case by ID (parsed JSON output with all fields).</td></tr>
-<tr><td><code>visual-tc update &lt;id&gt;</code></td><td>Patch fields on a test case. Same options as create (all optional). <code>--ready</code> marks ready, <code>--draft</code> reverts to draft.</td></tr>
-<tr><td><code>visual-tc steps &lt;id&gt;</code></td><td>Show visual steps config (which steps capture screenshots and how).</td></tr>
-<tr><td><code>visual-tc bdd &lt;id&gt;</code></td><td>Show BDD/traditional step details for a test case.</td></tr>
-<tr><td><code>visual-tc ready &lt;id&gt;</code></td><td>Mark a test case as ready for execution.</td></tr>
-<tr><td><code>visual-tc draft &lt;id&gt;</code></td><td>Revert a test case to draft.</td></tr>
-<tr><td><code>visual-tc archive &lt;id&gt;</code></td><td>Soft-delete (archive) a test case.</td></tr>
-</table>
-</div>
-
-<div class="doc-cmd">
-<h3>noob-tester visual-run</h3>
-<p>Visual test run lifecycle — start runs, populate entries, record screenshots, compare against baselines, claim next for execution. Used by <code>/noob-visual-claim</code> and <code>/noob-visual</code>.</p>
-<table>
-<tr><td><code>visual-run start</code></td><td>Start a new visual run. Required: <code>--ticket</code>, <code>--mode</code> (baseline|verification), <code>--target-url</code>. Optional: <code>--secret-target</code>, <code>--secret-role</code>, <code>--session</code>. Returns <code>{ visualRunId }</code>.</td></tr>
-<tr><td><code>visual-run entry-create</code></td><td>Add one visual test case to a run. Required: <code>--run</code>, <code>--tc</code>, <code>--ticket</code>. Returns <code>{ entryId }</code>.</td></tr>
-<tr><td><code>visual-run entry-update &lt;entryId&gt;</code></td><td>Update entry status. Required: <code>--status</code> (running|passed|failed|skipped). Optional: <code>--result</code> (JSON), <code>--device</code>, <code>--dimension</code>, <code>--trace-path</code>, <code>--profile-path</code>, <code>--telemetry-config</code>.</td></tr>
-<tr><td><code>visual-run claim-next &lt;runId&gt;</code></td><td>Atomically claim the next pending entry (sets status to running). <code>--name</code> for title substring filter. Returns <code>{ claimed, entry: { id, tc: {...} } }</code> or <code>{ claimed: false }</code>.</td></tr>
-<tr><td><code>visual-run capture</code></td><td>Record a screenshot for a step. Required: <code>--run</code>, <code>--tc</code>, <code>--ticket</code>, <code>--step-index</code>, <code>--step-label</code>, <code>--viewport</code>, <code>--file</code>, <code>--mode</code>. Optional: <code>--target-url</code>. Returns <code>{ screenshotId }</code>.</td></tr>
-<tr><td><code>visual-run find-baseline</code></td><td>Find the latest baseline screenshot matching ticket+tc+step+viewport fingerprint. Returns <code>{ found, baseline: { id, file_path, ... } }</code>.</td></tr>
-<tr><td><code>visual-run compare</code></td><td>Record a diff comparison result. Required: <code>--run</code>, <code>--tc</code>, <code>--ticket</code>, <code>--step-index</code>, <code>--step-label</code>, <code>--viewport</code>, <code>--baseline-id</code>, <code>--current-id</code>, <code>--threshold</code>. Optional: <code>--diff-path</code>, <code>--diff-score</code>, <code>--passed</code>.</td></tr>
-<tr><td><code>visual-run complete &lt;runId&gt;</code></td><td>Mark run completed and compute summary (total/passed/failed/no_baseline).</td></tr>
-<tr><td><code>visual-run get &lt;runId&gt;</code></td><td>Get run details. <code>--entries</code>, <code>--screenshots</code>, <code>--comparisons</code> to include related data.</td></tr>
-<tr><td><code>visual-run list --ticket &lt;id&gt;</code></td><td>List all visual runs for a ticket. <code>--json</code>.</td></tr>
-</table>
-</div>
-
-<div class="doc-cmd">
-<h3>noob-tester workspace</h3>
-<p>Manage isolated workspaces — each workspace has its own SQLite DB, evidence directory, secrets, and repos. Useful for separating QA environments (staging vs prod) or parallel projects.</p>
-<table>
-<tr><td><code>workspace current</code></td><td>Show the active workspace name.</td></tr>
-<tr><td><code>workspace list</code></td><td>List all existing workspaces.</td></tr>
-<tr><td><code>workspace create &lt;name&gt;</code></td><td>Create a new workspace directory (alphanumeric, hyphens, underscores only).</td></tr>
-<tr><td><code>workspace switch &lt;name&gt;</code></td><td>Switch the active workspace. Auto-creates if it doesn't exist. Writes to <code>~/.noob-tester/config.json</code>.</td></tr>
-<tr><td><code>workspace copy &lt;from&gt; &lt;to&gt;</code></td><td>Copy DB and evidence from one workspace into another. <code>--switch</code> to activate the target after copying.</td></tr>
-<tr><td><code>workspace delete &lt;name&gt;</code></td><td>Delete a workspace and all its data. <code>--confirm</code> required. Cannot delete the default workspace.</td></tr>
-</table>
-</div>
-
-<div class="doc-cmd">
 <h3>noob-tester cleanup</h3>
 <p>Clean up data and processes. All destructive commands require <code>--yes</code>.</p>
 <table>
@@ -555,7 +509,6 @@ export function getDocsHtml(): string {
 
 <p style="color:var(--dim);margin-bottom:16px">Each skill works <strong>standalone</strong> or as part of a pipeline. Every skill MUST start by creating a session and run.</p>
 <p style="color:var(--dim);margin-bottom:16px"><strong>Full pipeline:</strong> <code>/noob-ticket-cache</code> → <code>/noob-repos-setup</code> → <code>/noob-analyze</code> → <code>/noob-testcase</code> → <code>/noob-plan</code> → <code>/noob-claim</code> → <code>/noob-explore</code> + <code>/noob-api-explore</code> (with a11y + risk ordering) → <code>/noob-rca</code> (classify failures + detect false positives) → <code>/noob-report</code></p>
-<p style="color:var(--dim);margin-bottom:16px"><strong>Visual pipeline:</strong> <code>/noob-visual-testcase</code> (generate) → <code>/noob-visual-claim</code> (create run + claim next) → <code>/noob-visual</code> (execute one test case) → repeat claim+execute → <code>/noob-visual-rca</code> (classify failures) → <code>/noob-visual-pool</code> (parallel dispatch)</p>
 
 <div class="doc-cmd">
 <h3 style="color:var(--accent)">/noob-tester</h3>
@@ -760,51 +713,6 @@ export function getDocsHtml(): string {
 </ol>
 <h4>Output</h4>
 <p>Returns <code>$ENTRY</code> JSON with the claimed test case (id, title, format, test_case_id, status). Pass to <code>/noob-explore</code> for execution.</p>
-</div>
-
-<div class="doc-cmd">
-<h3 style="color:var(--purple)">/noob-visual-testcase</h3>
-<p>Generate visual test cases from a Jira ticket — BDD or traditional format with per-step screenshot config. Reads the ticket, parent/sibling context, and MR diff to determine what to visually verify.</p>
-<h4>Output</h4>
-<p>Creates visual test cases via <code>visual-tc create</code> with <code>--visual-steps</code> config (which steps capture screenshots, diffType, fullPage, selector, threshold). Marks each as <code>--ready</code>.</p>
-</div>
-
-<div class="doc-cmd">
-<h3 style="color:var(--purple)">/noob-visual-claim</h3>
-<p>Create or resume a visual run for a ticket and atomically claim the next pending test case. Used before every <code>/noob-visual</code> invocation.</p>
-<h4>Modes</h4>
-<ol>
-<li><strong>Baseline</strong> — create a new baseline run, populate all ready visual test cases, claim first</li>
-<li><strong>Verification</strong> — create a verification run against existing baselines, claim first</li>
-<li><strong>Resume</strong> — find an existing in-progress run and claim the next pending entry</li>
-</ol>
-<h4>Output</h4>
-<p>Writes <code>/tmp/visual-claim.json</code> with <code>{ entry: { id, tc: { ... } } }</code>. Pass <code>$VISUAL_RUN_ID</code> and <code>$CLAIM</code> to <code>/noob-visual</code>.</p>
-</div>
-
-<div class="doc-cmd">
-<h3 style="color:var(--green)">/noob-visual</h3>
-<p>Execute ONE pre-claimed visual test case per invocation. Navigates the UI, reads snapshots for element discovery, captures screenshots at specified steps, logs observations. Baseline mode stores screenshots; verification mode diffs against baselines.</p>
-<h4>Execution</h4>
-<ol>
-<li>Resolves credentials, opens browser at target URL, sets viewport from test case config</li>
-<li>Login — reads snapshot to discover real <code>@eN</code> refs, never hardcodes selectors</li>
-<li>Executes steps_json / BDD / traditional steps — captures page after every action, reads snapshot to verify navigation succeeded and find refs for next step</li>
-<li>At screenshot steps: captures PNG, records via <code>visual-run capture</code></li>
-<li>In verification mode: diffs against baseline using <code>agent-browser diff screenshot --threshold</code>, records via <code>visual-run compare</code></li>
-<li>Logs observations (runpack log + observe) and console/page errors per step</li>
-<li>Records trace + CPU profile for the entire run</li>
-</ol>
-</div>
-
-<div class="doc-cmd">
-<h3 style="color:var(--red)">/noob-visual-rca</h3>
-<p>Classify visual test failures — distinguish real visual regressions from environment noise (rendering differences, anti-aliasing, font rendering). Assigns root cause and confidence score per failed entry.</p>
-</div>
-
-<div class="doc-cmd">
-<h3 style="color:var(--dim)">/noob-visual-pool</h3>
-<p>Parallel visual test dispatch — fire multiple <code>/noob-visual</code> agents simultaneously, one per pending visual run entry. Reduces total execution time for large visual test suites.</p>
 </div>
 
 </div>

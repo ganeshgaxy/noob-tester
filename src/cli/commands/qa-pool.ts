@@ -27,10 +27,6 @@ export function registerQaPoolCommands(program: Command): void {
     .option("--target <name>", "Target name from the targets table")
     .option("--role <role>", "Secret role within the target", "default")
     .option("--file <path>", "Optional file to pass to the agent")
-    .option(
-      "--launch-dir <dir>",
-      "Directory to launch claude from for this entry",
-    )
     .action((opts) => {
       const agentPath: string = opts.agent;
 
@@ -40,16 +36,12 @@ export function registerQaPoolCommands(program: Command): void {
         process.exit(1);
       }
 
-      // Default launch_dir to cwd if not provided
-      const launchDir: string = opts.launchDir ?? process.cwd();
-
       const id = addAgent(
         opts.ticket,
         agentPath,
         opts.target ?? null,
         opts.role,
         opts.file ?? null,
-        launchDir,
       );
 
       console.log(
@@ -60,7 +52,6 @@ export function registerQaPoolCommands(program: Command): void {
           target: opts.target ?? null,
           role: opts.role,
           file: opts.file ?? null,
-          launch_dir: launchDir,
         }),
       );
     });
@@ -90,7 +81,6 @@ export function registerQaPoolCommands(program: Command): void {
         if (a.target)
           console.log(`           target: ${a.target}  role: ${a.role}`);
         if (a.file) console.log(`           file:   ${a.file}`);
-        if (a.launch_dir) console.log(`           dir:    ${a.launch_dir}`);
       }
       console.log();
     });
@@ -116,10 +106,6 @@ export function registerQaPoolCommands(program: Command): void {
     .option("--target <name>", "New target name")
     .option("--role <role>", "New secret role")
     .option("--file <path>", "New file path (pass empty string to clear)")
-    .option(
-      "--launch-dir <dir>",
-      "New launch directory (pass empty string to clear)",
-    )
     .action((id, opts) => {
       // Validate agent file exists if provided
       if (opts.agent && !existsSync(opts.agent)) {
@@ -132,12 +118,10 @@ export function registerQaPoolCommands(program: Command): void {
       if (opts.target !== undefined) fields.target = opts.target || null;
       if (opts.role !== undefined) fields.role = opts.role;
       if (opts.file !== undefined) fields.file = opts.file || null;
-      if (opts.launchDir !== undefined)
-        fields.launch_dir = opts.launchDir || null;
 
       if (Object.keys(fields).length === 0) {
         console.error(
-          "Provide at least one field to update (--agent, --target, --role, --file, --launch-dir)",
+          "Provide at least one field to update (--agent, --target, --role, --file)",
         );
         process.exit(1);
       }

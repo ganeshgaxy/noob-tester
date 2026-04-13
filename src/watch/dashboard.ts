@@ -65,14 +65,6 @@ export function getDashboardHtml(
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 
-  /* ── Workspace Switcher ── */
-  .ws-picker { padding: 0 10px 12px; }
-  .ws-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); font-weight: 500; margin-bottom: 4px; padding-left: 2px; }
-  .ws-row { display: flex; align-items: center; gap: 4px; }
-  .ws-row select { flex: 1; min-width: 0; font-size: 12px; font-family: var(--font-mono); font-weight: 500; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 5px 8px; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
-  .ws-row select:hover { border-color: var(--accent); }
-  .ws-row select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
-
   .sidebar-nav { flex: 1; padding: 8px 6px; overflow-y: auto; }
   .nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 12px; font-size: 13px; font-weight: 400; cursor: pointer; background: none; border: none; border-radius: var(--radius-sm); color: var(--dim); transition: color var(--transition), background var(--transition); }
   .nav-btn .nav-icon { font-size: 16px; width: 20px; text-align: center; color: var(--muted); }
@@ -432,14 +424,6 @@ export function getDashboardHtml(
     <div class="sidebar-logo">
       <h1>noob<span class="brand-accent">.</span>tester<span class="version">v0.1</span></h1>
     </div>
-    <div class="ws-picker">
-      <div class="ws-label">Workspace</div>
-      <div class="ws-row">
-        <select id="ws-select" onchange="switchWorkspace(this.value)" title="Switch workspace">
-          <option value="default">default</option>
-        </select>
-      </div>
-    </div>
     <div class="sidebar-nav">
       <div class="nav-btn active" data-page="dashboard" onclick="switchPage('dashboard')"><i class="ph ph-squares-four nav-icon"></i>Dashboard</div>
 
@@ -452,7 +436,6 @@ export function getDashboardHtml(
       <div class="nav-group-label">Planning</div>
       <div class="nav-btn" data-page="analyses" onclick="switchPage('analyses')"><i class="ph ph-magnifying-glass-plus nav-icon"></i>Analyses</div>
       <div class="nav-btn" data-page="testcases" onclick="switchPage('testcases')"><i class="ph ph-check-square nav-icon"></i>Test Cases</div>
-      <div class="nav-btn" data-page="visualruns" onclick="switchPage('visualruns')"><i class="ph ph-eye nav-icon"></i>Visual Runs</div>
       <div class="nav-btn" data-page="plans" onclick="switchPage('plans')"><i class="ph ph-list-checks nav-icon"></i>Plans</div>
       <div class="nav-btn" data-page="blockers" onclick="switchPage('blockers')"><i class="ph ph-prohibit nav-icon"></i>Blockers</div>
 
@@ -493,12 +476,12 @@ export function getDashboardHtml(
 
 <!-- Lightbox -->
 <div id="lightbox-overlay" class="lightbox-overlay" onclick="if(event.target===this)closeLightbox()">
-  <span class="lightbox-close" onclick="closeLightbox()"><i class="ph ph-x"></i></span>
+  <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
   <img id="lightbox-img" class="lightbox-img" />
   <div class="lightbox-controls">
-    <span id="lightbox-prev" class="lightbox-arrow" onclick="event.stopPropagation();lbPrev()"><i class="ph ph-arrow-left"></i></span>
+    <span id="lightbox-prev" class="lightbox-arrow" onclick="event.stopPropagation();lbPrev()">&#8592;</span>
     <span id="lightbox-counter" class="lightbox-counter"></span>
-    <span id="lightbox-next" class="lightbox-arrow" onclick="event.stopPropagation();lbNext()"><i class="ph ph-arrow-right"></i></span>
+    <span id="lightbox-next" class="lightbox-arrow" onclick="event.stopPropagation();lbNext()">&#8594;</span>
   </div>
   <div id="lightbox-caption" class="lightbox-caption"></div>
 </div>
@@ -523,215 +506,6 @@ function switchPage(page) {
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === page));
   render();
 }
-
-// ── Workspace switcher ──
-function loadWorkspaces() {
-  fetch(API + "/api/workspaces")
-    .then(r => r.json())
-    .then(data => {
-      const sel = document.getElementById("ws-select");
-      if (!sel) return;
-      sel.innerHTML = "";
-      (data.workspaces || []).forEach(ws => {
-        const opt = document.createElement("option");
-        opt.value = ws.name;
-        opt.textContent = ws.name;
-        if (ws.current) opt.selected = true;
-        sel.appendChild(opt);
-      });
-    })
-    .catch(() => {});
-}
-
-function switchWorkspace(name) {
-  if (!name) return;
-  fetch(API + "/api/workspaces/switch", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.switched) {
-        // Reload the page so all data reflects the new workspace
-        window.location.reload();
-      }
-    })
-    .catch(() => {});
-}
-
-function wsCreate() {
-  const name = prompt("New workspace name (a-z, 0-9, -, _):");
-  if (!name || !name.trim()) return;
-  const trimmed = name.trim();
-  fetch(API + "/api/workspaces/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: trimmed })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { alert("Error: " + data.error); return; }
-      // Switch to the new workspace right away
-      switchWorkspace(trimmed);
-    })
-    .catch(() => alert("Failed to create workspace"));
-}
-
-function wsRename() {
-  const sel = document.getElementById("ws-select");
-  const current = sel ? sel.value : "default";
-  if (current === "default") { alert('The "default" workspace cannot be renamed.'); return; }
-  const newName = prompt(\`Rename workspace "\${current}" to:\`);
-  if (!newName || !newName.trim()) return;
-  const trimmed = newName.trim();
-  fetch(API + "/api/workspaces/rename", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from: current, to: trimmed })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { alert("Error: " + data.error); return; }
-      // Reload so the dropdown and all data reflects the rename
-      window.location.reload();
-    })
-    .catch(() => alert("Failed to rename workspace"));
-}
-
-function wsCopy() {
-  const sel = document.getElementById("ws-select");
-  const from = sel ? sel.value : "default";
-  const to = prompt(\`Copy workspace "\${from}" to a new workspace name (a-z, 0-9, -, _):\`);
-  if (!to || !to.trim()) return;
-  const trimmed = to.trim();
-  if (trimmed === from) { alert("Target workspace must have a different name."); return; }
-  fetch(API + "/api/workspaces/copy", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: trimmed, switchAfter: false })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { alert("Error: " + data.error); return; }
-      const doSwitch = confirm(\`Workspace "\${from}" was copied to "\${trimmed}". Switch to "\${trimmed}" now?\`);
-      if (doSwitch) {
-        switchWorkspace(trimmed);
-      } else {
-        // Just refresh the workspace list so the new workspace appears in the dropdown
-        loadWorkspaces();
-      }
-    })
-    .catch(() => alert("Failed to copy workspace"));
-}
-
-// ── Settings-page workspace actions ──
-window.wsSettingsCreate = function() {
-  const inp = document.getElementById("ws-new-name");
-  const name = inp ? inp.value.trim() : "";
-  if (!name) { alert("Enter a workspace name."); return; }
-  fetch(API + "/api/workspaces/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { alert("Error: " + data.error); return; }
-      loadWorkspaces();
-      const doSwitch = confirm('Workspace "' + name + '" created. Switch to it now?');
-      if (doSwitch) { switchWorkspace(name); } else { settingsTab = "workspaces"; renderSettingsPage(); }
-    })
-    .catch(() => alert("Failed to create workspace"));
-};
-
-window.wsSettingsCopy = function() {
-  const fromSel = document.getElementById("ws-copy-from");
-  const toInp = document.getElementById("ws-copy-to");
-  const from = fromSel ? fromSel.value : "";
-  const to = toInp ? toInp.value.trim() : "";
-  if (!from || !to) { alert("Select a source and enter a target name."); return; }
-  if (from === to) { alert("Target must differ from source."); return; }
-  fetch(API + "/api/workspaces/copy", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, switchAfter: false })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { alert("Error: " + data.error); return; }
-      loadWorkspaces();
-      const doSwitch = confirm('Workspace "' + from + '" copied to "' + to + '". Switch to "' + to + '" now?');
-      if (doSwitch) { switchWorkspace(to); } else { settingsTab = "workspaces"; renderSettingsPage(); }
-    })
-    .catch(() => alert("Failed to copy workspace"));
-};
-
-window.wsSettingsRename = function(current) {
-  const newName = prompt('Rename workspace "' + current + '" to:');
-  if (!newName || !newName.trim()) return;
-  const trimmed = newName.trim();
-  fetch(API + "/api/workspaces/rename", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from: current, to: trimmed })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { alert("Error: " + data.error); return; }
-      window.location.reload();
-    })
-    .catch(() => alert("Failed to rename workspace"));
-};
-
-window.wsSettingsDelete = function(name) {
-  if (!confirm('Delete workspace "' + name + '" and ALL its data? This cannot be undone.')) return;
-  fetch(API + "/api/workspaces/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { alert("Error: " + data.error); return; }
-      loadWorkspaces();
-      settingsTab = "workspaces";
-      renderSettingsPage();
-    })
-    .catch(() => alert("Failed to delete workspace"));
-};
-
-window.wsCleanup = function(type) {
-  const labels = {
-    sessions: "Sessions & Runs", testcases: "Test Cases", issues: "Issues",
-    analyses: "Analyses", runpacks: "Run Packs", "tech-issues": "Tech Issues",
-    secrets: "Secrets", repos: "Repos & Index", all: "ALL data", nuke: "EVERYTHING (nuke)"
-  };
-  const label = labels[type] || type;
-  if (!confirm('Delete ' + label + ' from the active workspace? This cannot be undone.')) return;
-  const resultEl = document.getElementById("ws-cleanup-result");
-  if (resultEl) resultEl.innerHTML = '<span style="color:var(--yellow);font-size:12px">Cleaning...</span>';
-  fetch(API + "/api/workspaces/cleanup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type })
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) {
-        if (resultEl) resultEl.innerHTML = '<span style="color:var(--red);font-size:12px">Error: ' + data.error + '</span>';
-        return;
-      }
-      if (resultEl) resultEl.innerHTML = '<span style="color:var(--green);font-size:12px">\u2713 Cleaned ' + label + ' (' + (data.deleted || 0) + ' items removed)</span>';
-      setTimeout(function() { if (resultEl) resultEl.innerHTML = ''; }, 4000);
-    })
-    .catch(function() {
-      if (resultEl) resultEl.innerHTML = '<span style="color:var(--red);font-size:12px">Request failed</span>';
-    });
-};
-
-// Load workspaces on startup
-loadWorkspaces();
 
 // SSE connection
 const evtSource = new EventSource(API + "/api/stream");
@@ -773,11 +547,6 @@ function render() {
 
   if (currentPage === "testcases") {
     renderTestCasesPage();
-    return;
-  }
-
-  if (currentPage === "visualruns") {
-    renderVisualRunsPage();
     return;
   }
 
@@ -1490,7 +1259,6 @@ async function renderSettingsPage() {
   header += '<div class="tab ' + (settingsTab === "settings" ? "active" : "") + '" onclick="settingsTab=\\'settings\\';renderSettingsPage()">General</div>';
   header += '<div class="tab ' + (settingsTab === "setup" ? "active" : "") + '" onclick="settingsTab=\\'setup\\';renderSettingsPage()">Setup</div>';
   header += '<div class="tab ' + (settingsTab === "agents" ? "active" : "") + '" onclick="settingsTab=\\'agents\\';renderSettingsPage()">Agents</div>';
-  header += '<div class="tab ' + (settingsTab === "workspaces" ? "active" : "") + '" onclick="settingsTab=\\'workspaces\\';renderSettingsPage()">Workspaces</div>';
   header += '</div></div>';
 
   let content = '';
@@ -1500,8 +1268,6 @@ async function renderSettingsPage() {
     content = await renderSetupTab();
   } else if (settingsTab === "agents") {
     content = await renderAgentsTab();
-  } else if (settingsTab === "workspaces") {
-    content = await renderWorkspacesTab();
   }
 
   app.innerHTML = '<div class="page-fixed">' + header + '</div><div class="page-content">' + content + '</div>';
@@ -1573,94 +1339,6 @@ async function renderSetupTab() {
 
 async function renderAgentsTab() {
   return '<div class="panel"><div style="padding:32px;text-align:center;color:var(--muted)">Agents - Coming Soon</div></div>';
-}
-
-async function renderWorkspacesTab() {
-  const wsList = await fetchJson("/api/workspaces");
-  const active = (wsList && wsList.active) || "default";
-  const rawWorkspaces = (wsList && wsList.workspaces) || [];
-  // Normalise: API returns [{name, current}], extract name strings
-  const workspaces = rawWorkspaces.map(function(w) { return typeof w === "string" ? w : w.name; });
-  if (workspaces.length === 0) workspaces.push("default");
-
-  let html = '';
-
-  // ── Create workspace ──
-  html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="margin-bottom:10px;font-weight:500;font-size:14px">Create Workspace</div>';
-  html += '<div style="display:flex;gap:8px;align-items:center">';
-  html += '<input id="ws-new-name" type="text" placeholder="Workspace name (a-z, 0-9, -, _)" style="flex:1;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none" />';
-  html += '<button onclick="wsSettingsCreate()" style="padding:6px 16px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:var(--bg);cursor:pointer;font-weight:500;white-space:nowrap">Create</button>';
-  html += '</div></div>';
-
-  // ── Copy workspace ──
-  html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="margin-bottom:10px;font-weight:500;font-size:14px">Copy Workspace</div>';
-  html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
-  html += '<select id="ws-copy-from" style="font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none">';
-  for (const w of workspaces) {
-    html += '<option value="' + esc(w) + '"' + (w === active ? ' selected' : '') + '>' + esc(w) + '</option>';
-  }
-  html += '</select>';
-  html += '<span style="color:var(--muted);font-size:12px">\u2192</span>';
-  html += '<input id="ws-copy-to" type="text" placeholder="New workspace name" style="flex:1;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none" />';
-  html += '<button onclick="wsSettingsCopy()" style="padding:6px 16px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:var(--bg);cursor:pointer;font-weight:500;white-space:nowrap">Copy</button>';
-  html += '</div></div>';
-
-  // ── Existing workspaces table ──
-  html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="margin-bottom:10px;font-weight:500;font-size:14px">All Workspaces</div>';
-  html += '<table class="data-table"><thead><tr><th>Name</th><th>Status</th><th style="width:160px">Actions</th></tr></thead><tbody>';
-  for (const w of workspaces) {
-    const isActive = w === active;
-    const isDefault = w === "default";
-    const badge = isActive ? '<span style="color:var(--green);font-size:11px;font-weight:500">\u25cf active</span>' : '<span style="color:var(--muted);font-size:11px">\u25cb</span>';
-    let actions = '';
-    if (!isDefault) {
-      actions += '<button onclick="wsSettingsRename(\\'' + esc(w) + '\\')" style="padding:3px 10px;font-size:11px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);cursor:pointer;margin-right:4px">Rename</button>';
-      actions += '<button onclick="wsSettingsDelete(\\'' + esc(w) + '\\')" style="padding:3px 10px;font-size:11px;border-radius:var(--radius-xs);border:1px solid var(--border-light);background:transparent;color:var(--red);cursor:pointer">Delete</button>';
-    } else {
-      actions = '<span style="font-size:11px;color:var(--muted)">protected</span>';
-    }
-    html += '<tr><td style="font-family:var(--font-mono);font-size:12px">' + esc(w) + '</td><td>' + badge + '</td><td>' + actions + '</td></tr>';
-  }
-  html += '</tbody></table></div>';
-
-  // ── Cleanup section for active workspace ──
-  html += '<div class="panel">';
-  html += '<div style="margin-bottom:10px;font-weight:500;font-size:14px">Cleanup — <span style="color:var(--accent);font-family:var(--font-mono)">' + esc(active) + '</span></div>';
-  html += '<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Delete data from the active workspace. This cannot be undone.</div>';
-  html += '<div id="ws-cleanup-result" style="margin-bottom:8px"></div>';
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  var cleanupItems = [
-    { type: "sessions", label: "Sessions & Runs", icon: "ph-compass", color: "var(--yellow)" },
-    { type: "testcases", label: "Test Cases", icon: "ph-check-square", color: "var(--accent)" },
-    { type: "issues", label: "Issues", icon: "ph-bug", color: "var(--red)" },
-    { type: "analyses", label: "Analyses", icon: "ph-magnifying-glass-plus", color: "var(--purple)" },
-    { type: "runpacks", label: "Run Packs", icon: "ph-play-circle", color: "var(--green)" },
-    { type: "tech-issues", label: "Tech Issues", icon: "ph-wrench", color: "var(--dim)" },
-    { type: "secrets", label: "Secrets", icon: "ph-key", color: "var(--yellow)" },
-    { type: "repos", label: "Repos & Index", icon: "ph-git-branch", color: "var(--accent)" },
-  ];
-  for (var ci = 0; ci < cleanupItems.length; ci++) {
-    var item = cleanupItems[ci];
-    html += '<button onclick="wsCleanup(\\'' + item.type + '\\')" style="padding:6px 14px;font-size:12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px">';
-    html += '<i class="ph ' + item.icon + '" style="color:' + item.color + ';font-size:14px"></i> ' + item.label;
-    html += '</button>';
-  }
-  html += '</div>';
-  html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">';
-  html += '<button onclick="wsCleanup(\\'all\\')" style="padding:6px 16px;font-size:12px;border-radius:var(--radius-xs);border:1px solid var(--red);background:transparent;color:var(--red);cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px"><i class="ph ph-trash" style="font-size:14px"></i> Clean All Data</button>';
-  html += '<button onclick="wsCleanup(\\'nuke\\')" style="margin-left:8px;padding:6px 16px;font-size:12px;border-radius:var(--radius-xs);border:1px solid var(--red);background:rgba(248,81,73,0.1);color:var(--red);cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px"><i class="ph ph-fire" style="font-size:14px"></i> Nuke Everything</button>';
-  html += '</div>';
-  html += '<div style="margin-top:10px;font-size:11px;color:var(--muted);line-height:1.6">';
-  html += '<i class="ph ph-info" style="font-size:12px;margin-right:4px;vertical-align:middle"></i> ';
-  html += '<strong style="color:var(--dim)">Clean All Data</strong> removes sessions, runs, test cases, issues, analyses, and other content. ';
-  html += '<strong style="color:var(--dim)">Nuke Everything</strong> removes repos, files, and secrets. ';
-  html += 'To fully clean a workspace, run both.';
-  html += '</div></div>';
-
-  return html;
 }
 
 function setupRow(icon, iconColor, name, tag, rightHtml) {
@@ -1816,8 +1494,6 @@ window.saveRepoProvider = async function(provider) {
   await postJson("/api/settings", { key: "repo_provider", value: provider });
   renderSettingsPage();
 };
-
-
 
 async function renderDocsPage() {
   const res = await fetchApi("/api/docs");
@@ -3774,24 +3450,6 @@ function deleteTestCasesByTicket(ticket) {
     });
 }
 
-function deleteVisualTestCase(id) {
-  if (!confirm("Delete this visual test case? This cannot be undone.")) return;
-  fetchApi("/api/visual-testcases/delete?id=" + encodeURIComponent(id), { method: "DELETE" })
-    .then(r => r.json())
-    .then(data => {
-      if (data.deleted > 0) { tcSelectedVisualId = ""; renderTestCasesPage(); }
-    });
-}
-
-function deleteVisualTestCasesByTicket(ticket) {
-  if (!confirm("Delete ALL visual test cases for " + ticket + "? This cannot be undone.")) return;
-  fetchApi("/api/visual-testcases/delete?ticket=" + encodeURIComponent(ticket), { method: "DELETE" })
-    .then(r => r.json())
-    .then(data => {
-      if (data.deleted > 0) { tcSelectedVisualId = ""; renderTestCasesPage(); }
-    });
-}
-
 function deleteRepoEntry(name) {
   fetchApi("/api/repos/delete?name=" + encodeURIComponent(name), { method: "DELETE" })
     .then(r => r.json())
@@ -4698,99 +4356,90 @@ function renderRunPackEntryDetail(entry, entryRca = []) {
 
 let tcSelectedSuite = "";
 let tcSelectedId = "";
-let tcSelectedVisualId = "";
-let tcActiveTab = "normal"; // "normal" | "visual"
 let tcAllCases = [];
-let tcAllVisualCases = [];
 
 async function renderTestCasesPage() {
   const app = document.getElementById("app");
 
-  // Fetch both normal and visual test cases in parallel
-  [tcAllCases, tcAllVisualCases] = await Promise.all([
-    fetchJson("/api/testcases"),
-    fetchJson("/api/visual-testcases"),
-  ]);
+  const stats = await fetchJson("/api/testcases/stats");
+  tcAllCases = await fetchJson("/api/testcases");
 
-  // Group normal TCs by ticket
+  // Group by ticket (suite)
   const suites = {};
   for (const tc of tcAllCases) {
     if (!suites[tc.ticket_ref]) suites[tc.ticket_ref] = [];
     suites[tc.ticket_ref].push(tc);
   }
 
-  // Group visual TCs by ticket
-  const visualSuites = {};
-  for (const vtc of tcAllVisualCases) {
-    if (!visualSuites[vtc.ticket_id]) visualSuites[vtc.ticket_id] = [];
-    visualSuites[vtc.ticket_id].push(vtc);
+  // Stats bar — context-aware (global or suite-specific)
+  const statsCases = tcSelectedSuite ? (suites[tcSelectedSuite] || []) : tcAllCases;
+  const statsLabel = tcSelectedSuite ? tcSelectedSuite : "All Test Cases";
+
+  const localStats = {
+    total: statsCases.length,
+    ready: statsCases.filter(c => c.ready).length,
+    draft: statsCases.filter(c => !c.ready).length,
+    byType: {},
+    byStatus: {},
+  };
+  for (const c of statsCases) {
+    localStats.byType[c.type] = (localStats.byType[c.type] || 0) + 1;
+    localStats.byStatus[c.status] = (localStats.byStatus[c.status] || 0) + 1;
   }
-
-  // All ticket IDs (union of both)
-  const allTickets = [...new Set([...Object.keys(suites), ...Object.keys(visualSuites)])].sort();
-
-  const hasAny = tcAllCases.length > 0 || tcAllVisualCases.length > 0;
 
   let html = '<div class="panel" style="margin-bottom:16px">';
   if (tcSelectedSuite) {
     html += \`<div class="breadcrumb">
-      <span class="breadcrumb-item" onclick="tcSelectedSuite='';tcSelectedId='';tcSelectedVisualId='';tcActiveTab='normal';renderTestCasesPage()">Test Cases</span>
+      <span class="breadcrumb-item" onclick="tcSelectedSuite='';tcSelectedId='';renderTestCasesPage()">Test Cases</span>
       <span class="breadcrumb-sep">|</span>
       <span class="breadcrumb-item current">\${esc(tcSelectedSuite)}</span>
     </div>\`;
-
-    // Stats for this suite (normal TCs only in stats bar)
-    const suiteCases = suites[tcSelectedSuite] || [];
-    const suiteVisual = visualSuites[tcSelectedSuite] || [];
-    if (suiteCases.length > 0 || suiteVisual.length > 0) {
-      html += '<div style="display:flex;gap:24px;margin-bottom:8px;align-items:center;flex-wrap:wrap">';
-      if (suiteCases.length > 0) {
-        html += \`<button onclick="exportTestCasesCsv('\${esc(tcSelectedSuite)}')" style="font-size:10px;color:var(--accent);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;margin-right:4px" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">Export CSV</button>\`;
-        html += \`<button onclick="deleteTestCasesByTicket('\${esc(tcSelectedSuite)}')" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;margin-right:8px" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">Delete All Normal</button>\`;
-      }
-      if (suiteVisual.length > 0) {
-        html += \`<button onclick="deleteVisualTestCasesByTicket('\${esc(tcSelectedSuite)}')" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;margin-right:8px" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">Delete All Visual</button>\`;
-      }
-      html += \`<div class="stat"><div class="stat-value">\${suiteCases.length}</div><div class="stat-label">Normal</div></div>\`;
-      html += \`<div class="stat"><div class="stat-value" style="color:var(--purple)">\${suiteVisual.length}</div><div class="stat-label">Visual</div></div>\`;
-      html += '</div>';
-    }
   } else {
     html += '<div class="panel-title">All Test Cases</div>';
-    if (hasAny) {
-      html += \`<div style="display:flex;gap:24px;margin-bottom:8px;align-items:center">
-        <div class="stat"><div class="stat-value">\${tcAllCases.length}</div><div class="stat-label">Normal</div></div>
-        <div class="stat"><div class="stat-value" style="color:var(--purple)">\${tcAllVisualCases.length}</div><div class="stat-label">Visual</div></div>
-        <div class="stat"><div class="stat-value">\${allTickets.length}</div><div class="stat-label">Tickets</div></div>
-      </div>\`;
+  }
+  if (localStats.total > 0) {
+    html += '<div style="display:flex;gap:24px;margin-bottom:8px;align-items:center">';
+    if (tcSelectedSuite) {
+      html += \`<button onclick="exportTestCasesCsv('\${esc(tcSelectedSuite)}')" style="font-size:10px;color:var(--accent);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;margin-right:4px" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">Export CSV</button>\`;
+      html += \`<button onclick="deleteTestCasesByTicket('\${esc(tcSelectedSuite)}')" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;margin-right:8px" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">Delete All</button>\`;
     }
+    html += \`<div class="stat"><div class="stat-value">\${localStats.total}</div><div class="stat-label">Total</div></div>\`;
+    html += \`<div class="stat"><div class="stat-value" style="color:var(--green)">\${localStats.ready}</div><div class="stat-label">Ready</div></div>\`;
+    html += \`<div class="stat"><div class="stat-value" style="color:var(--dim)">\${localStats.draft}</div><div class="stat-label">Draft</div></div>\`;
+    for (const [type, count] of Object.entries(localStats.byType)) {
+      const label = type === "direct_functional" ? "Direct" : type === "impact_regression" ? "Impact" : "Regression";
+      html += \`<div class="stat"><div class="stat-value">\${count}</div><div class="stat-label">\${label}</div></div>\`;
+    }
+    for (const [status, count] of Object.entries(localStats.byStatus)) {
+      const color = status === "passed" ? "var(--green)" : status === "failed" ? "var(--red)" : status === "claimed" ? "var(--yellow)" : "var(--dim)";
+      html += \`<div class="stat"><div class="stat-value" style="color:\${color}">\${count}</div><div class="stat-label">\${status}</div></div>\`;
+    }
+    html += '</div>';
   }
   html += '</div>';
 
-  if (!hasAny) {
-    html += '<div class="panel"><div class="empty">No test cases yet. Use /noob-testcase for functional tests or /noob-visual-testcase for visual tests.</div></div>';
+  if (tcAllCases.length === 0) {
+    html += '<div class="panel"><div class="empty">No test cases. Use /noob-testcase to generate them.</div></div>';
     setPage(html);
     return;
   }
 
-  // No suite selected — show unified ticket list
+  // No suite selected — show suite list only
   if (!tcSelectedSuite) {
     html += '<div class="panel">';
-    for (const ticket of allTickets) {
-      const cases = suites[ticket] || [];
-      const visualCases = visualSuites[ticket] || [];
+    for (const [ticket, cases] of Object.entries(suites)) {
       const passed = cases.filter(c => c.status === "passed").length;
       const failed = cases.filter(c => c.status === "failed").length;
-      const claimed = cases.filter(c => c.status === "claimed" || c.status === "running").length;
       const pending = cases.filter(c => c.status === "pending").length;
+      const claimed = cases.filter(c => c.status === "claimed" || c.status === "running").length;
+      const direct = cases.filter(c => c.type === "direct_functional").length;
+      const impact = cases.filter(c => c.type === "impact_regression").length;
+      const general = cases.filter(c => c.type === "general_regression").length;
 
-      html += \`<div class="session-card" data-id="\${esc(ticket)}" onclick="tcSelectedSuite='\${esc(ticket)}';tcSelectedId='';tcSelectedVisualId='';tcActiveTab='normal';renderTestCasesPage()">
+      html += \`<div class="session-card" data-id="\${esc(ticket)}" onclick="tcSelectedSuite='\${esc(ticket)}';tcSelectedId='';renderTestCasesPage()">
         <div class="session-header">
           <span class="session-id" style="font-size:14px">\${esc(ticket)}</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            \${cases.length ? \`<span style="font-size:12px;color:var(--dim)">\${cases.length} normal</span>\` : ""}
-            \${visualCases.length ? \`<span style="font-size:12px;color:var(--purple)">\${visualCases.length} visual</span>\` : ""}
-          </div>
+          <span style="font-size:12px;color:var(--dim)">\${cases.length} cases</span>
         </div>
         <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
           \${passed ? \`<span class="suite-badge passed">\${passed} passed</span>\` : ""}
@@ -4798,6 +4447,11 @@ async function renderTestCasesPage() {
           \${claimed ? \`<span class="suite-badge claimed">\${claimed} running</span>\` : ""}
           \${pending ? \`<span class="suite-badge pending">\${pending} pending</span>\` : ""}
         </div>
+        <div style="display:flex;gap:8px;margin-top:4px;font-size:11px;color:var(--dim)">
+          \${direct ? \`<span style="color:var(--green)">\${direct} functional</span>\` : ""}
+          \${impact ? \`<span style="color:var(--yellow)">\${impact} impact</span>\` : ""}
+          \${general ? \`<span style="color:var(--accent)">\${general} regression</span>\` : ""}
+        </div>
       </div>\`;
     }
     html += '</div>';
@@ -4805,94 +4459,54 @@ async function renderTestCasesPage() {
     return;
   }
 
-  // Suite selected — tabs: Normal | Visual
+  // Suite selected — split view: test case list left, detail right
   const suiteCases = suites[tcSelectedSuite] || [];
-  const suiteVisual = visualSuites[tcSelectedSuite] || [];
-
-  // Tab bar
-  const tabStyle = (tab) => tab === tcActiveTab
-    ? "font-size:13px;font-weight:600;padding:6px 16px;border-bottom:2px solid var(--accent);color:var(--fg);cursor:pointer;background:none;border-top:none;border-left:none;border-right:none"
-    : "font-size:13px;padding:6px 16px;border-bottom:2px solid transparent;color:var(--dim);cursor:pointer;background:none;border-top:none;border-left:none;border-right:none";
-  html += \`<div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:12px">
-    <button style="\${tabStyle('normal')}" onclick="tcActiveTab='normal';tcSelectedId='';renderTestCasesPage()">Normal Tests (\${suiteCases.length})</button>
-    <button style="\${tabStyle('visual')}" onclick="tcActiveTab='visual';tcSelectedVisualId='';renderTestCasesPage()">Visual Tests (\${suiteVisual.length})</button>
-  </div>\`;
 
   html += '<div class="split-view">';
 
-  if (tcActiveTab === "normal") {
-    // LEFT — normal test cases grouped by type
-    html += '<div class="split-left">';
-    const types = { direct_functional: [], impact_regression: [], general_regression: [] };
-    for (const c of suiteCases) (types[c.type] || types.general_regression).push(c);
+  // LEFT — test cases grouped by type
+  html += '<div class="split-left">';
 
-    if (suiteCases.length === 0) {
-      html += '<div class="empty" style="padding:16px">No normal test cases for this ticket.</div>';
-    }
-    for (const [type, group] of Object.entries(types)) {
-      if (group.length === 0) continue;
-      const typeLabel = type === "direct_functional" ? "Direct Functional" : type === "impact_regression" ? "Impact Regression" : "General Regression";
-      html += \`<div class="type-group"><div class="type-group-header \${type}">\${typeLabel} (\${group.length})</div>\`;
-      for (const tc of group) {
-        const isSel = tcSelectedId === tc.id;
-        const fmtTag = tc.format === "bdd" ? "BDD" : "TRAD";
-        const readyBadge = tc.ready
-          ? '<span style="font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(63,185,80,0.15);color:var(--green);font-weight:600;margin-right:4px">READY</span>'
-          : '<span style="font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(125,133,144,0.15);color:var(--dim);font-weight:600;margin-right:4px">DRAFT</span>';
-        const layerTag = (tc.test_layer || "ui").toUpperCase();
-        html += \`<div class="tc-item \${isSel ? 'selected' : ''}" onclick="tcSelectedId='\${tc.id}';renderTestCasesPage()">
-          <span class="tc-status-dot \${tc.status}"></span>
-          \${readyBadge}
-          <span style="font-size:10px;color:var(--dim);margin-right:4px">[\${fmtTag}]</span>
-          <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(188,140,255,0.12);color:var(--purple);font-weight:600;margin-right:4px">\${layerTag}</span>
-          \${esc(tc.title)}
-          \${tc.risk_score > 0 ? \`<span style="float:right;font-size:9px;padding:1px 5px;border-radius:3px;background:\${tc.risk_score >= 0.6 ? 'rgba(248,81,73,0.15)' : tc.risk_score >= 0.3 ? 'rgba(210,153,42,0.15)' : 'rgba(63,185,80,0.15)'};color:\${tc.risk_score >= 0.6 ? 'var(--red)' : tc.risk_score >= 0.3 ? 'var(--yellow)' : 'var(--green)'}">\${tc.risk_score.toFixed(2)}</span>\` : ""}
-          \${tc.claimed_by ? \`<span style="float:right;font-size:10px;color:var(--yellow);margin-right:4px">\${tc.claimed_by.slice(0,8)}</span>\` : ""}
-        </div>\`;
-      }
-      html += '</div>';
-    }
-    html += '</div>';
+  const types = { direct_functional: [], impact_regression: [], general_regression: [] };
+  for (const c of suiteCases) (types[c.type] || types.general_regression).push(c);
 
-    // RIGHT — normal TC detail
-    html += '<div class="split-right panel">';
-    const selectedTc = tcSelectedId ? tcAllCases.find(c => c.id === tcSelectedId) : null;
-    if (!selectedTc) {
-      html += '<div class="empty">Select a test case to view details</div>';
-    } else {
-      html += renderTcDetail(selectedTc);
-    }
-    html += '</div>';
+  for (const [type, group] of Object.entries(types)) {
+    if (group.length === 0) continue;
+    const typeLabel = type === "direct_functional" ? "Direct Functional" : type === "impact_regression" ? "Impact Regression" : "General Regression";
+    html += \`<div class="type-group">
+      <div class="type-group-header \${type}">\${typeLabel} (\${group.length})</div>\`;
 
-  } else {
-    // Visual tab — LEFT: flat list of visual TCs
-    html += '<div class="split-left">';
-    if (suiteVisual.length === 0) {
-      html += '<div class="empty" style="padding:16px">No visual test cases for this ticket.</div>';
-    }
-    for (const vtc of suiteVisual) {
-      const isSel = tcSelectedVisualId === vtc.id;
-      let steps = [];
-      try { steps = JSON.parse(vtc.steps_json || "[]"); } catch {}
-      html += \`<div class="tc-item \${isSel ? 'selected' : ''}" onclick="tcSelectedVisualId='\${vtc.id}';renderTestCasesPage()">
-        <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(188,140,255,0.18);color:var(--purple);font-weight:600;margin-right:4px">VISUAL</span>
-        <span style="font-size:9px;color:var(--dim);margin-right:4px">[\${esc(vtc.viewport || '1280x720')}]</span>
-        \${esc(vtc.title)}
-        <span style="float:right;font-size:9px;color:var(--dim)">\${steps.length} steps</span>
+    for (const tc of group) {
+      const isSel = tcSelectedId === tc.id;
+      const fmtTag = tc.format === "bdd" ? "BDD" : "TRAD";
+      const readyBadge = tc.ready
+        ? '<span style="font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(63,185,80,0.15);color:var(--green);font-weight:600;margin-right:4px">READY</span>'
+        : '<span style="font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(125,133,144,0.15);color:var(--dim);font-weight:600;margin-right:4px">DRAFT</span>';
+      const layerTag = (tc.test_layer || "ui").toUpperCase();
+      html += \`<div class="tc-item \${isSel ? 'selected' : ''}" onclick="tcSelectedId='\${tc.id}';renderTestCasesPage()">
+        <span class="tc-status-dot \${tc.status}"></span>
+        \${readyBadge}
+        <span style="font-size:10px;color:var(--dim);margin-right:4px">[\${fmtTag}]</span>
+        <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(188,140,255,0.12);color:var(--purple);font-weight:600;margin-right:4px">\${layerTag}</span>
+        \${esc(tc.title)}
+        \${tc.risk_score > 0 ? \`<span style="float:right;font-size:9px;padding:1px 5px;border-radius:3px;background:\${tc.risk_score >= 0.6 ? 'rgba(248,81,73,0.15)' : tc.risk_score >= 0.3 ? 'rgba(210,153,42,0.15)' : 'rgba(63,185,80,0.15)'};color:\${tc.risk_score >= 0.6 ? 'var(--red)' : tc.risk_score >= 0.3 ? 'var(--yellow)' : 'var(--green)'}">\${tc.risk_score.toFixed(2)}</span>\` : ""}
+        \${tc.claimed_by ? \`<span style="float:right;font-size:10px;color:var(--yellow);margin-right:4px">\${tc.claimed_by.slice(0,8)}</span>\` : ""}
       </div>\`;
     }
     html += '</div>';
-
-    // RIGHT — visual TC detail
-    html += '<div class="split-right panel">';
-    const selectedVtc = tcSelectedVisualId ? tcAllVisualCases.find(c => c.id === tcSelectedVisualId) : null;
-    if (!selectedVtc) {
-      html += '<div class="empty">Select a visual test case to view details</div>';
-    } else {
-      html += renderVisualTcDetail(selectedVtc);
-    }
-    html += '</div>';
   }
+  html += '</div>';
+
+  // RIGHT — Detail panel
+  html += '<div class="split-right panel">';
+  const selectedTc = tcSelectedId ? tcAllCases.find(c => c.id === tcSelectedId) : null;
+
+  if (!selectedTc) {
+    html += '<div class="empty">Select a test case to view details</div>';
+  } else {
+    html += renderTcDetail(selectedTc);
+  }
+  html += '</div>';
 
   html += '</div>';
   setPage(html);
@@ -5075,91 +4689,6 @@ function renderTcDetail(tc) {
     }
     html += '</div>';
   }
-
-  html += '</div>';
-  return html;
-}
-
-function renderVisualTcDetail(vtc) {
-  let html = '<div class="tc-detail-panel">';
-
-  html += \`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-    <div class="tc-detail-title" style="margin-bottom:0">\${esc(vtc.title)}</div>
-    <button onclick="deleteVisualTestCase('\${esc(vtc.id)}')"
-      style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;white-space:nowrap"
-      onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">Delete</button>
-  </div>\`;
-
-  // Badges
-  html += '<div class="tc-detail-meta">';
-  html += '<span class="tc-detail-badge" style="background:rgba(188,140,255,0.18);color:var(--purple)">VISUAL</span>';
-  html += \`<span class="tc-detail-badge" style="background:rgba(88,166,255,0.1);color:var(--accent)">\${esc(vtc.viewport || '1280x720')}</span>\`;
-  html += \`<span class="tc-detail-badge" style="background:rgba(125,133,144,0.1);color:var(--dim)">threshold: \${vtc.default_threshold ?? 0.1}</span>\`;
-  if (vtc.status) html += \`<span class="tc-detail-badge" style="background:rgba(125,133,144,0.1);color:var(--dim)">\${esc(vtc.status)}</span>\`;
-  html += '</div>';
-
-  // Description
-  if (vtc.description) {
-    html += '<div class="tc-detail-section">';
-    html += '<div class="tc-detail-section-title">Description</div>';
-    html += \`<div style="font-size:13px">\${esc(vtc.description)}</div>\`;
-    html += '</div>';
-  }
-
-  // Steps
-  let steps = [];
-  try { steps = JSON.parse(vtc.steps_json || '[]'); } catch (e) {}
-  if (steps.length > 0) {
-    html += '<div class="tc-detail-section">';
-    html += \`<div class="tc-detail-section-title">Steps (\${steps.length})</div>\`;
-    for (let i = 0; i < steps.length; i++) {
-      const s = steps[i];
-      const actionColor = s.action === 'navigate' ? 'var(--accent)'
-        : s.action === 'click' ? 'var(--green)'
-        : s.action === 'fill' ? 'var(--yellow)'
-        : s.action === 'login' ? 'var(--red)'
-        : 'var(--dim)';
-      html += \`<div class="trad-step" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span class="trad-step-num">\${i + 1}.</span>
-          <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(88,166,255,0.1);color:\${actionColor};font-weight:600;text-transform:uppercase">\${esc(s.action)}</span>
-          <span style="font-size:12px;font-weight:600">\${esc(s.label)}</span>
-          \${s.diffType ? \`<span style="margin-left:auto;font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(63,185,80,0.12);color:var(--green)">📸 \${esc(s.diffType)}</span>\` : ''}
-        </div>\`;
-      if (s.description) html += \`<div style="font-size:12px;color:var(--fg);margin-top:4px;margin-left:20px">\${esc(s.description)}</div>\`;
-      if (s.url) html += \`<div style="font-size:11px;color:var(--dim);margin-top:4px;margin-left:20px;font-family:monospace">\${esc(s.url)}</div>\`;
-      if (s.selector) html += \`<div style="font-size:11px;color:var(--dim);margin-top:4px;margin-left:20px;font-family:monospace">selector: \${esc(s.selector)}</div>\`;
-      if (s.value) html += \`<div style="font-size:11px;color:var(--dim);margin-top:4px;margin-left:20px">value: \${esc(s.value)}</div>\`;
-      if (s.screenshot_selector) html += \`<div style="font-size:11px;color:var(--purple);margin-top:4px;margin-left:20px;font-family:monospace">scoped to: \${esc(s.screenshot_selector)}</div>\`;
-      const waitMs = s.waitMs || s.wait_ms;
-      if (waitMs) html += \`<div style="font-size:11px;color:var(--dim);margin-top:4px;margin-left:20px">⏱️ wait: \${waitMs}ms</div>\`;
-      if (s.fullPage !== undefined) html += \`<div style="font-size:11px;color:var(--purple);margin-top:4px;margin-left:20px">\${s.fullPage ? '📄 Full page' : '🔲 Scoped'}</div>\`;
-      html += '</div>';
-    }
-    html += '</div>';
-  }
-
-  // Labels
-  if (vtc.labels) {
-    try {
-      const labels = JSON.parse(vtc.labels);
-      if (labels.length > 0) {
-        html += '<div class="tc-detail-section">';
-        html += '<div class="tc-detail-section-title">Labels</div>';
-        html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
-        for (const l of labels) html += \`<span style="font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(88,166,255,0.1);color:var(--accent)">\${esc(l)}</span>\`;
-        html += '</div></div>';
-      }
-    } catch (e) {}
-  }
-
-  // Metadata
-  html += '<div class="tc-detail-section">';
-  html += '<div class="tc-detail-section-title">Info</div>';
-  html += \`<div style="font-size:12px;color:var(--dim)">ID: \${esc(vtc.id)}</div>\`;
-  html += \`<div style="font-size:12px;color:var(--dim)">Ticket: \${esc(vtc.ticket_id)}</div>\`;
-  if (vtc.created_at) html += \`<div style="font-size:12px;color:var(--dim)">Created: \${timeAgo(vtc.created_at)}</div>\`;
-  html += '</div>';
 
   html += '</div>';
   return html;
@@ -6702,492 +6231,6 @@ function swarmCloseModal() {
 function swarmModalEsc(e) {
   if (e.key === "Escape") swarmCloseModal();
 }
-
-// ── Visual Runs Page ──────────────────────────────────────────────────────────
-let vrSelectedTicket = "";
-let vrSelectedRun = "";
-let vrSelectedEntry = "";
-
-async function deleteVisualRun(runId) {
-  if (!confirm("Delete this run pack? This cannot be undone.")) return;
-  await postJson("/api/visual-runs/delete", { run: runId });
-  if (vrSelectedRun === runId) { vrSelectedRun = ""; vrSelectedEntry = ""; }
-  renderVisualRunsPage();
-}
-
-async function deleteVisualRunsByTicket(ticket) {
-  if (!confirm("Delete ALL run packs for " + ticket + "? This cannot be undone.")) return;
-  await postJson("/api/visual-runs/delete", { ticket });
-  vrSelectedTicket = "";
-  vrSelectedRun = "";
-  vrSelectedEntry = "";
-  renderVisualRunsPage();
-}
-
-function selectVrTab(runId) {
-  vrSelectedRun = runId;
-  vrSelectedEntry = "";
-  renderVisualRunsPage();
-}
-
-async function renderVisualRunsPage() {
-  let html = "";
-
-  function fmtTs(ts) {
-    if (!ts) return "-";
-    const d = new Date(ts.replace(" ", "T"));
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-      + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  }
-
-  // ── Level 1: Ticket cards ──
-  if (!vrSelectedTicket) {
-    const byTicket = await fetchJson("/api/visual-runs");
-    const ticketIds = Object.keys(byTicket).sort();
-
-    if (ticketIds.length === 0) {
-      setPage('<div class="panel"><div class="empty">No visual runs found. Use <code>/noob-visual</code> to run visual tests.</div></div>');
-      return;
-    }
-
-    let totalPacks = 0, totalBaselines = 0, totalVerifications = 0;
-    for (const tid of ticketIds) {
-      totalPacks += byTicket[tid].length;
-      totalBaselines += byTicket[tid].filter(r => r.mode === "baseline").length;
-      totalVerifications += byTicket[tid].filter(r => r.mode === "verification").length;
-    }
-
-    html += '<div class="panel" style="margin-bottom:16px"><div class="panel-title"><i class="ph ph-eye" style="margin-right:6px"></i>Visual Testing</div>';
-    html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
-    html += \`<div class="stat"><div class="stat-value">\${ticketIds.length}</div><div class="stat-label">Tickets</div></div>\`;
-    html += \`<div class="stat"><div class="stat-value">\${totalBaselines}</div><div class="stat-label">Baseline Packs</div></div>\`;
-    html += \`<div class="stat"><div class="stat-value">\${totalVerifications}</div><div class="stat-label">Verification Packs</div></div>\`;
-    html += '</div></div>';
-
-    html += '<div class="panel">';
-    for (const tid of ticketIds) {
-      const runs = byTicket[tid];
-      const baselineCount = runs.filter(r => r.mode === "baseline").length;
-      const verificationCount = runs.filter(r => r.mode === "verification").length;
-      const failedRuns = runs.filter(r => r.status === "failed").length;
-      const latestRun = runs[0];
-
-      html += \`<div class="session-card" onclick="vrSelectedTicket='\${esc(tid)}';vrSelectedRun='';vrSelectedEntry='';renderVisualRunsPage()">
-        <div class="session-header">
-          <span class="session-id" style="font-size:14px">\${esc(tid)}</span>
-          <span style="display:flex;gap:6px;align-items:center">
-            <span style="font-size:12px;color:var(--dim)">\${runs.length} pack\${runs.length !== 1 ? 's' : ''}</span>
-            <button onclick="event.stopPropagation();deleteVisualRunsByTicket('\${esc(tid)}')" style="font-size:9px;color:var(--red);background:none;border:1px solid var(--border);border-radius:3px;padding:2px 5px;cursor:pointer" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">&times;</button>
-          </span>
-        </div>
-        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-          \${baselineCount ? \`<span class="suite-badge passed">\${baselineCount} baseline</span>\` : ""}
-          \${verificationCount ? \`<span class="suite-badge pending">\${verificationCount} verification</span>\` : ""}
-          \${failedRuns ? \`<span class="suite-badge failed">\${failedRuns} failed</span>\` : ""}
-        </div>
-        <div class="session-meta"><span>Last run: \${fmtTs(latestRun?.created_at)}</span></div>
-      </div>\`;
-    }
-    html += '</div>';
-    setPage(html);
-    return;
-  }
-
-  // ── Level 2: Tabs for run packs + split view inside each tab ──
-  const runs = await fetchJson("/api/visual-runs?ticket=" + encodeURIComponent(vrSelectedTicket));
-  const allPacks = [...runs]; // baseline first, then verifications (API returns sorted)
-
-  // Auto-select first tab if none selected
-  if (!vrSelectedRun && allPacks.length > 0) {
-    vrSelectedRun = allPacks[0].id;
-  }
-
-  // Breadcrumb
-  html += \`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-    <div style="display:flex;align-items:center;gap:8px;font-size:13px">
-      <span onclick="vrSelectedTicket='';vrSelectedRun='';vrSelectedEntry='';renderVisualRunsPage()"
-        style="color:var(--accent);cursor:pointer;font-weight:500" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
-        <i class="ph ph-arrow-left" style="font-size:14px;margin-right:4px"></i>All Tickets</span>
-      <span style="color:var(--dim)">/</span>
-      <span style="font-weight:700;color:var(--fg)">\${esc(vrSelectedTicket)}</span>
-    </div>
-    <button onclick="deleteVisualRunsByTicket('\${esc(vrSelectedTicket)}')"
-      style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;opacity:.7"
-      onmouseover="this.style.opacity='1';this.style.borderColor='var(--red)'"
-      onmouseout="this.style.opacity='.7';this.style.borderColor='var(--border)'">Delete All</button>
-  </div>\`;
-
-  // ── Tabs row ──
-  html += '<div class="tabs">';
-  let baselineIdx = 0;
-  let verifyIdx = 0;
-  for (const run of allPacks) {
-    const isActive = vrSelectedRun === run.id;
-    const isBaseline = run.mode === "baseline";
-    const summary = run.summary_json ? JSON.parse(run.summary_json) : null;
-    const failed = summary ? (summary.failed || 0) : 0;
-    let label = "";
-    if (isBaseline) {
-      baselineIdx++;
-      label = "Baseline" + (baselineIdx > 1 ? " " + baselineIdx : "");
-    } else {
-      verifyIdx++;
-      label = "Verify " + verifyIdx;
-    }
-    const statusDot = run.status === "completed" ? (isBaseline ? "var(--accent)" : (failed > 0 ? "var(--red)" : "var(--green)"))
-                    : run.status === "running" ? "var(--yellow)" : "var(--dim)";
-
-    html += \`<div class="tab \${isActive ? 'active' : ''}" onclick="selectVrTab('\${esc(run.id)}')" style="display:flex;align-items:center;gap:6px">
-      <span style="width:6px;height:6px;border-radius:50%;background:\${statusDot};display:inline-block"></span>
-      \${label}
-      <span style="font-size:9px;color:var(--muted);font-weight:400">\${fmtTs(run.created_at)}</span>
-      <span onclick="event.stopPropagation();deleteVisualRun('\${esc(run.id)}')"
-        style="font-size:10px;color:var(--red);cursor:pointer;opacity:.4;margin-left:2px"
-        onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.4'" title="Delete this run pack">&times;</span>
-    </div>\`;
-  }
-  html += '</div>';
-
-  // ── Split view for selected tab ──
-  if (!vrSelectedRun || !allPacks.find(r => r.id === vrSelectedRun)) {
-    html += '<div class="panel" style="margin-top:12px"><div class="empty">No run packs available</div></div>';
-  } else {
-    const activeRun = allPacks.find(r => r.id === vrSelectedRun);
-    const isBaseline = activeRun.mode === "baseline";
-    const data = await fetchJson("/api/visual-runs/detail?id=" + encodeURIComponent(vrSelectedRun));
-    const entries = (data && data.entries) || [];
-    const comparisons = (data && data.comparisons) || [];
-    const screenshots = (data && data.screenshots) || [];
-
-    // Auto-select first entry
-    if (!vrSelectedEntry && entries.length > 0) vrSelectedEntry = entries[0].visual_tc_id;
-
-    html += '<div class="split-view" style="margin-top:0">';
-
-    // LEFT — entry list
-    html += '<div class="split-left">';
-    if (entries.length === 0) {
-      html += '<div class="empty" style="padding:16px">No test entries in this run pack</div>';
-    }
-    for (const entry of entries) {
-      const isSel = vrSelectedEntry === entry.visual_tc_id;
-      const entryComps = comparisons.filter(c => c.visual_tc_id === entry.visual_tc_id);
-      const entryFailed = entryComps.filter(c => !c.passed).length;
-      const statusColor = entry.status === "passed" ? "var(--green)" : entry.status === "failed" ? "var(--red)" : "var(--dim)";
-      const statusLabel = entry.status === "claimed" ? "RUNNING" : (entry.status || "pending").toUpperCase();
-      html += \`<div onclick="vrSelectedEntry='\${esc(entry.visual_tc_id)}';renderVisualRunsPage()"
-        class="tc-item \${isSel ? 'selected' : ''}" style="cursor:pointer">
-        <div style="display:flex;align-items:center;gap:4px">
-          <span class="tc-status-dot \${entry.status || 'pending'}"></span>
-          <span style="font-size:8px;font-weight:700;color:\${statusColor};margin-right:2px">\${statusLabel}</span>
-          \${entryFailed > 0 ? \`<span style="font-size:8px;padding:1px 4px;border-radius:2px;background:rgba(248,113,113,0.15);color:var(--red);font-weight:600">\${entryFailed} fail</span>\` : ""}
-        </div>
-        <div style="font-size:11px;margin-top:2px;padding-left:16px">\${esc(entry.tc_title || entry.visual_tc_id)}</div>
-        \${entry.tc_viewport ? \`<div style="font-size:9px;color:var(--dim);padding-left:16px;margin-top:1px">\${esc(entry.tc_viewport)}</div>\` : ""}
-      </div>\`;
-    }
-    html += '</div>';
-
-    // RIGHT — detail for selected entry
-    html += '<div class="split-right panel">';
-    const selEntry = vrSelectedEntry ? entries.find(e => e.visual_tc_id === vrSelectedEntry) : null;
-    if (!selEntry) {
-      html += '<div class="empty">Select a test entry to view details</div>';
-    } else {
-      const entryComps = comparisons.filter(c => c.visual_tc_id === selEntry.visual_tc_id);
-      const entryScreenshots = screenshots.filter(s => s.visual_tc_id === selEntry.visual_tc_id);
-      const statusIcon = selEntry.status === "passed" ? '<i class="ph ph-check-circle" style="color:var(--green)"></i>'
-        : selEntry.status === "failed" ? '<i class="ph ph-x-circle" style="color:var(--red)"></i>'
-        : '<i class="ph ph-clock" style="color:var(--dim)"></i>';
-
-      html += \`<div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600">\${statusIcon} \${esc(selEntry.tc_title || selEntry.visual_tc_id)}</div>
-        \${selEntry.tc_viewport ? \`<div style="font-size:11px;color:var(--dim);margin-top:4px"><i class="ph ph-monitor" style="margin-right:4px"></i>\${esc(selEntry.tc_viewport)}</div>\` : ""}
-      </div>\`;
-
-      html += renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline);
-
-      if (selEntry.notes) {
-        html += \`<div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:6px;font-size:12px;color:var(--dim)">\${esc(selEntry.notes)}</div>\`;
-      }
-    }
-    html += '</div>';
-    html += '</div>';
-  }
-
-  setPage(html);
-}
-
-// Global storage for visual run tabs
-window.vrActiveTab = {};
-window.vrTabData = {};
-
-function switchVrTab(entryId, tabName) {
-  window.vrActiveTab[entryId] = tabName;
-  const data = window.vrTabData[entryId];
-  if (!data) return;
-  const html = renderVrTab(tabName, data.selEntry, data.entryComps, data.entryScreenshots, data.isBaseline);
-  document.getElementById(\`vr-entry-\${entryId}-content\`).innerHTML = html;
-
-  // Update tab styles
-  const tabs = document.querySelectorAll(\`[data-vr-entry="\${entryId}"].tab\`);
-  tabs.forEach(t => {
-    if (t.getAttribute('data-tab') === tabName) {
-      t.classList.add('active');
-    } else {
-      t.classList.remove('active');
-    }
-  });
-}
-
-function renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline) {
-  let out = "";
-  let result = {};
-  try {
-    result = selEntry.result_json ? JSON.parse(selEntry.result_json) : {};
-  } catch (e) {
-    result = {};
-  }
-
-  // Determine which tabs to show
-  const tabs = [];
-  if (entryComps.length > 0 || entryScreenshots.length > 0) tabs.push({ id: 'screenshots', label: 'Screenshots' });
-  if (result.tc || result.type) tabs.push({ id: 'steps', label: 'Steps' });
-  if (result.logs || result.observations) tabs.push({ id: 'logs', label: 'Logs' });
-  if (result.console_errors || result.console_logs) tabs.push({ id: 'console', label: 'Console' });
-  if (selEntry.trace_path) tabs.push({ id: 'trace', label: 'Trace' });
-  if (selEntry.profile_path) tabs.push({ id: 'profiler', label: 'Profiler' });
-
-  if (tabs.length === 0) {
-    return '<div style="color:var(--dim);font-size:12px">No data captured for this run</div>';
-  }
-
-  // Store data for tab switching
-  window.vrTabData[selEntry.id] = { selEntry, entryComps, entryScreenshots, isBaseline };
-  const activeTab = window.vrActiveTab[selEntry.id] || tabs[0].id;
-
-  // Render tabs
-  out += '<div class="tabs">';
-  for (const tab of tabs) {
-    const isActive = tab.id === activeTab;
-    out += \`<div class="tab \${isActive ? 'active' : ''}" data-vr-entry="\${selEntry.id}" data-tab="\${tab.id}" onclick="switchVrTab('\${selEntry.id}','\${tab.id}')" style="cursor:pointer">\${tab.label}</div>\`;
-  }
-  out += '</div>';
-
-  // Tab content
-  out += \`<div id="vr-entry-\${selEntry.id}-content">\`;
-  out += renderVrTab(activeTab, selEntry, entryComps, entryScreenshots, isBaseline);
-  out += '</div>';
-
-  return out;
-}
-
-function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
-  let out = "";
-  let result = {};
-  try {
-    result = selEntry.result_json ? JSON.parse(selEntry.result_json) : {};
-  } catch (e) {
-    result = {};
-  }
-
-  if (tab === 'screenshots') {
-    if (isBaseline) {
-      if (entryScreenshots.length > 0) {
-        out += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
-        for (const ss of entryScreenshots) {
-          const imgSrc = "/api/artifact?path=" + encodeURIComponent(ss.file_path);
-          out += \`<div style="text-align:center">
-            <div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:500">\${esc(ss.step_label || "Step " + ss.step_index)}</div>
-            <img src="\${imgSrc}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
-          </div>\`;
-        }
-        out += '</div>';
-      } else {
-        out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No screenshots captured</div>';
-      }
-    } else {
-      if (entryComps.length > 0) {
-        for (const comp of entryComps) {
-          const baselineSrc = "/api/artifact?path=" + encodeURIComponent(comp.baseline_path);
-          const currentSrc = "/api/artifact?path=" + encodeURIComponent(comp.current_path);
-          const diffSrc = comp.diff_path ? "/api/artifact?path=" + encodeURIComponent(comp.diff_path) : null;
-          const passedComp = !!comp.passed;
-          const score = comp.diff_score != null ? (comp.diff_score * 100).toFixed(2) + "%" : "-";
-          out += \`<div style="margin-bottom:14px;padding:12px;border:1px solid \${passedComp ? "var(--green)" : "var(--red)"};border-radius:6px;background:\${passedComp ? "rgba(52,211,153,.04)" : "rgba(248,113,113,.04)"}">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-              <span style="font-size:12px;font-weight:600">\${esc(comp.step_label || "Step " + comp.step_index)}</span>
-              <span style="font-size:10px;padding:2px 8px;border-radius:10px;color:#fff;background:\${passedComp ? "var(--green)" : "var(--red)"}">\${passedComp ? "PASS" : "FAIL"} · \${score}</span>
-            </div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap">
-              <div style="flex:1;min-width:160px;text-align:center">
-                <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Baseline</div>
-                <img src="\${baselineSrc}" style="max-width:100%;max-height:260px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${baselineSrc.replace(/'/g, "\\\\'")}'], 0)" />
-              </div>
-              <div style="flex:1;min-width:160px;text-align:center">
-                <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Current</div>
-                <img src="\${currentSrc}" style="max-width:100%;max-height:260px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${currentSrc.replace(/'/g, "\\\\'")}'], 0)" />
-              </div>
-              \${diffSrc ? \`<div style="flex:1;min-width:160px;text-align:center">
-                <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Diff</div>
-                <img src="\${diffSrc}" style="max-width:100%;max-height:260px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${diffSrc.replace(/'/g, "\\\\'")}'], 0)" />
-              </div>\` : ""}
-            </div>
-          </div>\`;
-        }
-      } else if (entryScreenshots.length > 0) {
-        out += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
-        for (const ss of entryScreenshots) {
-          const imgSrc = "/api/artifact?path=" + encodeURIComponent(ss.file_path);
-          out += \`<div style="text-align:center">
-            <div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:500">\${esc(ss.step_label || "Step " + ss.step_index)}</div>
-            <img src="\${imgSrc}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
-          </div>\`;
-        }
-        out += '</div>';
-      } else {
-        out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No comparisons or screenshots</div>';
-      }
-    }
-  } else if (tab === 'steps') {
-    out += '<div style="display:flex;flex-direction:column;gap:12px">';
-
-    // Metadata header
-    out += '<div style="padding:12px;background:var(--surface);border-radius:6px;border-left:3px solid var(--accent)">';
-    if (result.tc) {
-      out += \`<div style="margin-bottom:8px"><span style="font-weight:600;color:var(--text)">Test Case:</span> \${esc(result.tc)}</div>\`;
-    }
-    if (result.type) {
-      out += \`<div style="margin-bottom:8px"><span style="font-weight:600;color:var(--text)">Type:</span> <span style="color:var(--dim)">\${esc(result.type)}</span></div>\`;
-    }
-    if (result.format) {
-      out += \`<div style="margin-bottom:8px"><span style="font-weight:600;color:var(--text)">Format:</span> <span style="color:var(--dim)">\${esc(result.format)}</span></div>\`;
-    }
-    if (result.success !== undefined) {
-      const icon = result.success ? '✓' : '✗';
-      const color = result.success ? 'var(--green)' : 'var(--red)';
-      out += \`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:\${color};font-weight:600">\${icon} \${result.success ? 'Passed' : 'Failed'}</span></div>\`;
-    }
-    out += '</div>';
-
-    // Test steps
-    let stepsJson = [];
-    if (selEntry.tc_steps_json) {
-      try {
-        stepsJson = JSON.parse(typeof selEntry.tc_steps_json === 'string' ? selEntry.tc_steps_json : JSON.stringify(selEntry.tc_steps_json));
-      } catch (e) {}
-    }
-
-    if (stepsJson && Array.isArray(stepsJson) && stepsJson.length > 0) {
-      out += '<div>';
-      out += '<div style="font-weight:600;color:var(--text);margin-bottom:10px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Execution Steps</div>';
-      for (let i = 0; i < stepsJson.length; i++) {
-        const step = stepsJson[i];
-        const action = step.action || 'action';
-        const label = step.label || step.description || \`Step \${i + 1}\`;
-        out += \`<div style="padding:10px;background:var(--surface);border-radius:4px;margin-bottom:8px;border-left:3px solid var(--accent-dim)">\`;
-        out += \`<div style="font-weight:500;color:var(--text);font-size:12px;margin-bottom:4px">\${i + 1}. \${esc(label)}</div>\`;
-        out += \`<div style="font-size:11px;color:var(--dim);font-family:var(--font-mono)">\${esc(action)}\`;
-        if (step.description && step.description !== label) {
-          out += \` — \${esc(step.description)}\`;
-        }
-        out += '</div>';
-        out += '</div>';
-      }
-      out += '</div>';
-    } else {
-      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No step details available</div>';
-    }
-
-    out += '</div>';
-  } else if (tab === 'logs') {
-    if ((result.observations && result.observations.length > 0) || (result.logs && (typeof result.logs === 'string' ? result.logs.length > 0 : true))) {
-      out += '<div style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto">';
-      if (result.observations && Array.isArray(result.observations) && result.observations.length > 0) {
-        for (const obs of result.observations) {
-          out += \`<div style="padding:8px 10px;background:var(--surface);border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--text);line-height:1.4">\${esc(obs)}</div>\`;
-        }
-      }
-      if (result.logs) {
-        const logsText = typeof result.logs === 'string' ? result.logs : JSON.stringify(result.logs, null, 2);
-        const lines = logsText.split('\\n').slice(0, 50);
-        out += \`<div style="padding:10px;background:var(--surface);border-radius:4px;font-family:var(--font-mono);font-size:11px;color:var(--dim);line-height:1.5;white-space:pre-wrap;word-break:break-word">\${esc(lines.join('\\n'))}\${logsText.split('\\n').length > 50 ? '\\n...' : ''}</div>\`;
-      }
-      out += '</div>';
-    } else {
-      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No logs captured</div>';
-    }
-  } else if (tab === 'console') {
-    const consoleLogs = (result.console && Array.isArray(result.console)) ? result.console : [];
-    const consoleErrors = (result.console_errors && Array.isArray(result.console_errors)) ? result.console_errors : [];
-
-    if (consoleLogs.length > 0 || consoleErrors.length > 0) {
-      out += '<div style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto">';
-      if (consoleErrors.length > 0) {
-        for (const err of consoleErrors) {
-          const errText = typeof err === 'string' ? err : JSON.stringify(err);
-          out += \`<div style="padding:8px 10px;background:rgba(238,0,0,0.08);border-left:3px solid var(--red);border-radius:4px;font-family:var(--font-mono);font-size:11px;color:var(--red);word-break:break-word;line-height:1.4">\${esc(errText)}</div>\`;
-        }
-      }
-      if (consoleLogs.length > 0) {
-        for (const log of consoleLogs) {
-          const logText = typeof log === 'string' ? log : JSON.stringify(log);
-          out += \`<div style="padding:8px 10px;background:var(--surface);border-radius:4px;font-family:var(--font-mono);font-size:11px;color:var(--dim);word-break:break-word;line-height:1.4">\${esc(logText)}</div>\`;
-        }
-      }
-      out += '</div>';
-    } else {
-      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No console data captured</div>';
-    }
-  } else if (tab === 'trace') {
-    if (selEntry.trace_path) {
-      const fileName = selEntry.trace_path.split('/').pop();
-      const tracePath = encodeURIComponent(selEntry.trace_path);
-      const downloadUrl = "/api/artifact?path=" + tracePath;
-      out += \`<div style="padding:12px;background:var(--surface);border-radius:6px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <i class="ph ph-file-zip" style="font-size:18px;color:var(--accent)"></i>
-          <div>
-            <div style="font-weight:600;color:var(--text);">\${esc(fileName)}</div>
-            <div style="font-size:11px;color:var(--dim);margin-top:2px">Playwright trace</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="window.open('https://trace.playwright.dev/', '_blank')" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600"><i class="ph ph-play-circle" style="font-size:14px"></i>View in Viewer</button>
-          <a href="\${downloadUrl}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--border);color:var(--text);border-radius:4px;text-decoration:none;font-size:11px;font-weight:600" download><i class="ph ph-download" style="font-size:14px"></i>Download</a>
-        </div>
-        <div style="font-size:10px;color:var(--dim);margin-top:8px">Tip: Click "View in Viewer" and drag-drop the downloaded file</div>
-      </div>\`;
-    } else {
-      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No trace captured</div>';
-    }
-  } else if (tab === 'profiler') {
-    if (selEntry.profile_path) {
-      const fileName = selEntry.profile_path.split('/').pop();
-      const profilePath = encodeURIComponent(selEntry.profile_path);
-      const downloadUrl = "/api/artifact?path=" + profilePath;
-      out += \`<div style="padding:12px;background:var(--surface);border-radius:6px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <i class="ph ph-chart-line" style="font-size:18px;color:var(--accent)"></i>
-          <div>
-            <div style="font-weight:600;color:var(--text);">\${esc(fileName)}</div>
-            <div style="font-size:11px;color:var(--dim);margin-top:2px">Chrome DevTools profile</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="window.open('https://ui.perfetto.dev/', '_blank')" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600"><i class="ph ph-play-circle" style="font-size:14px"></i>View in Perfetto</button>
-          <a href="\${downloadUrl}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--border);color:var(--text);border-radius:4px;text-decoration:none;font-size:11px;font-weight:600" download><i class="ph ph-download" style="font-size:14px"></i>Download</a>
-        </div>
-        <div style="font-size:10px;color:var(--dim);margin-top:8px">Tip: Click "View in Perfetto" and drag-drop the downloaded file</div>
-      </div>\`;
-    } else {
-      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No profile captured</div>';
-    }
-  }
-
-  return out;
-}
-
 </script>
 </body>
 </html>`;
