@@ -267,12 +267,28 @@ export function registerRunPackCommands(program: Command): void {
     .option("--logs <json>", "Execution logs as JSON")
     .option("--observations <json>", "Observations as JSON")
     .option("--issues <json>", "Issues found as JSON")
+    .option("--device <device>", "Browser device type (default: web)")
+    .option(
+      "--dimension <dimension>",
+      "Viewport dimension preset (default: standard)",
+    )
+    .option("--trace-path <path>", "Path to the saved Playwright trace file")
+    .option("--profile-path <path>", "Path to the saved CPU profile file")
+    .option(
+      "--telemetry-config <json>",
+      "Telemetry configuration as JSON (trace, profiler, console, errors flags)",
+    )
     .action((entryId, opts) => {
       updateEntryResult(entryId, opts.status, {
         results: opts.results,
         logs: opts.logs,
         observations: opts.observations,
         issues: opts.issues,
+        device: opts.device,
+        dimension: opts.dimension,
+        tracePath: opts.tracePath,
+        profilePath: opts.profilePath,
+        telemetryConfig: opts.telemetryConfig,
       });
       console.log(JSON.stringify({ updated: true }));
     });

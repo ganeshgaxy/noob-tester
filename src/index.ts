@@ -28,6 +28,9 @@ import { registerSettingsCommands } from "./cli/commands/settings.js";
 import { registerAuthCommands } from "./cli/commands/auth.js";
 import { registerSyncCommands } from "./cli/commands/sync.js";
 import { registerQaPoolCommands } from "./cli/commands/qa-pool.js";
+import { registerVisualTcCommands } from "./cli/commands/visual-tc.js";
+import { registerVisualRunCommands } from "./cli/commands/visual-run.js";
+import { registerWorkspaceCommands } from "./cli/commands/workspace.js";
 
 program
   .name("noob-tester")
@@ -93,6 +96,9 @@ registerSettingsCommands(program);
 registerAuthCommands(program);
 registerSyncCommands(program);
 registerQaPoolCommands(program);
+registerVisualTcCommands(program);
+registerVisualRunCommands(program);
+registerWorkspaceCommands(program);
 registerSetupCommand(program);
 
 // Evidence path command

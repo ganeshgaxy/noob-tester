@@ -268,7 +268,8 @@ function _renderLightbox() {
   const counter = document.getElementById("lightbox-counter");
   const caption = document.getElementById("lightbox-caption");
   if (!img) return;
-  const item = _lbImages[_lbIndex];
+  const raw = _lbImages[_lbIndex];
+  const item = typeof raw === "string" ? { url: raw, label: "" } : raw;
   img.src = item.url;
   if (counter) counter.textContent = (_lbIndex + 1) + " / " + _lbImages.length;
   if (caption) caption.textContent = item.label || "";

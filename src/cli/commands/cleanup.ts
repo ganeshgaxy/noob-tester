@@ -3,7 +3,12 @@ import { execSync } from "child_process";
 import { rmSync, existsSync } from "fs";
 import { join } from "path";
 import chalk from "chalk";
-import { getDb, dataDir } from "../../db/client.js";
+import {
+  getDb,
+  dataDir,
+  resetDb,
+  getActiveWorkspace,
+} from "../../db/client.js";
 import { deleteAllSecrets } from "../../secrets/store.js";
 
 /** Helper: delete all data for a list of run IDs within a transaction. */
@@ -49,6 +54,18 @@ function deleteSessionWithData(
   return runIds.length;
 }
 
+/**
+ * Temporarily override the active workspace for this CLI invocation.
+ * Returns the resolved workspace name so callers can use it in messages.
+ */
+function useWorkspace(name?: string): string {
+  if (name) {
+    process.env.NOOB_WORKSPACE = name;
+    resetDb(); // close existing DB singleton so next getDb() opens correct workspace
+  }
+  return getActiveWorkspace();
+}
+
 export function registerCleanupCommands(program: Command): void {
   const cleanup = program
     .command("cleanup")
@@ -87,11 +104,18 @@ export function registerCleanupCommands(program: Command): void {
     .description(
       "Delete runs, sessions, analyses, test cases, issues (keeps secrets, repos, index)",
     )
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
+      const ws = useWorkspace(opts.workspace);
       if (!opts.yes) {
         console.log(
-          chalk.red("This will delete ALL data. Run with --yes to confirm."),
+          chalk.red(
+            `This will delete ALL data in workspace "${ws}". Run with --yes to confirm.`,
+          ),
         );
         return;
       }
@@ -151,7 +175,9 @@ export function registerCleanupCommands(program: Command): void {
       }
 
       console.log(
-        chalk.green("All data deleted (keeps secrets, repos, index)."),
+        chalk.green(
+          `All data deleted in workspace "${ws}" (keeps secrets, repos, index).`,
+        ),
       );
     });
 
@@ -160,8 +186,13 @@ export function registerCleanupCommands(program: Command): void {
   cleanup
     .command("session <sessionId>")
     .description("Delete a specific session and all its associated data")
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--yes", "Skip confirmation")
     .action((sessionId, opts) => {
+      useWorkspace(opts.workspace);
       const db = getDb();
       const session = db
         .prepare("SELECT id FROM sessions WHERE id = ?")
@@ -201,8 +232,13 @@ export function registerCleanupCommands(program: Command): void {
   cleanup
     .command("stale")
     .description("Delete all stale and crashed sessions and their data")
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
+      const ws = useWorkspace(opts.workspace);
       const db = getDb();
 
       // Mark stale
@@ -223,7 +259,7 @@ export function registerCleanupCommands(program: Command): void {
       if (!opts.yes) {
         console.log(
           chalk.yellow(
-            `Found ${staleSessions.length} stale/crashed session(s). Run with --yes to delete.`,
+            `Found ${staleSessions.length} stale/crashed session(s) in workspace "${ws}". Run with --yes to delete.`,
           ),
         );
         return;
@@ -248,17 +284,26 @@ export function registerCleanupCommands(program: Command): void {
   cleanup
     .command("secrets")
     .description("Delete ALL secrets and profiles")
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
+      const ws = useWorkspace(opts.workspace);
       if (!opts.yes) {
         console.log(
-          chalk.red("This will delete ALL secrets. Run with --yes to confirm."),
+          chalk.red(
+            `This will delete ALL secrets in workspace "${ws}". Run with --yes to confirm.`,
+          ),
         );
         return;
       }
 
       deleteAllSecrets();
-      console.log(chalk.green("All secrets and targets deleted."));
+      console.log(
+        chalk.green(`All secrets and targets deleted in workspace "${ws}".`),
+      );
     });
 
   // ── Clean everything including secrets, repos, index ──
@@ -268,12 +313,17 @@ export function registerCleanupCommands(program: Command): void {
     .description(
       "Delete EVERYTHING — all data, secrets, targets, repos, index. Full reset.",
     )
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
+      const ws = useWorkspace(opts.workspace);
       if (!opts.yes) {
         console.log(
           chalk.red(
-            "This will delete EVERYTHING including secrets, targets, repos, and codebase index. Run with --yes to confirm.",
+            `This will delete EVERYTHING in workspace "${ws}" including secrets, targets, repos, and codebase index. Run with --yes to confirm.`,
           ),
         );
         return;
@@ -333,7 +383,11 @@ export function registerCleanupCommands(program: Command): void {
         }
       }
 
-      console.log(chalk.green("Everything deleted. Full reset complete."));
+      console.log(
+        chalk.green(
+          `Everything deleted in workspace "${ws}". Full reset complete.`,
+        ),
+      );
     });
 
   // ── Clean test cases ──
@@ -345,13 +399,18 @@ export function registerCleanupCommands(program: Command): void {
     .description(
       "Delete all repos, groups, codebase index, and synced files from disk",
     )
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--name <name>", "Delete only a specific repo")
     .option("--yes", "Skip confirmation")
     .action((opts) => {
+      const ws = useWorkspace(opts.workspace);
       if (!opts.yes) {
         const msg = opts.name
-          ? `Delete repo "${opts.name}", its index, and synced files`
-          : "Delete ALL repos, groups, codebase index, and synced files";
+          ? `Delete repo "${opts.name}", its index, and synced files from workspace "${ws}"`
+          : `Delete ALL repos, groups, codebase index, and synced files from workspace "${ws}"`;
         console.log(chalk.yellow(`${msg}. Run with --yes to confirm.`));
         return;
       }
@@ -392,7 +451,11 @@ export function registerCleanupCommands(program: Command): void {
         if (repo.local_path && existsSync(repo.local_path)) {
           rmSync(repo.local_path, { recursive: true, force: true });
         }
-        console.log(chalk.green(`Deleted repo "${opts.name}" and its index.`));
+        console.log(
+          chalk.green(
+            `Deleted repo "${opts.name}" and its index from workspace "${ws}".`,
+          ),
+        );
       } else {
         // All repos
         db.pragma("foreign_keys = OFF");
@@ -417,7 +480,9 @@ export function registerCleanupCommands(program: Command): void {
           rmSync(reposDir, { recursive: true, force: true });
         }
         console.log(
-          chalk.green("All repos, groups, index, and synced files deleted."),
+          chalk.green(
+            `All repos, groups, index, and synced files deleted from workspace "${ws}".`,
+          ),
         );
       }
     });
@@ -429,14 +494,19 @@ export function registerCleanupCommands(program: Command): void {
   cleanup
     .command("tech-issues")
     .description("Delete technical issues")
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--ticket <ref>", "Delete only for a specific ticket")
     .option("--status <status>", "Delete only with this status (e.g. resolved)")
     .option("--yes", "Skip confirmation")
     .action((opts) => {
+      const ws = useWorkspace(opts.workspace);
       if (!opts.yes) {
         console.log(
           chalk.yellow(
-            "This will delete tech issues. Run with --yes to confirm.",
+            `This will delete tech issues in workspace "${ws}". Run with --yes to confirm.`,
           ),
         );
         return;
@@ -461,20 +531,30 @@ export function registerCleanupCommands(program: Command): void {
   cleanup
     .command("runpacks")
     .description("Delete run pack entries")
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--ticket <id>", "Delete only run packs for a specific ticket")
     .option("--pack <runPackId>", "Delete only a specific run pack")
     .option("--yes", "Skip confirmation")
     .action((opts) => {
-      const db = getDb();
+      const ws = useWorkspace(opts.workspace);
 
       if (!opts.yes) {
         let msg = "This will delete ";
         if (opts.ticket) msg += `run packs for ticket ${opts.ticket}`;
         else if (opts.pack) msg += `run pack ${opts.pack}`;
         else msg += "ALL run pack entries";
-        console.log(chalk.yellow(`${msg}. Run with --yes to confirm.`));
+        console.log(
+          chalk.yellow(
+            `${msg} in workspace "${ws}". Run with --yes to confirm.`,
+          ),
+        );
         return;
       }
+
+      const db = getDb();
 
       let sql = "DELETE FROM run_pack_entries WHERE 1=1";
       const params: unknown[] = [];
@@ -499,6 +579,10 @@ export function registerCleanupCommands(program: Command): void {
   cleanup
     .command("testcases")
     .description("Delete test cases")
+    .option(
+      "--workspace <name>",
+      "Target workspace (defaults to active workspace)",
+    )
     .option("--ticket <ref>", "Delete only test cases for a specific ticket")
     .option("--run <runId>", "Delete only test cases for a specific run")
     .option(
@@ -507,7 +591,7 @@ export function registerCleanupCommands(program: Command): void {
     )
     .option("--yes", "Skip confirmation")
     .action((opts) => {
-      const db = getDb();
+      const ws = useWorkspace(opts.workspace);
 
       if (!opts.yes) {
         let msg = "This will delete ";
@@ -515,9 +599,15 @@ export function registerCleanupCommands(program: Command): void {
         else if (opts.run) msg += `test cases for run ${opts.run}`;
         else if (opts.status) msg += `test cases with status ${opts.status}`;
         else msg += "ALL test cases";
-        console.log(chalk.yellow(`${msg}. Run with --yes to confirm.`));
+        console.log(
+          chalk.yellow(
+            `${msg} in workspace "${ws}". Run with --yes to confirm.`,
+          ),
+        );
         return;
       }
+
+      const db = getDb();
 
       let sql = "DELETE FROM test_cases WHERE 1=1";
       const params: unknown[] = [];

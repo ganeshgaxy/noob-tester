@@ -17,7 +17,16 @@ import {
 } from "fs";
 import { extname, resolve as resolvePath, join } from "path";
 import { homedir } from "os";
-import { getDb, dataDir } from "../db/client.js";
+import {
+  getDb,
+  dataDir,
+  getActiveWorkspace,
+  listWorkspaces,
+  setActiveWorkspace,
+  workspacesDir,
+  renameWorkspace,
+  copyWorkspace,
+} from "../db/client.js";
 import { getDashboardHtml } from "./dashboard.js";
 import { getDocsHtml } from "./docs.js";
 import {
@@ -912,6 +921,221 @@ export function startWatchServer(opts: WatchOptions): void {
           tickets: tickets.map((t) => t.ticket_ref),
         }),
       );
+      return;
+    }
+
+    // ── Visual Test Cases API ──
+
+    if (
+      url.pathname === "/api/visual-testcases/delete" &&
+      req.method === "DELETE"
+    ) {
+      const id = url.searchParams.get("id");
+      const ticket = url.searchParams.get("ticket");
+      if (!id && !ticket) {
+        res.writeHead(400);
+        res.end('{"error":"id or ticket required"}');
+        return;
+      }
+      const db = getDb();
+      let deleted = 0;
+      if (id) {
+        const result = db
+          .prepare("DELETE FROM visual_test_cases WHERE id = ?")
+          .run(id);
+        deleted = result.changes;
+      } else if (ticket) {
+        const result = db
+          .prepare("DELETE FROM visual_test_cases WHERE ticket_id = ?")
+          .run(ticket);
+        deleted = result.changes;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ deleted }));
+      return;
+    }
+
+    if (url.pathname === "/api/visual-testcases" && req.method === "GET") {
+      const ticket = url.searchParams.get("ticket");
+      const db = getDb();
+      const cases = ticket
+        ? db
+            .prepare(
+              "SELECT * FROM visual_test_cases WHERE ticket_id = ? AND status = 'active' ORDER BY created_at ASC",
+            )
+            .all(ticket)
+        : db
+            .prepare(
+              "SELECT * FROM visual_test_cases WHERE status = 'active' ORDER BY created_at ASC LIMIT 200",
+            )
+            .all();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(cases));
+      return;
+    }
+
+    if (
+      url.pathname === "/api/visual-testcases/stats" &&
+      req.method === "GET"
+    ) {
+      const db = getDb();
+      const byTicket = db
+        .prepare(
+          "SELECT ticket_id, COUNT(*) as c FROM visual_test_cases WHERE status = 'active' GROUP BY ticket_id",
+        )
+        .all() as Array<{ ticket_id: string; c: number }>;
+      const total = (
+        db
+          .prepare(
+            "SELECT COUNT(*) as c FROM visual_test_cases WHERE status = 'active'",
+          )
+          .get() as { c: number }
+      ).c;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          total,
+          byTicket: Object.fromEntries(byTicket.map((r) => [r.ticket_id, r.c])),
+        }),
+      );
+      return;
+    }
+
+    // ── Visual Runs API ──
+
+    if (url.pathname === "/api/visual-runs" && req.method === "GET") {
+      const ticket = url.searchParams.get("ticket");
+      const db = getDb();
+      if (ticket) {
+        const runs = db
+          .prepare(
+            "SELECT * FROM visual_runs WHERE ticket_id = ? ORDER BY created_at DESC",
+          )
+          .all(ticket);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(runs));
+      } else {
+        // Group by ticket: return tickets with their runs
+        const runs = db
+          .prepare(
+            "SELECT * FROM visual_runs ORDER BY created_at DESC LIMIT 500",
+          )
+          .all() as Array<Record<string, unknown>>;
+        const byTicket: Record<string, unknown[]> = {};
+        for (const r of runs) {
+          const tid = r.ticket_id as string;
+          if (!byTicket[tid]) byTicket[tid] = [];
+          byTicket[tid].push(r);
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(byTicket));
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/visual-runs/detail" && req.method === "GET") {
+      const runId = url.searchParams.get("id");
+      if (!runId) {
+        res.writeHead(400);
+        res.end('{"error":"id required"}');
+        return;
+      }
+      const db = getDb();
+      const run = db
+        .prepare("SELECT * FROM visual_runs WHERE id = ?")
+        .get(runId);
+      if (!run) {
+        res.writeHead(404);
+        res.end('{"error":"run not found"}');
+        return;
+      }
+      const entries = db
+        .prepare(
+          `SELECT vre.*, vtc.title as tc_title, vtc.viewport as tc_viewport,
+                  vtc.steps_json as tc_steps_json
+           FROM visual_run_entries vre
+           LEFT JOIN visual_test_cases vtc ON vtc.id = vre.visual_tc_id
+           WHERE vre.visual_run_id = ?
+           ORDER BY vre.created_at ASC`,
+        )
+        .all(runId);
+      const screenshots = db
+        .prepare(
+          "SELECT * FROM visual_screenshots WHERE visual_run_id = ? ORDER BY step_index ASC",
+        )
+        .all(runId);
+      const comparisons = db
+        .prepare(
+          `SELECT vc.*,
+                  bs.file_path AS baseline_path, bs.step_label AS baseline_step_label,
+                  cs.file_path AS current_path, cs.step_label AS current_step_label
+           FROM visual_comparisons vc
+           INNER JOIN visual_screenshots bs ON bs.id = vc.baseline_id
+           INNER JOIN visual_screenshots cs ON cs.id = vc.current_id
+           WHERE vc.visual_run_id = ?
+           ORDER BY vc.step_index ASC`,
+        )
+        .all(runId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ run, entries, screenshots, comparisons }));
+      return;
+    }
+
+    if (url.pathname === "/api/visual-runs/delete" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: string) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { run, ticket } = JSON.parse(body);
+          const db = getDb();
+          db.pragma("foreign_keys = OFF");
+          if (run) {
+            // Delete a single visual run and all its children
+            db.prepare(
+              "DELETE FROM visual_comparisons WHERE visual_run_id = ?",
+            ).run(run);
+            db.prepare(
+              "DELETE FROM visual_screenshots WHERE visual_run_id = ?",
+            ).run(run);
+            db.prepare(
+              "DELETE FROM visual_run_entries WHERE visual_run_id = ?",
+            ).run(run);
+            db.prepare("DELETE FROM visual_runs WHERE id = ?").run(run);
+          } else if (ticket) {
+            // Delete all visual runs for a ticket
+            const runIds = (
+              db
+                .prepare("SELECT id FROM visual_runs WHERE ticket_id = ?")
+                .all(ticket) as Array<{ id: string }>
+            ).map((r) => r.id);
+            if (runIds.length > 0) {
+              const ph = runIds.map(() => "?").join(",");
+              db.prepare(
+                `DELETE FROM visual_comparisons WHERE visual_run_id IN (${ph})`,
+              ).run(...runIds);
+              db.prepare(
+                `DELETE FROM visual_screenshots WHERE visual_run_id IN (${ph})`,
+              ).run(...runIds);
+              db.prepare(
+                `DELETE FROM visual_run_entries WHERE visual_run_id IN (${ph})`,
+              ).run(...runIds);
+              db.prepare(`DELETE FROM visual_runs WHERE id IN (${ph})`).run(
+                ...runIds,
+              );
+            }
+          } else {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: "run or ticket required" }));
+            return;
+          }
+          db.pragma("foreign_keys = ON");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ deleted: true }));
+        } catch (e) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
       return;
     }
 
@@ -2920,6 +3144,410 @@ export function startWatchServer(opts: WatchOptions): void {
           res.end(JSON.stringify({ deleted: true, runs: runIds.length }));
         } catch (e) {
           res.writeHead(500);
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
+      return;
+    }
+
+    // ── Workspaces API ──
+
+    if (url.pathname === "/api/workspaces" && req.method === "GET") {
+      const workspaces = listWorkspaces();
+      // Always include "default" even if the directory hasn't been created yet
+      const names = workspaces.map((w) => w.name);
+      const current = getActiveWorkspace();
+      if (!names.includes("default")) {
+        workspaces.unshift({ name: "default", current: current === "default" });
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ workspaces, active: current }));
+      return;
+    }
+
+    if (url.pathname === "/api/workspaces/current" && req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ workspace: getActiveWorkspace() }));
+      return;
+    }
+
+    if (url.pathname === "/api/workspaces/switch" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { name } = JSON.parse(body);
+          if (!name || typeof name !== "string") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "name is required" }));
+            return;
+          }
+          // Auto-create workspace dir if it doesn't exist
+          mkdirSync(join(workspacesDir(), name), { recursive: true });
+          mkdirSync(join(workspacesDir(), name, "evidence"), {
+            recursive: true,
+          });
+          // resetDb() is called inside setActiveWorkspace
+          setActiveWorkspace(name);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ switched: true, workspace: name }));
+        } catch (e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/workspaces/create" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { name } = JSON.parse(body);
+          if (!name || typeof name !== "string") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "name is required" }));
+            return;
+          }
+          if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                error: "Workspace name must be alphanumeric (a-z, 0-9, -, _)",
+              }),
+            );
+            return;
+          }
+          const wsDir = join(workspacesDir(), name);
+          if (existsSync(wsDir)) {
+            res.writeHead(409, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({ error: `Workspace "${name}" already exists` }),
+            );
+            return;
+          }
+          mkdirSync(wsDir, { recursive: true });
+          mkdirSync(join(wsDir, "evidence"), { recursive: true });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ created: true, workspace: name }));
+        } catch (e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/workspaces/rename" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { from, to } = JSON.parse(body);
+          if (
+            !from ||
+            !to ||
+            typeof from !== "string" ||
+            typeof to !== "string"
+          ) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "from and to are required" }));
+            return;
+          }
+          renameWorkspace(from, to);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ renamed: true, from, to }));
+        } catch (e) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/workspaces/copy" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { from, to, switchAfter } = JSON.parse(body) as {
+            from: string;
+            to: string;
+            switchAfter?: boolean;
+          };
+          if (
+            !from ||
+            !to ||
+            typeof from !== "string" ||
+            typeof to !== "string"
+          ) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "from and to are required" }));
+            return;
+          }
+          copyWorkspace(from, to);
+          if (switchAfter) {
+            setActiveWorkspace(to);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              copied: true,
+              from,
+              to,
+              switched: switchAfter ?? false,
+            }),
+          );
+        } catch (e) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/workspaces/delete" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { name } = JSON.parse(body);
+          if (!name || typeof name !== "string") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "name is required" }));
+            return;
+          }
+          if (name === "default") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                error: 'Cannot delete the "default" workspace',
+              }),
+            );
+            return;
+          }
+          const wsDir = join(workspacesDir(), name);
+          if (!existsSync(wsDir)) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({ error: `Workspace "${name}" does not exist` }),
+            );
+            return;
+          }
+          // If deleting the active workspace, switch to default first
+          if (getActiveWorkspace() === name) {
+            setActiveWorkspace("default");
+          }
+          rmSync(wsDir, { recursive: true, force: true });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ deleted: true, workspace: name }));
+        } catch (e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
+      return;
+    }
+
+    // ── Workspace Cleanup API ──
+
+    if (url.pathname === "/api/workspaces/cleanup" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { type } = JSON.parse(body) as { type: string };
+          if (!type) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "type is required" }));
+            return;
+          }
+          const db = getDb();
+          const ws = getActiveWorkspace();
+          let deleted = 0;
+
+          if (type === "sessions") {
+            // Delete all sessions and their run data
+            const runs = db.prepare("SELECT id FROM runs").all() as Array<{
+              id: string;
+            }>;
+            const runIds = runs.map((r) => r.id);
+            if (runIds.length > 0) {
+              const ph = runIds.map(() => "?").join(",");
+              db.prepare(
+                `DELETE FROM run_pack_entries WHERE run_id IN (${ph})`,
+              ).run(...runIds);
+              db.prepare(`DELETE FROM raw_outputs WHERE run_id IN (${ph})`).run(
+                ...runIds,
+              );
+              db.prepare(`DELETE FROM issues WHERE run_id IN (${ph})`).run(
+                ...runIds,
+              );
+              db.prepare(`DELETE FROM test_steps WHERE run_id IN (${ph})`).run(
+                ...runIds,
+              );
+              db.prepare(`DELETE FROM test_plans WHERE run_id IN (${ph})`).run(
+                ...runIds,
+              );
+              db.prepare(`DELETE FROM analyses WHERE run_id IN (${ph})`).run(
+                ...runIds,
+              );
+              db.prepare(`DELETE FROM action_log WHERE run_id IN (${ph})`).run(
+                ...runIds,
+              );
+              try {
+                db.prepare(
+                  `UPDATE failure_patterns SET first_seen_run = NULL WHERE first_seen_run IN (${ph})`,
+                ).run(...runIds);
+              } catch {}
+              try {
+                db.prepare(
+                  `UPDATE failure_patterns SET last_seen_run = NULL WHERE last_seen_run IN (${ph})`,
+                ).run(...runIds);
+              } catch {}
+            }
+            db.prepare("UPDATE sessions SET current_run_id = NULL").run();
+            const rr = db.prepare("DELETE FROM runs").run();
+            const sr = db.prepare("DELETE FROM sessions").run();
+            deleted = sr.changes + rr.changes;
+          } else if (type === "testcases") {
+            const r = db.prepare("DELETE FROM test_cases").run();
+            deleted = r.changes;
+          } else if (type === "issues") {
+            const r = db.prepare("DELETE FROM issues").run();
+            deleted = r.changes;
+          } else if (type === "analyses") {
+            const r = db.prepare("DELETE FROM analyses").run();
+            deleted = r.changes;
+          } else if (type === "runpacks") {
+            const r = db.prepare("DELETE FROM run_pack_entries").run();
+            deleted = r.changes;
+          } else if (type === "tech-issues") {
+            const r = db.prepare("DELETE FROM tech_issues").run();
+            deleted = r.changes;
+          } else if (type === "secrets") {
+            try {
+              db.prepare("DELETE FROM secrets").run();
+            } catch {}
+            try {
+              db.prepare("DELETE FROM targets").run();
+            } catch {}
+            deleted = 1;
+          } else if (type === "repos") {
+            db.pragma("foreign_keys = OFF");
+            try {
+              db.prepare("DELETE FROM code_fts").run();
+            } catch {}
+            try {
+              db.prepare("DELETE FROM import_graph").run();
+            } catch {}
+            try {
+              db.prepare("DELETE FROM coverage_map").run();
+            } catch {}
+            try {
+              db.prepare("DELETE FROM repo_group_members").run();
+            } catch {}
+            try {
+              db.prepare("DELETE FROM repo_groups").run();
+            } catch {}
+            try {
+              db.prepare("DELETE FROM repos").run();
+            } catch {}
+            try {
+              db.prepare(
+                "DELETE FROM resource_stats WHERE key LIKE 'repo:%' OR key LIKE 'coverage:%'",
+              ).run();
+            } catch {}
+            db.pragma("foreign_keys = ON");
+            const reposDir = join(dataDir(), "repos");
+            if (existsSync(reposDir))
+              rmSync(reposDir, { recursive: true, force: true });
+            deleted = 1;
+          } else if (type === "all") {
+            db.pragma("foreign_keys = OFF");
+            const tables = [
+              "run_artifacts",
+              "ui_map_forms",
+              "ui_map_navigations",
+              "ui_map_elements",
+              "ui_map_pages",
+              "ui_maps",
+              "run_pack_entries",
+              "raw_outputs",
+              "issues",
+              "test_steps",
+              "test_plans",
+              "test_cases",
+              "tech_issues",
+              "analyses",
+              "action_log",
+              "runs",
+              "sessions",
+              "failure_patterns",
+              "rca_results",
+              "a11y_issues",
+              "coverage_map",
+              "visual_diffs",
+              "visual_baselines",
+              "impact_areas",
+              "coverage_gaps",
+              "phase_transitions",
+              "blockers",
+              "reports",
+              "ticket_context_index",
+              "resource_stats",
+              "api_map_chains",
+              "api_map_responses",
+              "api_map_params",
+              "api_map_endpoints",
+              "api_maps",
+              "default_files",
+            ];
+            for (const t of tables) {
+              try {
+                db.prepare(`DELETE FROM ${t}`).run();
+              } catch {}
+            }
+            db.pragma("foreign_keys = ON");
+            for (const dir of ["ticket-context", "evidence", "files"]) {
+              const p = join(dataDir(), dir);
+              if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+            }
+            deleted = 1;
+          } else if (type === "nuke") {
+            db.pragma("foreign_keys = OFF");
+            const tables = db
+              .prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_%' AND name NOT LIKE 'sqlite_%'",
+              )
+              .all() as Array<{ name: string }>;
+            for (const t of tables) {
+              try {
+                db.prepare(`DELETE FROM "${t.name}"`).run();
+              } catch {}
+            }
+            db.pragma("foreign_keys = ON");
+            for (const dir of [
+              "repos",
+              "evidence",
+              "ticket-context",
+              "files",
+            ]) {
+              const p = join(dataDir(), dir);
+              if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+            }
+            deleted = 1;
+          } else {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Unknown cleanup type: " + type }));
+            return;
+          }
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, type, workspace: ws, deleted }));
+        } catch (e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(e) }));
         }
       });

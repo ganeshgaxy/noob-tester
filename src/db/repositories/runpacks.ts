@@ -277,6 +277,11 @@ export function updateEntryResult(
     logs?: string;
     observations?: string;
     issues?: string;
+    device?: string;
+    dimension?: string;
+    tracePath?: string;
+    profilePath?: string;
+    telemetryConfig?: string;
   },
 ): void {
   const db = getDb();
@@ -301,6 +306,26 @@ export function updateEntryResult(
   if (result?.issues !== undefined) {
     sets.push("issues = ?");
     params.push(result.issues);
+  }
+  if (result?.device !== undefined) {
+    sets.push("device = ?");
+    params.push(result.device);
+  }
+  if (result?.dimension !== undefined) {
+    sets.push("dimension = ?");
+    params.push(result.dimension);
+  }
+  if (result?.tracePath !== undefined) {
+    sets.push("trace_path = ?");
+    params.push(result.tracePath);
+  }
+  if (result?.profilePath !== undefined) {
+    sets.push("profile_path = ?");
+    params.push(result.profilePath);
+  }
+  if (result?.telemetryConfig !== undefined) {
+    sets.push("telemetry_config = ?");
+    params.push(result.telemetryConfig);
   }
 
   params.push(entryId);

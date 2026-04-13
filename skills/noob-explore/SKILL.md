@@ -1,11 +1,37 @@
 ---
 name: noob-explore
-description: Execute UI test cases via browser automation. Uses run packs for tracking, UI maps for learning, capture-page for evidence. One test case per invocation.
+description: Execute ONE pre-claimed UI test case via browser automation. Accepts $CLAIM from noob-claim. Uses run packs for tracking, UI maps for learning, capture-page for evidence. Supports telemetry collection (trace, profiler, console logs, errors).
 ---
 
 # UI Test Execution
 
-Execute ONE test case per invocation via browser automation. Invoke repeatedly for all cases.
+Execute **ONE** pre-claimed test case per invocation via browser automation.
+
+Use `noob-claim` first to claim a test case. Pass `$CLAIM` to this skill for execution.
+
+## Telemetry Configuration
+
+Optional inputs (all have defaults — omit to use defaults):
+
+| Input             | Default    | Description                                              |
+| ----------------- | ---------- | -------------------------------------------------------- |
+| `DEVICE`          | `web`      | Browser device type (`web`, `mobile`, `tablet`)          |
+| `DIMENSION`       | `standard` | Viewport dimension preset (`standard`, `wide`, `narrow`) |
+| `ENABLE_TRACE`    | `true`     | Collect Playwright trace for entire test case run        |
+| `ENABLE_PROFILER` | `true`     | Collect CPU profile for entire test case run             |
+| `ENABLE_CONSOLE`  | `true`     | Collect console logs (JSON) per step                     |
+| `ENABLE_ERRORS`   | `true`     | Collect page errors per step                             |
+
+Set these at the top of the script before any other commands:
+
+```bash
+DEVICE="${DEVICE:-web}"
+DIMENSION="${DIMENSION:-standard}"
+ENABLE_TRACE="${ENABLE_TRACE:-true}"
+ENABLE_PROFILER="${ENABLE_PROFILER:-true}"
+ENABLE_CONSOLE="${ENABLE_CONSOLE:-true}"
+ENABLE_ERRORS="${ENABLE_ERRORS:-true}"
+```
 
 ## JSON Output Shapes (jq reference)
 
@@ -20,6 +46,42 @@ noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.status !=
 noob-tester query plan --ticket <TICKET-ID> --json | jq '.plan.id'
 ```
 
+## Prerequisites
+
+Inputs from noob-claim (or noob-pool):
+
+```bash
+# Try to read from claim file passed by orchestrator (noob-pool), or use default
+CLAIM_FILE="${CLAIM_FILE:-/tmp/claim.json}"
+
+# Support claim file path passed in invocation (e.g., "from /tmp/pool-claim-0.json")
+# Extract from environment if available
+if [[ "$INVOCATION" == *"/tmp/pool-claim"* ]]; then
+  CLAIM_FILE=$(echo "$INVOCATION" | grep -oP '/tmp/pool.*\.json')
+fi
+
+if [ ! -f "$CLAIM_FILE" ]; then
+  echo "ERROR: Claim file not found at $CLAIM_FILE"
+  exit 1
+fi
+
+CLAIM=$(cat "$CLAIM_FILE")
+
+ENTRY_ID=$(echo "$CLAIM" | jq -r '.entry.id')
+TC_ID=$(echo "$CLAIM" | jq -r '.entry.tc_id')
+TC_TITLE=$(echo "$CLAIM" | jq -r '.entry.tc.title')
+TC_FORMAT=$(echo "$CLAIM" | jq -r '.entry.tc.format')
+RUNPACK_ID=$(echo "$CLAIM" | jq -r '.entry.runpack_id')
+
+# BDD or Traditional steps (depending on TC format)
+BDD_GIVEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_given // empty')
+BDD_WHEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_when // empty')
+BDD_THEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_then // empty')
+TRAD_STEPS=$(echo "$CLAIM" | jq '.entry.tc.trad_steps // empty')
+```
+
+---
+
 ## 1. Resolve Target URL + Initialize + UI Map
 
 **Before init, resolve the target URL from the secret target name.** Do NOT guess or hardcode URLs.
@@ -33,10 +95,9 @@ if [ -z "$TARGET_URL" ] || [ "$TARGET_URL" = "null" ]; then
   exit 1
 fi
 
-INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "$TARGET_URL" --task "Exploring: <brief>" --labels "explore" --secret-target <target-name> --secret-role <role> --capture screenshot,snapshot,console,har)
+INIT=$(noob-tester init --ticket <TICKET-ID> --target-url "$TARGET_URL" --task "Exploring: $TC_TITLE" --labels "explore" --secret-target <target-name> --secret-role <role> --capture screenshot,snapshot,console,har)
 SESSION_ID=$(echo "$INIT" | jq -r '.sessionId')
 RUN_ID=$(echo "$INIT" | jq -r '.runId')
-RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
 EVIDENCE_DIR=$(echo "$INIT" | jq -r '.evidenceDir')
 STREAM_PORT=$(echo "$INIT" | jq -r '.streamPort')
 
@@ -46,6 +107,18 @@ if [ -n "$STREAM_PORT" ] && [ "$STREAM_PORT" != "null" ]; then
   agent-browser stream enable --port "$STREAM_PORT"
 fi
 
+# ── Telemetry: start trace and profiler for the entire test case run ──────────
+TRACE_PATH=""
+PROFILE_PATH=""
+if [ "$ENABLE_TRACE" = "true" ]; then
+  TRACE_PATH="$EVIDENCE_DIR/trace-${ENTRY_ID}.zip"
+  agent-browser trace start "$TRACE_PATH"
+fi
+if [ "$ENABLE_PROFILER" = "true" ]; then
+  PROFILE_PATH="$EVIDENCE_DIR/profile-${ENTRY_ID}.json"
+  agent-browser profiler start "$PROFILE_PATH"
+fi
+
 # Create UI map so ALL captures get --map
 MAP_ID=$(noob-tester uimap resolve --ticket <TICKET-ID> --target <TARGET_URL> | jq -r '.id // empty')
 if [ -z "$MAP_ID" ]; then
@@ -53,23 +126,9 @@ if [ -z "$MAP_ID" ]; then
 fi
 ```
 
-### Extract Test Case Entry
-
-`$ENTRY` contains: `id`, `tc_title`, `tc_format`, `test_case_id`, `status`.
-
-Extract values:
-
-```bash
-ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
-TC_TITLE=$(echo "$ENTRY" | jq -r '.tc_title')
-TC_FORMAT=$(echo "$ENTRY" | jq -r '.tc_format')
-```
-
 ### Begin Execution
 
 ```bash
-ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
-
 agent-browser open $TARGET_URL
 noob-tester session heartbeat $SESSION_ID --phase 4 --run-id $RUN_ID
 ```
@@ -139,12 +198,9 @@ noob-tester capture-page --run $RUN_ID --url "$(agent-browser get url)" --action
 
 If login fails (URL still on /login, error message visible) → log tech issue, end session, exit. Do NOT guess credentials.
 
-## 3. Extract Test Case Info
+## 3. Test Case Info Ready
 
-```bash
-TC_TITLE=$(echo "$ENTRY" | jq -r '.tc_title')
-TC_FORMAT=$(echo "$ENTRY" | jq -r '.tc_format')
-```
+TC data is already extracted from `$CLAIM` in prerequisites.
 
 ## 4. EVERY Page Load
 
@@ -200,8 +256,29 @@ For each step:
 
 1. **Perform action** — `agent-browser click/fill/navigate`
 2. **Capture page** — `noob-tester capture-page ...` (auto-logs + auto-observes the `--desc`)
-3. **READ the capture output** — the snapshot contains the full accessibility tree. **Analyse it.** Look at what elements are on the page, what's visible, what's missing, what state toggles/fields are in. This is your primary source of truth for the page state.
-4. **Log and observe based on your analysis** — this is NOT optional:
+3. **Collect console logs and errors** (per step) — run immediately after capture:
+
+```bash
+# Collect per-step telemetry (run after each capture-page call)
+STEP_CONSOLE=""
+STEP_ERRORS=""
+if [ "$ENABLE_CONSOLE" = "true" ]; then
+  STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
+fi
+if [ "$ENABLE_ERRORS" = "true" ]; then
+  STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
+fi
+# Log any console errors or page errors found in this step
+if [ -n "$STEP_CONSOLE" ] && [ "$STEP_CONSOLE" != "[]" ]; then
+  noob-tester runpack log $ENTRY_ID --text "Console (step $ACTION_N): $STEP_CONSOLE"
+fi
+if [ -n "$STEP_ERRORS" ] && [ "$STEP_ERRORS" != "[]" ]; then
+  noob-tester runpack log $ENTRY_ID --text "Page errors (step $ACTION_N): $STEP_ERRORS"
+fi
+```
+
+4. **READ the capture output** — the snapshot contains the full accessibility tree. **Analyse it.** Look at what elements are on the page, what's visible, what's missing, what state toggles/fields are in. This is your primary source of truth for the page state.
+5. **Log and observe based on your analysis** — this is NOT optional:
 
 ```bash
 # After EVERY capture, read the snapshot and log what you found:
@@ -319,23 +396,46 @@ noob-tester runpack result $ENTRY_ID --status failed \
 
 ## 7. Record Result
 
+Before recording the result, stop the trace and profiler (they cover the entire run):
+
+```bash
+# ── Telemetry: stop trace and profiler before recording result ────────────────
+if [ "$ENABLE_TRACE" = "true" ] && [ -n "$TRACE_PATH" ]; then
+  agent-browser trace stop "$TRACE_PATH" 2>/dev/null || true
+fi
+if [ "$ENABLE_PROFILER" = "true" ] && [ -n "$PROFILE_PATH" ]; then
+  agent-browser profiler stop "$PROFILE_PATH" 2>/dev/null || true
+fi
+
+# Build telemetry config JSON
+TELEMETRY_CONFIG=$(printf '{"trace":%s,"profiler":%s,"console":%s,"errors":%s,"device":"%s","dimension":"%s"}' \
+  "$ENABLE_TRACE" "$ENABLE_PROFILER" "$ENABLE_CONSOLE" "$ENABLE_ERRORS" "$DEVICE" "$DIMENSION")
+```
+
+Then record the result (include telemetry paths and config):
+
 ```bash
 # Passed
 noob-tester runpack result $ENTRY_ID --status passed \
-  --results '{"summary":"..."}' --observations '["obs1","obs2"]'
+  --results '{"summary":"..."}' --observations '["obs1","obs2"]' \
+  --device "$DEVICE" --dimension "$DIMENSION" \
+  --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
+  --telemetry-config "$TELEMETRY_CONFIG"
 
 # Failed (with root cause)
 noob-tester runpack result $ENTRY_ID --status failed \
   --results '{"error":"...","root_cause":"..."}' \
-  --issues '[{"severity":"high","title":"...","description":"Root cause traced to src/x.ts"}]'
+  --issues '[{"severity":"high","title":"...","description":"Root cause traced to src/x.ts"}]' \
+  --device "$DEVICE" --dimension "$DIMENSION" \
+  --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
+  --telemetry-config "$TELEMETRY_CONFIG"
 ```
 
 **After recording the result, go DIRECTLY to Step 8 (End Session). Do NOT:**
 
-- Call `claim-smart` again — this is ONE test case per invocation
-- Call `runpack populate` — entries are added one at a time by `claim-smart`
-- Call `runpack list` to check remaining tests — the next invocation handles that
-- Retry in the same invocation — start a new invocation using Step 1 Mode B
+- Claim another test case — this is ONE test case per invocation
+- Retry in the same invocation — start a new invocation using noob-claim Mode B
+- The orchestrator (noob-pool or manual invocation) calls noob-claim for the next test case
 
 ## 8. End Session
 
