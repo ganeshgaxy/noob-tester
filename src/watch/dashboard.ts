@@ -748,6 +748,21 @@ evtSource.onmessage = (e) => {
   if (currentPage === "dashboard" && !viewingSession) updateDashboardInPlace();
 };
 
+// ── Helper functions ──
+function parseTestSteps(tc_steps_json) {
+  if (!tc_steps_json) return [];
+  try {
+    const steps = typeof tc_steps_json === 'string' ? JSON.parse(tc_steps_json) : tc_steps_json;
+    return Array.isArray(steps) ? steps : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function getStepByIndex(steps, stepIndex) {
+  return steps[stepIndex] || null;
+}
+
 // ── Lightbox functions ──
 let lbState = { images: [], currentIndex: 0 };
 
@@ -7058,15 +7073,23 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
   if (tab === 'screenshots') {
     if (isBaseline) {
       if (entryScreenshots.length > 0) {
+        const testSteps = parseTestSteps(selEntry.tc_steps_json);
         out += '<div style="display:flex;flex-direction:column;gap:16px">';
         for (const ss of entryScreenshots) {
           const imgSrc = "/api/artifact?path=" + encodeURIComponent(ss.file_path);
-          const stepNum = ss.step_index !== undefined ? ss.step_index : 0;
-          const stepLabel = ss.step_label || \`Step \${stepNum}\`;
+          const stepIndex = ss.step_index !== undefined ? ss.step_index : 0;
+          const step = getStepByIndex(testSteps, stepIndex);
+          const stepNum = stepIndex + 1;
+          const stepLabel = step?.label || step?.description || ss.step_label || \`Step \${stepNum}\`;
+          const stepDesc = step?.description ? \`<div style="font-size:11px;color:var(--dim);margin-top:4px;font-style:italic">\${esc(step.description)}</div>\` : '';
           out += \`<div style="padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
             <div style="margin-bottom:10px">
               <div style="font-size:12px;font-weight:600;color:var(--text)"><i class="ph ph-image" style="margin-right:4px"></i>Step \${stepNum}: \${esc(stepLabel)}</div>
-              <div style="font-size:11px;color:var(--dim);margin-top:2px">Viewport: \${esc(ss.viewport || 'unknown')}</div>
+              \${stepDesc}
+              <div style="font-size:10px;color:var(--dim);margin-top:4px;display:flex;gap:12px">
+                <span><i class="ph ph-monitor" style="margin-right:2px"></i>\${esc(ss.viewport || 'unknown')}</span>
+                \${step?.action ? \`<span><i class="ph ph-cursor-click" style="margin-right:2px"></i>\${esc(step.action)}</span>\` : ''}
+              </div>
             </div>
             <div style="text-align:center;background:var(--bg);padding:8px;border-radius:4px">
               <img src="\${imgSrc}" style="max-width:100%;max-height:400px;border-radius:4px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
@@ -7107,15 +7130,23 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
           </div>\`;
         }
       } else if (entryScreenshots.length > 0) {
+        const testSteps = parseTestSteps(selEntry.tc_steps_json);
         out += '<div style="display:flex;flex-direction:column;gap:16px">';
         for (const ss of entryScreenshots) {
           const imgSrc = "/api/artifact?path=" + encodeURIComponent(ss.file_path);
-          const stepNum = ss.step_index !== undefined ? ss.step_index : 0;
-          const stepLabel = ss.step_label || \`Step \${stepNum}\`;
+          const stepIndex = ss.step_index !== undefined ? ss.step_index : 0;
+          const step = getStepByIndex(testSteps, stepIndex);
+          const stepNum = stepIndex + 1;
+          const stepLabel = step?.label || step?.description || ss.step_label || \`Step \${stepNum}\`;
+          const stepDesc = step?.description ? \`<div style="font-size:11px;color:var(--dim);margin-top:4px;font-style:italic">\${esc(step.description)}</div>\` : '';
           out += \`<div style="padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
             <div style="margin-bottom:10px">
               <div style="font-size:12px;font-weight:600;color:var(--text)"><i class="ph ph-image" style="margin-right:4px"></i>Step \${stepNum}: \${esc(stepLabel)}</div>
-              <div style="font-size:11px;color:var(--dim);margin-top:2px">Viewport: \${esc(ss.viewport || 'unknown')}</div>
+              \${stepDesc}
+              <div style="font-size:10px;color:var(--dim);margin-top:4px;display:flex;gap:12px">
+                <span><i class="ph ph-monitor" style="margin-right:2px"></i>\${esc(ss.viewport || 'unknown')}</span>
+                \${step?.action ? \`<span><i class="ph ph-cursor-click" style="margin-right:2px"></i>\${esc(step.action)}</span>\` : ''}
+              </div>
             </div>
             <div style="text-align:center;background:var(--bg);padding:8px;border-radius:4px">
               <img src="\${imgSrc}" style="max-width:100%;max-height:400px;border-radius:4px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" />
@@ -7128,25 +7159,27 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
       }
     }
   } else if (tab === 'steps') {
-    out += '<div style="display:flex;flex-direction:column;gap:12px">';
+    out += '<div style="display:flex;flex-direction:column;gap:16px">';
 
-    // Metadata header
-    out += '<div style="padding:12px;background:var(--surface);border-radius:6px;border-left:3px solid var(--accent)">';
+    // Test case metadata header
+    out += '<div style="padding:14px;background:linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1));border:1px solid var(--border);border-radius:8px">';
+    out += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
     if (result.tc) {
-      out += \`<div style="margin-bottom:8px"><span style="font-weight:600;color:var(--text)">Test Case:</span> \${esc(result.tc)}</div>\`;
+      out += \`<div><span style="font-weight:700;color:var(--text);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Test Case</span><div style="font-size:12px;color:var(--text);margin-top:2px;font-weight:500">\${esc(result.tc)}</div></div>\`;
     }
     if (result.type) {
-      out += \`<div style="margin-bottom:8px"><span style="font-weight:600;color:var(--text)">Type:</span> <span style="color:var(--dim)">\${esc(result.type)}</span></div>\`;
+      out += \`<div><span style="font-weight:700;color:var(--text);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Type</span><div style="font-size:12px;color:var(--text);margin-top:2px;font-weight:500">\${esc(result.type)}</div></div>\`;
     }
     if (result.format) {
-      out += \`<div style="margin-bottom:8px"><span style="font-weight:600;color:var(--text)">Format:</span> <span style="color:var(--dim)">\${esc(result.format)}</span></div>\`;
+      out += \`<div><span style="font-weight:700;color:var(--text);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Format</span><div style="font-size:12px;color:var(--text);margin-top:2px;font-weight:500">\${esc(result.format)}</div></div>\`;
     }
     if (result.success !== undefined) {
-      const icon = result.success ? '✓' : '✗';
-      const color = result.success ? 'var(--green)' : 'var(--red)';
-      out += \`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:\${color};font-weight:600">\${icon} \${result.success ? 'Passed' : 'Failed'}</span></div>\`;
+      const statusColor = result.success ? 'var(--green)' : 'var(--red)';
+      const statusText = result.success ? 'PASSED' : 'FAILED';
+      const statusIcon = result.success ? '<i class="ph ph-check-circle" style="margin-right:4px"></i>' : '<i class="ph ph-x-circle" style="margin-right:4px"></i>';
+      out += \`<div style="display:flex;align-items:center"><span style="font-weight:700;color:var(--text);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:\${statusColor}">\${statusIcon}\${statusText}</span></div>\`;
     }
-    out += '</div>';
+    out += '</div></div>';
 
     // Test steps
     let stepsJson = [];
@@ -7158,23 +7191,57 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
 
     if (stepsJson && Array.isArray(stepsJson) && stepsJson.length > 0) {
       out += '<div>';
-      out += '<div style="font-weight:600;color:var(--text);margin-bottom:10px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Execution Steps</div>';
+      out += '<div style="font-weight:700;color:var(--text);margin-bottom:12px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Execution Steps</div>';
       for (let i = 0; i < stepsJson.length; i++) {
         const step = stepsJson[i];
-        const action = step.action || 'action';
-        const label = step.label || step.description || \`Step \${i + 1}\`;
-        out += \`<div style="padding:10px;background:var(--surface);border-radius:4px;margin-bottom:8px;border-left:3px solid var(--accent-dim)">\`;
-        out += \`<div style="font-weight:500;color:var(--text);font-size:12px;margin-bottom:4px">\${i + 1}. \${esc(label)}</div>\`;
-        out += \`<div style="font-size:11px;color:var(--dim);font-family:var(--font-mono)">\${esc(action)}\`;
-        if (step.description && step.description !== label) {
-          out += \` — \${esc(step.description)}\`;
+        const stepNum = i + 1;
+        const action = step.action || 'unknown';
+        const label = step.label || step.description || '';
+        const description = step.description || '';
+        const hasDiff = step.diffType === 'screenshot' || step.diffType === 'snapshot';
+
+        const actionIcons = {
+          'login': '<i class="ph ph-sign-in"></i>',
+          'navigate': '<i class="ph ph-map-pin"></i>',
+          'click': '<i class="ph ph-cursor-click"></i>',
+          'fill': '<i class="ph ph-pencil"></i>',
+          'type': '<i class="ph ph-keyboard"></i>',
+          'screenshot': '<i class="ph ph-camera"></i>',
+          'snapshot': '<i class="ph ph-frame"></i>'
+        };
+        const actionIcon = actionIcons[action] || '<i class="ph ph-gear"></i>';
+        const stepColor = hasDiff ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.08)';
+        const borderColor = hasDiff ? 'rgba(59,130,246,0.3)' : 'var(--border)';
+
+        out += \`<div style="padding:14px;border:1px solid \${borderColor};background:\${stepColor};border-radius:8px;margin-bottom:10px">\`;
+
+        // Step header
+        out += \`<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">\`;
+        out += \`<div style="min-width:32px;width:32px;height:32px;border-radius:50%;background:\${hasDiff ? 'var(--accent)' : 'var(--border)'};color:\${hasDiff ? 'var(--bg)' : 'var(--text)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">\${stepNum}</div>\`;
+        out += \`<div style="flex:1">\`;
+        out += \`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">\`;
+        out += \`<span style="color:var(--text);font-weight:600;font-size:13px">\${esc(label || action)}</span>\`;
+        out += \`<span style="color:var(--dim);font-size:10px;background:var(--surface);padding:2px 6px;border-radius:3px;display:inline-flex;align-items:center;gap:3px">\${actionIcon} \${esc(action)}</span>\`;
+        if (hasDiff) out += \`<span style="color:var(--accent);font-size:9px;background:rgba(59,130,246,0.2);padding:2px 6px;border-radius:3px;font-weight:600">CAPTURES</span>\`;
+        out += \`</div>\`;
+        if (description) {
+          out += \`<div style="font-size:11px;color:var(--dim);line-height:1.4;margin-top:4px">\${esc(description)}</div>\`;
         }
-        out += '</div>';
-        out += '</div>';
+        out += \`</div></div>\`;
+
+        // Step details
+        if (step.waitMs || step.timeout) {
+          out += \`<div style="font-size:10px;color:var(--dim);padding:8px;background:var(--bg);border-radius:4px;margin-bottom:8px;display:flex;gap:12px">\`;
+          if (step.waitMs) out += \`<span><i class="ph ph-timer" style="margin-right:2px"></i>Wait \${step.waitMs}ms</span>\`;
+          if (step.timeout) out += \`<span><i class="ph ph-hourglass" style="margin-right:2px"></i>Timeout \${step.timeout}ms</span>\`;
+          out += \`</div>\`;
+        }
+
+        out += \`</div>\`;
       }
       out += '</div>';
     } else {
-      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No step details available</div>';
+      out += '<div style="color:var(--dim);font-size:12px;padding:24px;text-align:center;background:var(--surface);border:1px dashed var(--border);border-radius:8px"><i class="ph ph-info" style="font-size:20px;margin-bottom:8px;display:block;opacity:0.5"></i>No step details available</div>';
     }
 
     out += '</div>';
