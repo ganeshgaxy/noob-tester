@@ -216,6 +216,11 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
     S_URL=$(echo "$STEP"         | jq -r '.url // ""')
     S_SELECTOR=$(echo "$STEP"    | jq -r '.selector // ""')
     S_VALUE=$(echo "$STEP"       | jq -r '.value // ""')
+    # Extract visual properties from step (fallback when visual_steps_json is empty)
+    S_DIFF_TYPE=$(echo "$STEP"   | jq -r '.diffType // ""')
+    S_FULL_PAGE=$(echo "$STEP"   | jq -r '.fullPage // "false"')
+    S_SCREENSHOT_SEL=$(echo "$STEP" | jq -r '.screenshotSelector // ""')
+    S_THRESHOLD=$(echo "$STEP"   | jq -r '.threshold // ""')
 
     echo "Step $i [$S_ACTION] $S_LABEL: $S_DESC"
 
@@ -318,7 +323,8 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
     #   noob-tester runpack observe $ENTRY_ID --text "Step $i OK: <what you confirmed in snapshot>"
 
     # ── Take visual screenshot if this step has visual config ───────────────
-    CHECK_VISUAL_STEP $STEP_INDEX "$S_LABEL"
+    # Pass step's visual properties for fallback when visual_steps_json is empty
+    CHECK_VISUAL_STEP $STEP_INDEX "$S_LABEL" "$S_DIFF_TYPE" "$S_FULL_PAGE" "$S_SCREENSHOT_SEL" "$S_THRESHOLD"
 
     STEP_INDEX=$((STEP_INDEX + 1))
   done
@@ -433,7 +439,8 @@ if [ -n "$BDD_WHEN" ] && [ "$BDD_WHEN" != "null" ]; then
     # Step Validation — confirm action had expected effect
     # If page doesn't match: STEP_FAILED=1
 
-    CHECK_VISUAL_STEP $STEP_INDEX "when-$i"
+    # BDD format doesn't include visual properties in steps, so pass empty strings
+    CHECK_VISUAL_STEP $STEP_INDEX "when-$i" "" "" "" ""
     STEP_INDEX=$((STEP_INDEX + 1))
   done
 fi
@@ -472,7 +479,8 @@ if [ -n "$BDD_THEN" ] && [ "$BDD_THEN" != "null" ]; then
       fi
     fi
 
-    CHECK_VISUAL_STEP $STEP_INDEX "then-$i"
+    # BDD format doesn't include visual properties in steps, so pass empty strings
+    CHECK_VISUAL_STEP $STEP_INDEX "then-$i" "" "" "" ""
     STEP_INDEX=$((STEP_INDEX + 1))
   done
 fi
@@ -542,7 +550,8 @@ if [ -n "$TRAD_STEPS" ] && [ "$TRAD_STEPS" != "null" ]; then
       fi
     fi
 
-    CHECK_VISUAL_STEP $STEP_INDEX "step-$i"
+    # Traditional format doesn't include visual properties in steps, so pass empty strings
+    CHECK_VISUAL_STEP $STEP_INDEX "step-$i" "" "" "" ""
     STEP_INDEX=$((STEP_INDEX + 1))
   done
 fi
@@ -558,17 +567,34 @@ Helper function — called for each step that has visual config:
 CHECK_VISUAL_STEP() {
   local STEP_IDX=$1
   local STEP_LABEL=$2
+  local STEP_DIFF_TYPE=$3      # Fallback: diffType from step itself
+  local STEP_FULL_PAGE=$4      # Fallback: fullPage from step itself
+  local STEP_SCREENSHOT_SEL=$5 # Fallback: screenshotSelector from step itself
+  local STEP_THRESHOLD_VAL=$6  # Fallback: threshold from step itself
 
-  # Check if this step has visual config
+  # Priority 1: Check if this step has explicit visual config in visual_steps_json
   VISUAL_CONFIG=$(echo "$VISUAL_STEPS" | jq ".[] | select(.stepIndex == $STEP_IDX)" 2>/dev/null)
+  
+  # Priority 2: Fall back to checking the step's own diffType field
   if [ -z "$VISUAL_CONFIG" ] || [ "$VISUAL_CONFIG" = "null" ]; then
-    return  # No visual capture for this step
+    # If step doesn't have diffType, don't capture screenshot
+    if [ -z "$STEP_DIFF_TYPE" ] || [ "$STEP_DIFF_TYPE" = "null" ]; then
+      return  # No visual capture for this step
+    fi
+    # Use step's own visual properties
+    DIFF_TYPE="$STEP_DIFF_TYPE"
+    FULL_PAGE="$STEP_FULL_PAGE"
+    SCREENSHOT_SELECTOR="$STEP_SCREENSHOT_SEL"
+    STEP_THRESHOLD="$STEP_THRESHOLD_VAL"
+  else
+    # Use explicit visual_steps_json config
+    DIFF_TYPE=$(echo "$VISUAL_CONFIG"           | jq -r '.diffType')
+    FULL_PAGE=$(echo "$VISUAL_CONFIG"           | jq -r '.fullPage')
+    SCREENSHOT_SELECTOR=$(echo "$VISUAL_CONFIG" | jq -r '.screenshotSelector // empty')
+    STEP_THRESHOLD=$(echo "$VISUAL_CONFIG"      | jq -r '.threshold // empty')
   fi
-
-  DIFF_TYPE=$(echo "$VISUAL_CONFIG"           | jq -r '.diffType')
-  FULL_PAGE=$(echo "$VISUAL_CONFIG"           | jq -r '.fullPage')
-  SCREENSHOT_SELECTOR=$(echo "$VISUAL_CONFIG" | jq -r '.screenshotSelector // empty')
-  STEP_THRESHOLD=$(echo "$VISUAL_CONFIG"      | jq -r '.threshold // empty')
+  
+  # Use default threshold if not specified
   if [ -z "$STEP_THRESHOLD" ] || [ "$STEP_THRESHOLD" = "null" ]; then
     STEP_THRESHOLD="$THRESHOLD"
   fi
