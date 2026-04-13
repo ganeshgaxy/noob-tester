@@ -6231,6 +6231,175 @@ function swarmCloseModal() {
 function swarmModalEsc(e) {
   if (e.key === "Escape") swarmCloseModal();
 }
+
+// ── Visual Run UI ────────────────────────────────────────────────────────────
+
+window.vrActiveTab = {};
+window.vrTabData = {};
+
+function switchVrTab(entryId, tabName) {
+  window.vrActiveTab[entryId] = tabName;
+  const data = window.vrTabData[entryId];
+  if (!data) return;
+  const html = renderVrTab(tabName, data.selEntry, data.entryComps, data.entryScreenshots, data.isBaseline);
+  document.getElementById(\`vr-entry-\${entryId}-content\`).innerHTML = html;
+
+  const tabs = document.querySelectorAll(\`[data-vr-entry="\${entryId}"].tab\`);
+  tabs.forEach(t => {
+    if (t.getAttribute('data-tab') === tabName) {
+      t.classList.add('active');
+    } else {
+      t.classList.remove('active');
+    }
+  });
+}
+
+function renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline) {
+  let out = "";
+  let result = {};
+  try {
+    result = selEntry.result_json ? JSON.parse(selEntry.result_json) : {};
+  } catch (e) {
+    result = {};
+  }
+
+  const tabs = [];
+  if (entryComps.length > 0 || entryScreenshots.length > 0) tabs.push({ id: 'screenshots', label: 'Screenshots' });
+  if (result.tc || result.type) tabs.push({ id: 'steps', label: 'Steps' });
+  if (result.logs || result.observations) tabs.push({ id: 'logs', label: 'Logs' });
+  if (result.console_errors || result.console_logs) tabs.push({ id: 'console', label: 'Console' });
+  if (selEntry.trace_path) tabs.push({ id: 'trace', label: 'Trace' });
+  if (selEntry.profile_path) tabs.push({ id: 'profiler', label: 'Profiler' });
+
+  if (tabs.length === 0) {
+    return '<div style="color:var(--dim);font-size:12px">No data captured for this run</div>';
+  }
+
+  window.vrTabData[selEntry.id] = { selEntry, entryComps, entryScreenshots, isBaseline };
+  const activeTab = window.vrActiveTab[selEntry.id] || tabs[0].id;
+
+  out += '<div class="tabs">';
+  for (const tab of tabs) {
+    const isActive = tab.id === activeTab;
+    out += \`<div class="tab \${isActive ? 'active' : ''}" data-vr-entry="\${selEntry.id}" data-tab="\${tab.id}" onclick="switchVrTab('\${selEntry.id}','\${tab.id}')" style="cursor:pointer">\${tab.label}</div>\`;
+  }
+  out += '</div>';
+
+  out += \`<div id="vr-entry-\${selEntry.id}-content">\`;
+  out += renderVrTab(activeTab, selEntry, entryComps, entryScreenshots, isBaseline);
+  out += '</div>';
+
+  return out;
+}
+
+function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
+  let out = "";
+  let result = {};
+  try {
+    result = selEntry.result_json ? JSON.parse(selEntry.result_json) : {};
+  } catch (e) {
+    result = {};
+  }
+
+  if (tab === 'screenshots') {
+    if (isBaseline) {
+      if (entryScreenshots.length > 0) {
+        out += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
+        for (const ss of entryScreenshots) {
+          const imgSrc = "/api/artifact?path=" + encodeURIComponent(ss.file_path);
+          out += \`<div style="text-align:center"><div style="font-size:11px;color:var(--dim);margin-bottom:6px;font-weight:500">\${esc(ss.step_label || "Step " + ss.step_index)}</div><img src="\${imgSrc}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${imgSrc.replace(/'/g, "\\\\'")}'], 0)" /></div>\`;
+        }
+        out += '</div>';
+      } else {
+        out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No screenshots</div>';
+      }
+    } else {
+      if (entryComps.length > 0) {
+        for (const comp of entryComps) {
+          const baselineSrc = "/api/artifact?path=" + encodeURIComponent(comp.baseline_path);
+          const currentSrc = "/api/artifact?path=" + encodeURIComponent(comp.current_path);
+          const diffSrc = comp.diff_path ? "/api/artifact?path=" + encodeURIComponent(comp.diff_path) : null;
+          const passedComp = !!comp.passed;
+          const score = comp.diff_score != null ? (comp.diff_score * 100).toFixed(2) + "%" : "-";
+          out += \`<div style="margin-bottom:14px;padding:12px;border:1px solid \${passedComp ? "var(--green)" : "var(--red)"};border-radius:6px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:12px;font-weight:600">\${esc(comp.step_label || "Step " + comp.step_index)}</span><span style="font-size:10px;padding:2px 8px;border-radius:10px;color:#fff;background:\${passedComp ? "var(--green)" : "var(--red)"}">\${passedComp ? "PASS" : "FAIL"} · \${score}</span></div><div style="display:flex;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:160px;text-align:center"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Baseline</div><img src="\${baselineSrc}" style="max-width:100%;max-height:260px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${baselineSrc.replace(/'/g, "\\\\'")}'], 0)" /></div><div style="flex:1;min-width:160px;text-align:center"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Current</div><img src="\${currentSrc}" style="max-width:100%;max-height:260px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${currentSrc.replace(/'/g, "\\\\'")}'], 0)" /></div>\${diffSrc ? \`<div style="flex:1;min-width:160px;text-align:center"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Diff</div><img src="\${diffSrc}" style="max-width:100%;max-height:260px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="openLightbox(['\${diffSrc.replace(/'/g, "\\\\'")}'], 0)" /></div>\` : ""}</div></div>\`;
+        }
+      } else {
+        out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No comparisons</div>';
+      }
+    }
+  } else if (tab === 'steps') {
+    out += '<div style="display:flex;flex-direction:column;gap:12px">';
+    out += '<div style="padding:12px;background:var(--surface);border-radius:6px;border-left:3px solid var(--accent)">';
+    if (result.tc) out += \`<div style="margin-bottom:8px"><span style="font-weight:600">Test:</span> \${esc(result.tc)}</div>\`;
+    if (result.type) out += \`<div style="margin-bottom:8px"><span style="font-weight:600">Type:</span> \${esc(result.type)}</div>\`;
+    out += '</div>';
+
+    let stepsJson = [];
+    if (selEntry.tc_steps_json) {
+      try {
+        stepsJson = JSON.parse(typeof selEntry.tc_steps_json === 'string' ? selEntry.tc_steps_json : JSON.stringify(selEntry.tc_steps_json));
+      } catch (e) {}
+    }
+
+    if (stepsJson && stepsJson.length > 0) {
+      for (let i = 0; i < stepsJson.length; i++) {
+        const step = stepsJson[i];
+        const label = step.label || step.description || \`Step \${i + 1}\`;
+        const stepConsole = step.console_logs || [];
+        const stepErrors = step.console_errors || [];
+
+        out += \`<div style="padding:10px;background:var(--surface);border-radius:4px;border-left:3px solid var(--accent-dim)">\`;
+        out += \`<div style="font-weight:500;color:var(--text);font-size:12px;margin-bottom:4px">\${i + 1}. \${esc(label)}</div>\`;
+        if (step.description) out += \`<div style="font-size:11px;color:var(--dim);margin-bottom:8px">\${esc(step.description)}</div>\`;
+
+        if (stepErrors.length > 0) {
+          out += '<div style="margin-top:8px;padding:8px;background:rgba(239,68,68,0.08);border-left:2px solid var(--red);border-radius:3px">';
+          out += \`<div style="font-size:10px;font-weight:600;color:var(--red);margin-bottom:4px">Errors (\${stepErrors.length})</div>\`;
+          for (const err of stepErrors) {
+            const e = typeof err === 'string' ? err : JSON.stringify(err);
+            out += \`<div style="font-size:10px;color:var(--red);font-family:var(--font-mono);line-height:1.3">\${esc(e.substring(0, 100))}\${e.length > 100 ? '...' : ''}</div>\`;
+          }
+          out += '</div>';
+        }
+
+        if (stepConsole.length > 0) {
+          out += '<div style="margin-top:8px;padding:8px;background:var(--border);border-radius:3px">';
+          out += \`<div style="font-size:10px;font-weight:600;margin-bottom:4px">Console (\${stepConsole.length})</div>\`;
+          for (const log of stepConsole) {
+            const l = typeof log === 'string' ? log : JSON.stringify(log);
+            out += \`<div style="font-size:10px;color:var(--dim);font-family:var(--font-mono);line-height:1.3">\${esc(l.substring(0, 100))}\${l.length > 100 ? '...' : ''}</div>\`;
+          }
+          out += '</div>';
+        }
+
+        out += '</div>';
+      }
+    } else {
+      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No steps</div>';
+    }
+    out += '</div>';
+  } else if (tab === 'trace') {
+    if (selEntry.trace_path) {
+      const fileName = selEntry.trace_path.split('/').pop();
+      const downloadUrl = "/api/artifact?path=" + encodeURIComponent(selEntry.trace_path);
+      out += \`<div style="padding:12px;background:var(--surface);border-radius:6px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><i class="ph ph-file-zip" style="font-size:18px;color:var(--accent)"></i><div><div style="font-weight:600">\${esc(fileName)}</div><div style="font-size:11px;color:var(--dim);margin-top:2px">Playwright trace</div></div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.open('https://trace.playwright.dev/', '_blank')" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600"><i class="ph ph-play-circle" style="font-size:14px"></i>View in Viewer</button><a href="\${downloadUrl}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--border);color:var(--text);border-radius:4px;text-decoration:none;font-size:11px;font-weight:600" download><i class="ph ph-download" style="font-size:14px"></i>Download</a></div><div style="font-size:10px;color:var(--dim);margin-top:8px">Tip: Click "View in Viewer" then drag-drop the downloaded file</div></div>\`;
+    } else {
+      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No trace</div>';
+    }
+  } else if (tab === 'profiler') {
+    if (selEntry.profile_path) {
+      const fileName = selEntry.profile_path.split('/').pop();
+      const downloadUrl = "/api/artifact?path=" + encodeURIComponent(selEntry.profile_path);
+      out += \`<div style="padding:12px;background:var(--surface);border-radius:6px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><i class="ph ph-chart-line" style="font-size:18px;color:var(--accent)"></i><div><div style="font-weight:600">\${esc(fileName)}</div><div style="font-size:11px;color:var(--dim);margin-top:2px">Chrome DevTools profile</div></div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.open('https://ui.perfetto.dev/', '_blank')" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600"><i class="ph ph-play-circle" style="font-size:14px"></i>View in Perfetto</button><a href="\${downloadUrl}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--border);color:var(--text);border-radius:4px;text-decoration:none;font-size:11px;font-weight:600" download><i class="ph ph-download" style="font-size:14px"></i>Download</a></div><div style="font-size:10px;color:var(--dim);margin-top:8px">Tip: Click "View in Perfetto" then drag-drop the downloaded file</div></div>\`;
+    } else {
+      out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">No profile</div>';
+    }
+  } else if (tab === 'logs' || tab === 'console') {
+    out += '<div style="color:var(--dim);font-size:12px;padding:20px;text-align:center">Coming soon</div>';
+  }
+
+  return out;
+}
 </script>
 </body>
 </html>`;
