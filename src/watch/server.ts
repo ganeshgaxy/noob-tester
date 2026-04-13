@@ -622,6 +622,54 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
+    if (url.pathname === "/api/visual-runs/by-ticket" && req.method === "GET") {
+      const ticket = url.searchParams.get("ticket");
+      if (!ticket) {
+        res.writeHead(400);
+        res.end('{"error":"ticket required"}');
+        return;
+      }
+      const db = getDb();
+      const runs = db
+        .prepare(
+          `SELECT vr.id, vr.ticket_id, vr.mode, vr.created_at,
+                  COUNT(vr_entry.id) as entry_count,
+                  SUM(CASE WHEN vr_entry.status = 'passed' THEN 1 ELSE 0 END) as passed_count,
+                  SUM(CASE WHEN vr_entry.status = 'failed' THEN 1 ELSE 0 END) as failed_count
+           FROM visual_runs vr
+           LEFT JOIN visual_run_entries vr_entry ON vr.id = vr_entry.visual_run_id
+           WHERE vr.ticket_id = ?
+           GROUP BY vr.id
+           ORDER BY vr.created_at DESC`,
+        )
+        .all(ticket);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(runs));
+      return;
+    }
+
+    if (url.pathname === "/api/visual-runs/entries" && req.method === "GET") {
+      const runId = url.searchParams.get("run");
+      if (!runId) {
+        res.writeHead(400);
+        res.end('{"error":"run required"}');
+        return;
+      }
+      const db = getDb();
+      const entries = db
+        .prepare(
+          `SELECT id, visual_run_id, visual_tc_id, status, result_json, device, dimension,
+                  trace_path, profile_path, created_at, completed_at
+           FROM visual_run_entries
+           WHERE visual_run_id = ?
+           ORDER BY created_at ASC`,
+        )
+        .all(runId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(entries));
+      return;
+    }
+
     if (url.pathname === "/api/issues/delete" && req.method === "DELETE") {
       const issueId = url.searchParams.get("id");
       if (!issueId) {

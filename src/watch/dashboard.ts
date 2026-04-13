@@ -764,15 +764,36 @@ async function renderDashboardTicketDetail() {
   }
   html += '</div>';
 
+  // Fetch visual runs
+  let visualRuns = [];
+  if (dashSelectedTicket !== "__none__") {
+    try {
+      visualRuns = await fetchJson("/api/visual-runs/by-ticket?ticket=" + encodeURIComponent(dashSelectedTicket));
+    } catch {}
+  }
+
   // Split view: sessions left, issues right
   html += '<div class="split-view">';
 
   // Left — sessions
   html += '<div class="split-left">';
-  if (sessions.length === 0) {
-    html += '<div class="empty">No sessions</div>';
+  if (sessions.length === 0 && visualRuns.length === 0) {
+    html += '<div class="empty">No sessions or visual runs</div>';
   } else {
-    for (const s of sessions) html += sessionCard(s);
+    if (sessions.length > 0) {
+      html += '<div style="margin-bottom:16px"><div style="font-weight:600;margin-bottom:8px;font-size:12px;text-transform:uppercase;color:var(--dim)">Test Sessions</div>';
+      for (const s of sessions) html += sessionCard(s);
+      html += '</div>';
+    }
+    if (visualRuns.length > 0) {
+      html += '<div><div style="font-weight:600;margin-bottom:8px;font-size:12px;text-transform:uppercase;color:var(--dim)">Visual Runs</div>';
+      for (const vr of visualRuns) {
+        const date = new Date(vr.created_at).toLocaleDateString();
+        const time = new Date(vr.created_at).toLocaleTimeString();
+        html += \`<div class="panel" style="margin-bottom:8px;padding:10px;cursor:pointer" data-vr-id="\${vr.id}"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:600;font-size:13px">\${esc(vr.mode)}</div><div style="font-size:11px;color:var(--dim)">\${date} \${time}</div></div><div style="display:flex;gap:8px;font-size:11px"><span style="padding:2px 6px;background:var(--green);color:white;border-radius:3px">\${vr.passed_count || 0}</span><span style="padding:2px 6px;background:var(--red);color:white;border-radius:3px">\${vr.failed_count || 0}</span></div></div></div>\`;
+      }
+      html += '</div>';
+    }
   }
   html += '</div>';
 
@@ -793,6 +814,15 @@ async function renderDashboardTicketDetail() {
     el.addEventListener("click", () => {
       viewingSession = el.dataset.id;
       renderSessionDetail(viewingSession);
+    });
+  });
+
+  // Bind visual run clicks
+  document.querySelectorAll("[data-vr-id]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const vrId = el.dataset.vrId;
+      const entries = await fetchJson("/api/visual-runs/entries?run=" + encodeURIComponent(vrId));
+      renderVisualRunDetail(vrId, entries);
     });
   });
 }
@@ -6236,6 +6266,37 @@ function swarmModalEsc(e) {
 
 window.vrActiveTab = {};
 window.vrTabData = {};
+
+function renderVisualRunDetail(vrId, entries) {
+  let html = \`<div class="breadcrumb" style="margin-bottom:16px">
+    <span class="breadcrumb-item" onclick="dashSelectedTicket=dashSelectedTicket;renderDashboard()" style="cursor:pointer">Dashboard</span>
+    <span class="breadcrumb-sep">|</span>
+    <span class="breadcrumb-item" onclick="renderDashboardTicketDetail()" style="cursor:pointer">\${esc(dashSelectedTicket)}</span>
+    <span class="breadcrumb-sep">|</span>
+    <span class="breadcrumb-item current">Visual Run Detail</span>
+  </div>\`;
+
+  if (!entries || entries.length === 0) {
+    html += '<div class="empty">No entries in this visual run</div>';
+  } else {
+    for (const entry of entries) {
+      let entryComps = [];
+      let entryScreenshots = [];
+      html += '<div class="panel" style="margin-bottom:16px">';
+      html += \`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600;font-size:13px">\${esc(entry.visual_tc_id)}</div>
+          <div style="font-size:11px;color:var(--dim)">\${entry.device} · \${entry.dimension}</div>
+        </div>
+        <div style="padding:4px 8px;background:\${entry.status === 'passed' ? 'var(--green)' : 'var(--red)'};color:white;border-radius:3px;font-size:11px;font-weight:600">\${esc(entry.status)}</div>
+      </div>\`;
+      html += renderVrEntryContent(entry, entryComps, entryScreenshots, false);
+      html += '</div>';
+    }
+  }
+
+  setPage(html);
+}
 
 function switchVrTab(entryId, tabName) {
   window.vrActiveTab[entryId] = tabName;
