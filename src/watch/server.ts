@@ -17,7 +17,7 @@ import {
 } from "fs";
 import { extname, resolve as resolvePath, join } from "path";
 import { homedir } from "os";
-import { getDb, dataDir } from "../db/client.js";
+import { getDb, dataDir, listWorkspaces, getActiveWorkspace, setActiveWorkspace } from "../db/client.js";
 import { getDashboardHtml } from "./dashboard.js";
 import { getDocsHtml } from "./docs.js";
 import {
