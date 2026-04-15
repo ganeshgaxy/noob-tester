@@ -2776,9 +2776,35 @@ async function renderPlansPage() {
   const plan = detail.plan;
   const steps = detail.steps || [];
 
-  const blockers = plan.blockers ? (() => { try { return JSON.parse(plan.blockers); } catch { return []; } })() : [];
-  const gaps = plan.coverage_gaps ? (() => { try { return JSON.parse(plan.coverage_gaps); } catch { return []; } })() : [];
-  const mrRefs = plan.mr_refs ? (() => { try { return JSON.parse(plan.mr_refs); } catch { return []; } })() : [];
+  const blockers = (() => {
+    if (!plan.blockers) return [];
+    try {
+      const parsed = JSON.parse(plan.blockers);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const gaps = (() => {
+    if (!plan.coverage_gaps) return [];
+    try {
+      const parsed = JSON.parse(plan.coverage_gaps);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const mrRefs = (() => {
+    if (!plan.mr_refs) return [];
+    try {
+      const parsed = JSON.parse(plan.mr_refs);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
   const linkedAnalyses = detail.linkedAnalyses || [];
   const normalizedGaps = detail.coverageGaps || [];
   const normalizedBlockers = detail.blockers || [];
