@@ -1,11 +1,11 @@
 ---
 name: noob-claim
-description: Claim test cases from run packs. Supports claiming next unclaimed test, claiming by name (with validation), and retrying specific tests.
+description: Claim the next test case from a run pack. Supports creating a new run pack (first invocation) or resuming an existing one. Returns $CLAIM for noob-explore to execute.
 ---
 
 # Test Case Claiming
 
-Claim test cases from a run pack for execution. Handles three modes: claim next, claim by name, and retry.
+Claim one test case entry from a run pack. Pass `$CLAIM` to `noob-explore` for execution.
 
 ## Output
 
@@ -13,236 +13,255 @@ Returns `$CLAIM` JSON with the claimed entry and its full test case data:
 
 ```json
 {
-  "claimed": true,
-  "entry": {
-    "id": "<entry-id>",
-    "runpack_id": "<runpack-id>",
-    "tc_id": "<tc-id>",
-    "status": "running",
-    "tc": {
-      "id": "<tc-id>",
-      "title": "Test case title",
-      "format": "bdd",
-      "trad_steps": "[...]",
-      "bdd_given": "[...]",
-      "bdd_when": "[...]",
-      "bdd_then": "[...]"
+    "claimed": true,
+    "entry": {
+        "id": "<entry-id>",
+        "runpack_id": "<runpack-id>",
+        "tc_id": "<tc-id>",
+        "status": "running",
+        "tc": {
+            "id": "<tc-id>",
+            "title": "Test case title",
+            "format": "bdd",
+            "trad_steps": "[...]",
+            "bdd_given": "[...]",
+            "bdd_when": "[...]",
+            "bdd_then": "[...]"
+        }
     }
-  }
 }
 ```
 
 When `"claimed": false`, all entries in the run pack are done — no more test cases to claim.
 
-Pass `$CLAIM` to noob-explore skill for test execution.
-
 ## Prerequisites
 
 - Ticket ID (`TICKET-ID`)
-- Session ID (`SESSION_ID`) — **auto-created if not provided**
-- Run pack ID (`RUNPACK_ID`) — **auto-created if not provided**
+- `RUNPACK_ID` — **auto-created on first invocation**, reuse latest on subsequent ones
 
-If RUNPACK_ID doesn't exist, create it first:
+---
+
+## Mode A — First invocation (no RUNPACK_ID yet)
+
+Create the run pack, populate all test case entries as pending, then claim the first one.
+
 ```bash
-INIT=$(noob-tester init --ticket <TICKET-ID> --task "Claim test case" --labels "claim")
-SESSION_ID=$(echo "$INIT" | jq -r '.sessionId')
-RUN_ID=$(echo "$INIT" | jq -r '.runId')
-RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
+# Get the latest run pack for this ticket (if exists)
+LATEST_PACK=$(noob-tester runpack list --ticket <TICKET-ID> --json | jq -r '.[0].run_pack_id // empty')
+
+# Determine if we need to create a new pack or use latest
+# If user requested a new pack via --new-runpack flag, or no pack exists, create one
+NEW_PACK_REQUESTED=false  # set to true if agent passes --new-runpack flag
+
+if [ -z "$LATEST_PACK" ] || [ "$NEW_PACK_REQUESTED" = "true" ]; then
+  # Create new run pack
+  INIT=$(noob-tester init --ticket <TICKET-ID> --task "Claim test case" --labels "claim")
+  SESSION_ID=$(echo "$INIT" | jq -r '.sessionId')
+  RUN_ID=$(echo "$INIT" | jq -r '.runId')
+  RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
+  echo "Created new run pack: $RUNPACK_ID"
+else
+  # Use latest pack
+  RUNPACK_ID="$LATEST_PACK"
+  echo "Using latest run pack: $RUNPACK_ID"
+fi
+
+# ── Populate all test cases as pending entries ────────────────────────────
+# Fetch all test cases for the ticket
+TEST_CASES=$(noob-tester testcase list --ticket <TICKET-ID> --json)
+TC_COUNT=$(echo "$TEST_CASES" | jq 'length')
+
+if [ "$TC_COUNT" -eq 0 ]; then
+  echo "ERROR: No test cases found for ticket <TICKET-ID>"
+  exit 1
+fi
+
+# Check for already-claimed/done entries in the run pack to filter them out
+CLAIMED_IDS="[]"
+PACK_ENTRIES=$(noob-tester runpack list --pack "$RUNPACK_ID" --json)
+PACK_ENTRY_COUNT=$(echo "$PACK_ENTRIES" | jq 'length')
+
+if [ "$PACK_ENTRY_COUNT" -gt 0 ]; then
+  # Build a set of tc_ids that are already claimed/running/done
+  # Statuses to exclude: claimed, running, passed, failed, skipped, blocked
+  CLAIMED_IDS=$(echo "$PACK_ENTRIES" | jq '
+    [.[] | select(
+      .status == "claimed" or
+      .status == "running" or
+      .status == "passed" or
+      .status == "failed" or
+      .status == "skipped" or
+      .status == "blocked"
+    ) | .tc_id]
+  ')
+  echo "Run pack $RUNPACK_ID — $(echo "$CLAIMED_IDS" | jq 'length') already claimed/done entries will be filtered."
+fi
+
+# Filter and populate only pending/unclaimed test cases
+PENDING=$(echo "$TEST_CASES" | jq --argjson claimed "$CLAIMED_IDS" '
+  [.[] |
+    select(.id as $id | $claimed | index($id) | not)
+  ]
+')
+PENDING_COUNT=$(echo "$PENDING" | jq 'length')
+
+if [ "$PENDING_COUNT" -gt 0 ]; then
+  echo "Populating $PENDING_COUNT pending test cases into run pack..."
+  noob-tester runpack populate "$RUNPACK_ID" <TICKET-ID> --status pending
+fi
+
+echo "$PENDING_COUNT test case entries queued in run pack $RUNPACK_ID."
+# ────────────────────────────────────────────────────────────────────────────
 ```
 
 ---
 
-## Input
+## Mode B — Subsequent invocations (RUNPACK_ID already known)
 
-Inputs from orchestrator (e.g., noob-pool):
+Use the latest run pack for the ticket and claim the next pending entry.
 
 ```bash
-TICKET_ID=<ticket-id>
-RUNPACK_ID=<runpack-id>
-SESSION_ID=<session-id>
-RUN_ID=<run-id>
-TC_TITLE=<test-case-title>  # optional — if omitted, claim next pending
+# Get the latest run pack for this ticket
+RUNPACK_ID=$(noob-tester runpack list --ticket <TICKET-ID> --json | jq -r '.[0].run_pack_id // empty')
+
+if [ -z "$RUNPACK_ID" ]; then
+  echo "ERROR: No run pack found for ticket <TICKET-ID>. Start with Mode A first."
+  exit 1
+fi
 ```
 
-## Mode A: Claim next unclaimed test case (default)
+---
+
+## Claim Next Entry (Default)
 
 ```bash
-# Fetch the next pending entry from the run pack
-ENTRY=$(noob-tester runpack claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk)
-
-# Check if all tests are done
-CLAIMED=$(echo "$ENTRY" | jq -r '.claimed // false')
+noob-tester runpack claim-smart --pack "$RUNPACK_ID" --ticket <TICKET-ID> --layer ui --risk > /tmp/claim.json
+CLAIM=$(cat /tmp/claim.json)
+CLAIMED=$(echo "$CLAIM" | jq -r '.claimed')
 
 if [ "$CLAIMED" = "false" ]; then
-  echo "All test cases completed for run pack $RUNPACK_ID"
+  echo "All test cases complete for run pack $RUNPACK_ID"
   exit 0
 fi
 
-# Extract entry and TC data
-ENTRY_ID=$(echo "$ENTRY" | jq -r '.entry.id')
-TC_ID=$(echo "$ENTRY" | jq -r '.entry.tc_id')
-TC_TITLE=$(echo "$ENTRY" | jq -r '.entry.tc.title')
-TC_FORMAT=$(echo "$ENTRY" | jq -r '.entry.tc.format')
+ENTRY_ID=$(echo "$CLAIM"   | jq -r '.entry.id')
+TC_ID=$(echo "$CLAIM"      | jq -r '.entry.tc_id')
+TC_TITLE=$(echo "$CLAIM"   | jq -r '.entry.tc.title')
+TC_FORMAT=$(echo "$CLAIM"  | jq -r '.entry.tc.format')
 
-# Build $CLAIM output (matching noob-visual-claim format)
-CLAIM=$(cat <<EOF
-{
-  "claimed": true,
-  "entry": {
-    "id": "$ENTRY_ID",
-    "runpack_id": "$RUNPACK_ID",
-    "tc_id": "$TC_ID",
-    "status": "running",
-    "tc": $(echo "$ENTRY" | jq '.entry.tc')
-  }
-}
-EOF
-)
-
-# Save to /tmp/claim.json for noob-explore to use
-echo "$CLAIM" > /tmp/claim.json
-
-echo "Claimed: $TC_TITLE (entry $ENTRY_ID)"
+echo "Claimed: $TC_TITLE (entry $ENTRY_ID, format: $TC_FORMAT)"
+echo "Pass RUNPACK_ID=$RUNPACK_ID and CLAIM to noob-explore for execution."
 ```
 
-## Mode A+: Claim by name with validation
+---
 
-⚠️ **CRITICAL: Validate matches before claiming**
+## Claim Specific Test Case by Name/Title/ID
+
+When user targets a specific test case, bypass pending filtering and claim it regardless of status.
+
+### Claim by title (exact match required)
 
 ```bash
 TC_TITLE="<exact-test-case-title>"
 
-# Find all matching test cases
-MATCHES=$(noob-tester runpack list --pack $RUNPACK_ID --json | jq "[.[] | select(.tc_title | contains(\"$TC_TITLE\"))]")
+# Find all matching test cases in the ticket
+MATCHES=$(noob-tester testcase list --ticket <TICKET-ID> --json | jq "[.[] | select(.title | contains(\"$TC_TITLE\"))]")
 MATCH_COUNT=$(echo "$MATCHES" | jq 'length')
 
-# Check for zero matches
+# Validate: exactly one match
 if [ "$MATCH_COUNT" -eq 0 ]; then
   echo "ERROR: No test case matches '$TC_TITLE'"
   echo ""
-  echo "Available test cases in pack:"
-  noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | {tc_title, status}'
+  echo "Available test cases:"
+  noob-tester testcase list --ticket <TICKET-ID> --json | jq '.[] | {title, status}'
   exit 1
 fi
 
-# Check for multiple matches (ambiguous)
 if [ "$MATCH_COUNT" -gt 1 ]; then
   echo "ERROR: Multiple test cases match '$TC_TITLE' (ambiguous)"
   echo ""
   echo "Matching test cases:"
-  echo "$MATCHES" | jq '.[] | {tc_title, status}'
+  echo "$MATCHES" | jq '.[] | {title, status}'
   exit 1
 fi
 
-# Exactly one match — proceed to claim
-ENTRY=$(noob-tester runpack claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --name "$TC_TITLE")
+# Get the tc_id of the exact match
+TC_ID=$(echo "$MATCHES" | jq -r '.[0].id')
 
-ENTRY_ID=$(echo "$ENTRY" | jq -r '.entry.id')
-TC_ID=$(echo "$ENTRY" | jq -r '.entry.tc_id')
-TC_FORMAT=$(echo "$ENTRY" | jq -r '.entry.tc.format')
+# Get latest run pack (or create if none exists)
+RUNPACK_ID=$(noob-tester runpack list --ticket <TICKET-ID> --json | jq -r '.[0].run_pack_id // empty')
+if [ -z "$RUNPACK_ID" ]; then
+  INIT=$(noob-tester init --ticket <TICKET-ID> --task "Claim test case" --labels "claim")
+  RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
+fi
 
-# Build $CLAIM output
-CLAIM=$(cat <<EOF
-{
-  "claimed": true,
-  "entry": {
-    "id": "$ENTRY_ID",
-    "runpack_id": "$RUNPACK_ID",
-    "tc_id": "$TC_ID",
-    "status": "running",
-    "tc": $(echo "$ENTRY" | jq '.entry.tc')
-  }
-}
-EOF
-)
+# Claim by name (bypasses pending filtering)
+noob-tester runpack claim-smart --pack "$RUNPACK_ID" --ticket <TICKET-ID> --layer ui --name "$TC_TITLE" > /tmp/claim.json
+CLAIM=$(cat /tmp/claim.json)
+CLAIMED=$(echo "$CLAIM" | jq -r '.claimed')
 
-# Save to /tmp/claim.json for noob-explore to use
-echo "$CLAIM" > /tmp/claim.json
+if [ "$CLAIMED" != "true" ]; then
+  echo "ERROR: Could not claim test case '$TC_TITLE'"
+  exit 1
+fi
 
-echo "Claimed: $TC_TITLE (entry $ENTRY_ID)"
+ENTRY_ID=$(echo "$CLAIM" | jq -r '.entry.id')
+echo "Claimed: $TC_TITLE (entry $ENTRY_ID) — bypassed status filtering"
 ```
 
-## Mode B: Retry a specific test case by title or tc_id
-
-Use when retrying a previously failed/passed/blocked test.
-
-### Retry by tc_title (preferred — human-readable)
+### Claim by tc_id
 
 ```bash
-# Reset the test case's status back to pending
-noob-tester runpack retry --name "<tc_title>" --pack $RUNPACK_ID
+TC_ID="<test-case-id>"
 
-# Now claim it (will be at top of queue)
-ENTRY=$(noob-tester runpack claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk)
+# Get latest run pack
+RUNPACK_ID=$(noob-tester runpack list --ticket <TICKET-ID> --json | jq -r '.[0].run_pack_id // empty')
+if [ -z "$RUNPACK_ID" ]; then
+  INIT=$(noob-tester init --ticket <TICKET-ID> --task "Claim test case" --labels "claim")
+  RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
+fi
 
-ENTRY_ID=$(echo "$ENTRY" | jq -r '.entry.id')
-TC_ID=$(echo "$ENTRY" | jq -r '.entry.tc_id')
-TC_TITLE=$(echo "$ENTRY" | jq -r '.entry.tc.title')
-
-# Build $CLAIM output
-CLAIM=$(cat <<EOF
-{
-  "claimed": true,
-  "entry": {
-    "id": "$ENTRY_ID",
-    "runpack_id": "$RUNPACK_ID",
-    "tc_id": "$TC_ID",
-    "status": "running",
-    "tc": $(echo "$ENTRY" | jq '.entry.tc')
-  }
-}
-EOF
-)
-
-echo "$CLAIM" > /tmp/claim.json
-```
-
-### Retry by tc_id
-
-```bash
-# Find entry by tc_id
-ENTRY=$(noob-tester runpack list --pack $RUNPACK_ID --json | jq '.[] | select(.tc_id == "<tc-id>")')
+# Find the entry for this tc_id in the run pack
+ENTRY=$(noob-tester runpack list --pack "$RUNPACK_ID" --json | jq '.[] | select(.tc_id == "'"$TC_ID"'")')
 ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
 
-# Reset and claim
-noob-tester runpack retry --pack $RUNPACK_ID --entry $ENTRY_ID
+# If entry doesn't exist in pack, add it
+if [ -z "$ENTRY_ID" ] || [ "$ENTRY_ID" = "null" ]; then
+  noob-tester runpack populate "$RUNPACK_ID" <TICKET-ID> --tc-id "$TC_ID" --status pending
+  ENTRY=$(noob-tester runpack list --pack "$RUNPACK_ID" --json | jq '.[] | select(.tc_id == "'"$TC_ID"'")')
+  ENTRY_ID=$(echo "$ENTRY" | jq -r '.id')
+fi
 
-ENTRY=$(noob-tester runpack claim-smart --pack $RUNPACK_ID --ticket <TICKET-ID> --session $SESSION_ID --run $RUN_ID --layer ui --risk)
+# Claim the entry directly by entry ID or via claim-smart
+noob-tester runpack claim-smart --pack "$RUNPACK_ID" --ticket <TICKET-ID> --layer ui --entry "$ENTRY_ID" > /tmp/claim.json
+CLAIM=$(cat /tmp/claim.json)
+CLAIMED=$(echo "$CLAIM" | jq -r '.claimed')
 
-# Build and save $CLAIM
-CLAIM=$(cat <<EOF
-{
-  "claimed": true,
-  "entry": {
-    "id": "$(echo "$ENTRY" | jq -r '.entry.id')",
-    "runpack_id": "$RUNPACK_ID",
-    "tc_id": "$(echo "$ENTRY" | jq -r '.entry.tc_id')",
-    "status": "running",
-    "tc": $(echo "$ENTRY" | jq '.entry.tc')
-  }
-}
-EOF
-)
+if [ "$CLAIMED" != "true" ]; then
+  echo "ERROR: Could not claim test case with ID '$TC_ID'"
+  exit 1
+fi
 
-echo "$CLAIM" > /tmp/claim.json
+TC_TITLE=$(echo "$CLAIM" | jq -r '.entry.tc.title')
+echo "Claimed: $TC_TITLE (tc_id: $TC_ID, entry: $ENTRY_ID) — bypassed status filtering"
 ```
+
+---
 
 ## Return Values
 
-After claiming, `$CLAIM` (saved to `/tmp/claim.json`) will contain:
+Pass these to `noob-explore`:
 
 ```bash
-CLAIM=$(cat /tmp/claim.json)
-
-# Extract for use in noob-explore
-ENTRY_ID=$(echo "$CLAIM" | jq -r '.entry.id')
-TC_ID=$(echo "$CLAIM" | jq -r '.entry.tc_id')
-TC_TITLE=$(echo "$CLAIM" | jq -r '.entry.tc.title')
-TC_FORMAT=$(echo "$CLAIM" | jq -r '.entry.tc.format')
-BDD_GIVEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_given // empty')
-BDD_WHEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_when // empty')
-BDD_THEN=$(echo "$CLAIM" | jq '.entry.tc.bdd_then // empty')
-TRAD_STEPS=$(echo "$CLAIM" | jq '.entry.tc.trad_steps // empty')
+RUNPACK_ID=<runpack-id>     # persist across invocations
+ENTRY_ID=<entry-id>         # the claimed entry
+CLAIM=<json>                # full claim output (entry + tc data from /tmp/claim.json)
 ```
 
-Pass `$CLAIM` directly to `noob-explore` for execution.
+## Rules
+
+- Always save claim output to `/tmp/claim.json` to avoid shell escaping issues with nested JSON.
+- Do NOT modify or re-claim entries — each entry is owned by exactly one invocation.
+- If `claimed` is `false`, all tests are done — stop and report completion.
+- When user targets a specific test case by name/title/id, bypass all filtering and claim it regardless of status.
+- Always use the latest run pack for the ticket — no environment variables needed.

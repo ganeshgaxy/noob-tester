@@ -321,19 +321,32 @@ function renderScreenshotGallery(screenshots, galleryId) {
   // Build gallery data array for lightbox
   window.__galleries = window.__galleries || {};
   var galData = [];
+  var validScreenshots = [];
+
   for (var i = 0; i < screenshots.length; i++) {
     var a = screenshots[i];
-    var url = artifactUrl(a.path || a.file_path);
-    var lbl = a.label || (a.path ? a.path.split("/").pop() : "") || "Screenshot " + (i + 1);
+    var filePath = a.path || a.file_path;
+
+    // Skip artifacts with undefined/invalid paths
+    if (!filePath) continue;
+
+    var url = artifactUrl(filePath);
+    var lbl = a.label || (filePath ? filePath.split("/").pop() : "") || "Screenshot " + (validScreenshots.length + 1);
     galData.push({ url: url, label: lbl });
+    validScreenshots.push(a);
   }
+
+  // If no valid screenshots, return empty
+  if (validScreenshots.length === 0) return "";
+
   window.__galleries[gid] = galData;
 
   var html = '<div class="artifact-gallery" id="' + gid + '">';
-  for (var j = 0; j < screenshots.length; j++) {
-    var sa = screenshots[j];
-    var sUrl = artifactUrl(sa.path || sa.file_path);
-    var sLabel = esc(sa.label || (sa.path ? sa.path.split("/").pop() : "") || "Screenshot " + (j + 1));
+  for (var j = 0; j < validScreenshots.length; j++) {
+    var sa = validScreenshots[j];
+    var sFilePath = sa.path || sa.file_path;
+    var sUrl = artifactUrl(sFilePath);
+    var sLabel = esc(sa.label || (sFilePath ? sFilePath.split("/").pop() : "") || "Screenshot " + (j + 1));
     html += '<div class="artifact-thumb" onclick="openLightbox(window.__galleries[&quot;' + gid + '&quot;],' + j + ')">';
     html += '<img src="' + sUrl + '" loading="lazy" onerror="this.parentElement.classList.add(&quot;broken&quot;)" />';
     html += '<div class="artifact-thumb-label">' + sLabel + '</div>';
@@ -347,8 +360,11 @@ function renderScreenshotGallery(screenshots, galleryId) {
  * Render a video player card.
  */
 function renderVideoCard(a) {
-  var url = artifactUrl(a.path || a.file_path);
-  var label = esc(a.label || (a.path ? a.path.split("/").pop() : "") || "Video");
+  var filePath = a.path || a.file_path;
+  // Skip if no valid path
+  if (!filePath) return "";
+  var url = artifactUrl(filePath);
+  var label = esc(a.label || (filePath ? filePath.split("/").pop() : "") || "Video");
   return '<div class="artifact-video">' +
     '<video src="' + url + '" controls preload="metadata"><a href="' + url + '" target="_blank">Download</a></video>' +
     '<div class="artifact-video-label"><span>' + ARTIFACT_ICONS.video + '</span> ' + label + '</div>' +
@@ -359,8 +375,11 @@ function renderVideoCard(a) {
  * Render a file artifact chip (console, har, trace, snapshot).
  */
 function renderFileChip(a, type) {
-  var url = artifactUrl(a.path || a.file_path);
-  var label = esc(a.label || (a.path ? a.path.split("/").pop() : "") || type);
+  var filePath = a.path || a.file_path;
+  // Skip if no valid path
+  if (!filePath) return "";
+  var url = artifactUrl(filePath);
+  var label = esc(a.label || (filePath ? filePath.split("/").pop() : "") || type);
   var icon = ARTIFACT_ICONS[type] || "&#128196;";
   return '<a href="' + url + '" target="_blank" class="artifact-chip" data-type="' + type + '">' +
     '<span class="artifact-chip-icon">' + icon + '</span>' +
@@ -400,29 +419,36 @@ function renderArtifactGroup(artifacts, galleryId) {
 
   // Videos
   if (byType.video) {
-    html += '<div class="artifact-videos">';
-    for (const a of byType.video) html += renderVideoCard(a);
-    html += '</div>';
+    let videosHtml = '';
+    for (const a of byType.video) {
+      const videoHtml = renderVideoCard(a);
+      if (videoHtml) videosHtml += videoHtml;
+    }
+    if (videosHtml) {
+      html += '<div class="artifact-videos">' + videosHtml + '</div>';
+    }
   }
 
   // File chips — console, har, trace, snapshot, others
   const chipTypes = ["console", "har", "trace", "snapshot"];
-  let hasChips = false;
-  let chipHtml = '<div class="artifact-chips">';
+  let chipsHtml = '';
   for (const t of chipTypes) {
     if (byType[t]) {
-      hasChips = true;
-      for (const a of byType[t]) chipHtml += renderFileChip(a, t);
+      for (const a of byType[t]) {
+        const chipHtml = renderFileChip(a, t);
+        if (chipHtml) chipsHtml += chipHtml;
+      }
     }
   }
   // Any remaining types
   for (const t of Object.keys(byType)) {
     if (t === "screenshot" || t === "video" || chipTypes.includes(t)) continue;
-    hasChips = true;
-    for (const a of byType[t]) chipHtml += renderFileChip(a, t);
+    for (const a of byType[t]) {
+      const chipHtml = renderFileChip(a, t);
+      if (chipHtml) chipsHtml += chipHtml;
+    }
   }
-  chipHtml += '</div>';
-  if (hasChips) html += chipHtml;
+  if (chipsHtml) html += '<div class="artifact-chips">' + chipsHtml + '</div>';
 
   // Inline content (no file path)
   const inlineItems = items.filter(a => !a.path && a.content);
