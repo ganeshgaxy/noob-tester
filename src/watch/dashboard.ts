@@ -511,7 +511,7 @@ ${canvasScript}
 ${apiCanvasScript}
 const API = "http://localhost:${port}";
 let state = null;
-let viewingSession = ${filterSessionId ? `"${filterSessionId}"` : "null"};
+let viewingSession = ${filterSessionId ? '"' + filterSessionId + '"' : 'null'};
 let activeTab = "issues";
 let currentPage = "dashboard";
 
@@ -7246,8 +7246,8 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline, ru
     }
 
     // Display logs and observations from result_json or runpack
-    const allObservations: string[] = [];
-    const allLogs: string[] = [];
+    const allObservations = [];
+    const allLogs = [];
 
     // Gather from result.observations
     if (result.observations && Array.isArray(result.observations)) {
