@@ -2818,8 +2818,8 @@ async function renderPlansPage() {
   html += '<div style="display:flex;gap:6px;margin-top:8px;align-items:center">';
   html += '<div class="tab active" data-plantab="requirements" onclick="switchPlanTab(this,\\'requirements\\')">Plan</div>';
   html += '<div class="tab" data-plantab="steps" onclick="switchPlanTab(this,\\'steps\\')">Steps (' + steps.length + ')</div>';
-  if (normalizedBlockers.length > 0 || blockers.length > 0) html += '<div class="tab" data-plantab="blockers" onclick="switchPlanTab(this,\\'blockers\\')">Blockers (' + (normalizedBlockers.length || blockers.length) + ')</div>';
-  if (normalizedGaps.length > 0 || gaps.length > 0) html += '<div class="tab" data-plantab="gaps" onclick="switchPlanTab(this,\\'gaps\\')">Gaps (' + (normalizedGaps.length || gaps.length) + ')</div>';
+  if (blockers.length > 0 || blockers.length > 0) html += '<div class="tab" data-plantab="blockers" onclick="switchPlanTab(this,\\'blockers\\')">Blockers (' + (blockers.length || blockers.length) + ')</div>';
+  if (gaps.length > 0 || gaps.length > 0) html += '<div class="tab" data-plantab="gaps" onclick="switchPlanTab(this,\\'gaps\\')">Gaps (' + (gaps.length || gaps.length) + ')</div>';
   if (linkedAnalyses.length > 0) html += '<div class="tab" data-plantab="analysis" onclick="switchPlanTab(this,\\'analysis\\')">Analysis</div>';
   html += '<div class="tab" data-plantab="testnotes" onclick="switchPlanTab(this,\\'testnotes\\')">Notes</div>';
   html += '<div style="margin-left:auto;display:flex;gap:4px">';
@@ -2967,10 +2967,10 @@ async function renderPlansPage() {
   // ── TAB: Test Notes (hidden by default) ──
   // ── TAB: Blockers (normalized) ──
   html += '<div id="plantab-blockers" style="flex:1;min-height:0;overflow-y:auto;display:none">';
-  if (normalizedBlockers.length > 0) {
+  if (blockers.length > 0) {
     html += '<div class="panel" style="padding:0">';
     html += '<table class="data-table"><thead><tr><th>Blocker</th><th>Severity</th><th>Status</th><th>Resolution</th><th></th></tr></thead><tbody>';
-    for (const b of normalizedBlockers) {
+    for (const b of blockers) {
       const sc = b.severity === "high" || b.severity === "critical" ? "var(--red)" : b.severity === "medium" ? "var(--yellow)" : "var(--dim)";
       const stColor = b.status === "open" ? "var(--red)" : "var(--green)";
       html += '<tr>';
@@ -2997,10 +2997,10 @@ async function renderPlansPage() {
 
   // ── TAB: Coverage Gaps (normalized) ──
   html += '<div id="plantab-gaps" style="flex:1;min-height:0;overflow-y:auto;display:none">';
-  if (normalizedGaps.length > 0) {
+  if (gaps.length > 0) {
     html += '<div class="panel" style="padding:0">';
     html += '<table class="data-table"><thead><tr><th>Gap</th><th>Severity</th><th>Category</th></tr></thead><tbody>';
-    for (const g of normalizedGaps) {
+    for (const g of gaps) {
       const sc = g.severity === "high" || g.severity === "critical" ? "var(--red)" : g.severity === "medium" ? "var(--yellow)" : "var(--dim)";
       html += '<tr><td style="font-size:12px">' + esc(g.gap_description) + '</td>';
       html += '<td style="color:' + sc + ';font-weight:600;font-size:11px">' + esc(g.severity || "-") + '</td>';
