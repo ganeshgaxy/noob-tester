@@ -331,8 +331,7 @@ function renderScreenshotGallery(screenshots, galleryId) {
     if (!filePath) continue;
 
     var url = artifactUrl(filePath);
-    var lbl = a.label || (filePath ? filePath.split("/").pop() : "") || "Screenshot " + (validScreenshots.length + 1);
-    galData.push({ url: url, label: lbl });
+    galData.push(url);
     validScreenshots.push(a);
   }
 
