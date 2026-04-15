@@ -209,7 +209,7 @@ echo "Prepared ${#LAUNCHES[@]} agent invocations (all test cases pre-claimed)."
 
 ## Step 4 — Launch Sub-Agents (Fire and Forget)
 
-Each agent entry has its own `launch_dir`. The `cd` happens per-spawn in a subshell so agents can launch from different directories.
+Each agent entry has its own `launch_dir`. The `cd` happens per-spawn in a subshell so agents can launch from different directories. Each spawn is recorded for tracking and management.
 
 ```bash
 for LAUNCH in "${LAUNCHES[@]}"; do
@@ -226,12 +226,17 @@ for LAUNCH in "${LAUNCHES[@]}"; do
     [ -n "$DIR" ] && echo "  Warning: launch_dir '$DIR' not found, using current directory"
     claude -p "$INVOCATION" --agent "@${AGENT_PATH}" &
   fi
+  
+  # Record the spawn for tracking
+  AGENT_PID=$!
+  noob-tester pool-spawns record --ticket "$TICKET_ID" --agent "@${AGENT_PATH}" --pid $AGENT_PID --type visual-pool > /dev/null 2>&1
 done
 
 echo "All ${#LAUNCHES[@]} visual test agents spawned. Monitor at http://localhost:4040 → Visual Runs"
+echo "Manage spawned agents: noob-tester pool-spawns list --ticket $TICKET_ID --active"
 ```
 
-Do **not** call `wait` — return to the user immediately after spawning. The agents run in the background and record their results to the database as they finish.
+Do **not** call `wait` — return to the user immediately after spawning. The agents run in the background and record their results to the database as they finish. Spawned agent tracking allows you to view and kill agents via the pool menu in the dashboard.
 
 ---
 

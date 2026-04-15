@@ -289,11 +289,25 @@ export function startWatchServer(opts: WatchOptions): void {
         if (!byTicket[a.ticket_id]) byTicket[a.ticket_id] = [];
         byTicket[a.ticket_id].push(a);
       }
+
+      // Fetch spawned agents
+      const spawns = db
+        .prepare(
+          "SELECT * FROM pool_spawns ORDER BY ticket_id, created_at DESC",
+        )
+        .all() as any[];
+      const spawnsByTicket: Record<string, any[]> = {};
+      for (const s of spawns) {
+        if (!spawnsByTicket[s.ticket_id]) spawnsByTicket[s.ticket_id] = [];
+        spawnsByTicket[s.ticket_id].push(s);
+      }
+
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
           agents: enriched,
           byTicket,
+          spawns: spawnsByTicket,
           ticketIds: Object.keys(byTicket).sort(),
         }),
       );
@@ -314,6 +328,56 @@ export function startWatchServer(opts: WatchOptions): void {
           const removed = removeQaPoolAgent(id);
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: removed }));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/qa-pool/kills" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { ticket_id, force } = JSON.parse(body);
+          if (!ticket_id) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "ticket_id required" }));
+            return;
+          }
+
+          // Import pool-spawns repository functions dynamically
+          import("../db/repositories/pool-spawns.js").then((module) => {
+            const { killAllSpawnsForTicket } = module;
+            const killed = killAllSpawnsForTicket(ticket_id);
+
+            // Optionally kill processes with --force
+            if (force) {
+              const { getActiveSpawnPids } = module;
+              const pids = getActiveSpawnPids(ticket_id);
+              const { execSync } = require("child_process");
+              const os = require("os");
+              const platform = os.platform();
+              const killCmd = platform === "win32" ? "taskkill /F /PID" : "kill -9";
+
+              for (const pid of pids) {
+                try {
+                  execSync(`${killCmd} ${pid}`, { stdio: "ignore" });
+                } catch {}
+              }
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: true,
+                killed,
+                ticket_id,
+              }),
+            );
+          });
         } catch (err) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err) }));

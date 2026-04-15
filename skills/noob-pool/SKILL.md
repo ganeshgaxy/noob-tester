@@ -298,7 +298,7 @@ echo "Prepared ${#LAUNCHES[@]} agent invocations (all test cases pre-claimed)."
 
 ## Step 4 — Launch Sub-Agents (Fire and Forget)
 
-Each agent gets its own claimed entry file and launch directory. The agent reads from the claim file passed in the invocation.
+Each agent gets its own claimed entry file and launch directory. The agent reads from the claim file passed in the invocation. Each spawn is recorded for tracking and management.
 
 ```bash
 for LAUNCH in "${LAUNCHES[@]}"; do
@@ -322,14 +322,19 @@ for LAUNCH in "${LAUNCHES[@]}"; do
     [ -n "$DIR" ] && echo "  Warning: launch_dir '$DIR' not found, using current directory"
     claude -p "$INVOCATION" --agent "@${AGENT_PATH}" &
   fi
+  
+  # Record the spawn for tracking
+  AGENT_PID=$!
+  noob-tester pool-spawns record --ticket "$TICKET_ID" --agent "@${AGENT_PATH}" --pid $AGENT_PID --type pool > /dev/null 2>&1
 done
 
 echo "All ${#LAUNCHES[@]} agents spawned. Monitor progress at http://localhost:4040"
+echo "Manage spawned agents: noob-tester pool-spawns list --ticket $TICKET_ID"
 ```
 
 **Important:** Agents read from the claim file specified in the invocation. The file contains all test case data needed for execution.
 
-Do **not** call `wait` — return to the user immediately after spawning. The agents run in the background and record their results to the database as they finish.
+Do **not** call `wait` — return to the user immediately after spawning. The agents run in the background and record their results to the database as they finish. Spawned agent tracking allows you to view and kill agents via the pool menu in the dashboard.
 
 ---
 

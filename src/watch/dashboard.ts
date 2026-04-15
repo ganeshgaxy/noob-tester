@@ -5881,6 +5881,9 @@ async function renderQaPoolPage() {
     html += '</div>';
   } else {
     const agents = byTicket[qaPoolSelectedTicket] || [];
+    const spawns = data.spawns && data.spawns[qaPoolSelectedTicket] ? data.spawns[qaPoolSelectedTicket] : [];
+    const activeSpawns = spawns.filter(function(s) { return s.status === 'running'; });
+
     html += '<div class="panel-title">' + esc(qaPoolSelectedTicket) + '</div>';
     html += '<div style="display:flex;gap:16px;margin-bottom:12px">';
     html += '<div class="stat"><div class="stat-value">' + agents.length + '</div><div class="stat-label">Agents</div></div>';
@@ -5888,7 +5891,36 @@ async function renderQaPoolPage() {
     if (missing > 0) {
       html += '<div class="stat"><div class="stat-value" style="color:var(--red)">' + missing + '</div><div class="stat-label">Missing</div></div>';
     }
+    if (activeSpawns.length > 0) {
+      html += '<div class="stat"><div class="stat-value" style="color:var(--green)">' + activeSpawns.length + '</div><div class="stat-label">Running</div></div>';
+    }
     html += '</div>';
+
+    // Spawned Agents section
+    if (spawns.length > 0) {
+      html += '<div class="panel-title" style="margin-top:12px">Spawned Agents (' + spawns.length + ')</div>';
+      for (const spawn of spawns) {
+        const statusColor = spawn.status === 'running' ? 'var(--green)' : spawn.status === 'completed' ? 'var(--dim)' : spawn.status === 'killed' ? 'var(--yellow)' : 'var(--red)';
+        const typeIcon = spawn.spawn_type === 'visual-pool' ? '🎬' : '🤖';
+        html += '<div style="margin-bottom:8px;padding:8px;background:var(--bg);border-radius:var(--radius-xs);border:1px solid var(--border)">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+        html += '<div style="font-size:11px">';
+        html += '<div style="color:' + statusColor + ';font-weight:600">' + typeIcon + ' ' + spawn.status.toUpperCase() + '</div>';
+        html += '<div style="color:var(--dim);font-size:10px;margin-top:2px">PID: ' + spawn.pid + ' | ' + spawn.agent_path.split('/').pop() + '</div>';
+        html += '<div style="color:var(--dim);font-size:10px;margin-top:2px">' + spawn.created_at.slice(11, 19) + '</div>';
+        html += '</div>';
+        if (spawn.status === 'running') {
+          html += '<button style="padding:4px 8px;font-size:10px;background:var(--red);color:white;border:none;border-radius:4px;cursor:pointer" onclick="killPoolSpawn(\\'' + esc(qaPoolSelectedTicket) + '\\')">Kill</button>';
+        }
+        html += '</div>';
+      }
+      if (activeSpawns.length > 0) {
+        html += '<div style="margin-top:8px">';
+        html += '<button style="width:100%;padding:8px;font-size:11px;background:var(--red);color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600" onclick="killAllPoolSpawns(\\'' + esc(qaPoolSelectedTicket) + '\\')">Kill All Spawns</button>';
+        html += '</div>';
+      }
+    }
+
     html += '<div class="panel-title" style="margin-top:12px">Run Invocations</div>';
     html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px">Copy these to dispatch agents via noob-explore:</div>';
     for (const a of agents) {
@@ -5908,6 +5940,18 @@ async function renderQaPoolPage() {
 async function deleteQaPoolAgent(id) {
   if (!confirm("Remove this agent config?")) return;
   await fetchApi("/api/qa-pool", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+  renderQaPoolPage();
+}
+
+async function killPoolSpawn(ticketId) {
+  if (!confirm("Kill all spawned agents for " + ticketId + "?")) return;
+  await fetchApi("/api/qa-pool/kills", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket_id: ticketId }) });
+  renderQaPoolPage();
+}
+
+async function killAllPoolSpawns(ticketId) {
+  if (!confirm("Kill ALL spawned agents for " + ticketId + "? This cannot be undone.")) return;
+  await fetchApi("/api/qa-pool/kills", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket_id: ticketId, force: true }) });
   renderQaPoolPage();
 }
 
