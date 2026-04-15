@@ -31,14 +31,36 @@ export function registerSaveCommands(program: Command): void {
     .action((runId, opts) => {
       const p = JSON.parse(opts.plan);
 
+      // Ensure blockers and coverageGaps are arrays (convert strings to single-item arrays)
+      let blockers = p.blockers;
+      if (typeof blockers === "string" && blockers.trim()) {
+        blockers = [blockers];
+      } else if (!Array.isArray(blockers)) {
+        blockers = [];
+      }
+
+      let coverageGaps = p.coverageGaps;
+      if (typeof coverageGaps === "string" && coverageGaps.trim()) {
+        coverageGaps = [coverageGaps];
+      } else if (!Array.isArray(coverageGaps)) {
+        coverageGaps = [];
+      }
+
+      let mrRefs = p.mrRefs;
+      if (typeof mrRefs === "string" && mrRefs.trim()) {
+        mrRefs = [mrRefs];
+      } else if (!Array.isArray(mrRefs)) {
+        mrRefs = [];
+      }
+
       const id = createPlan({
         runId,
         ticketId: opts.ticket,
         targetUrl: p.targetUrl,
         strategy: p.strategy,
-        blockers: p.blockers,
-        coverageGaps: p.coverageGaps,
-        mrRefs: p.mrRefs,
+        blockers,
+        coverageGaps,
+        mrRefs,
         planJson: JSON.stringify(p),
         testNotes: p.testNotes,
       });

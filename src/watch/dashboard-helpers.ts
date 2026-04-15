@@ -24,6 +24,12 @@ function formatDescription(s) {
   return withHeaders.replace(/\\n/g, "<br>");
 }
 
+// Format pre-formatted text: convert escape sequences to actual newlines for pre tags
+function formatPreText(s) {
+  if (!s) return "";
+  return String(s).split('\\\\n').join('\\n');
+}
+
 function timeAgo(dateStr) {
   if (!dateStr) return "-";
   const d = new Date(dateStr + "Z");

@@ -2875,7 +2875,7 @@ async function renderPlansPage() {
     if (plan.strategy) {
       html += \`<tr>
         <td style="font-weight:600;color:var(--accent);font-size:11px;vertical-align:top">Strategy</td>
-        <td style="font-size:12px;color:var(--text);white-space:pre-wrap">\${esc(plan.strategy)}</td>
+        <td style="font-size:12px;color:var(--text);white-space:pre-wrap">\${esc(formatPreText(plan.strategy))}</td>
       </tr>\`;
     }
 
@@ -2885,7 +2885,7 @@ async function renderPlansPage() {
       const content = typeof val === "string" ? val : Array.isArray(val) ? val.join("; ") : JSON.stringify(val);
       html += \`<tr>
         <td style="font-weight:600;color:\${sd.color};font-size:11px;vertical-align:top">\${esc(sd.label)}</td>
-        <td style="font-size:12px;color:var(--text);white-space:pre-wrap">\${esc(content)}</td>
+        <td style="font-size:12px;color:var(--text);white-space:pre-wrap">\${esc(formatPreText(content))}</td>
       </tr>\`;
     }
 
@@ -3044,7 +3044,7 @@ async function renderPlansPage() {
   const testNotes = plan.test_notes || "";
   if (testNotes) {
     html += '<div class="panel" style="padding:12px">';
-    html += '<pre style="font-size:12px;color:var(--text);white-space:pre-wrap;margin:0;font-family:inherit;line-height:1.6">' + esc(testNotes) + '</pre>';
+    html += '<pre style="font-size:12px;color:var(--text);white-space:pre-wrap;margin:0;font-family:inherit;line-height:1.6">' + esc(formatPreText(testNotes)) + '</pre>';
     html += '</div>';
   } else {
     html += '<div class="panel" style="padding:12px;text-align:center;color:var(--dim)">No test notes available for this plan.</div>';
@@ -5364,7 +5364,7 @@ async function renderReportsPage() {
     // Test Notes from plan
     if (r.plan && r.plan.testNotes) {
       html += '<div class="panel" style="margin-bottom:12px"><div class="panel-title">Test Notes</div>';
-      html += \`<pre style="font-size:12px;color:var(--text);white-space:pre-wrap;margin:0;line-height:1.6">\${esc(r.plan.testNotes)}</pre>\`;
+      html += \`<pre style="font-size:12px;color:var(--text);white-space:pre-wrap;margin:0;line-height:1.6">\${esc(formatPreText(r.plan.testNotes))}</pre>\`;
       html += '</div>';
     }
   }

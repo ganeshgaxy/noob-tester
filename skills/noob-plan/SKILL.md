@@ -65,6 +65,24 @@ KEY_COMPONENTS:
 
 **IMPACTED AREAS:** `noob-tester query codebase "<changed file>" --expand` → find files that import the changed files. These are regression risks.
 
+## 1.5 Extract Blockers and Coverage Gaps from MATCH
+
+From the MATCH section, identify:
+
+**Blockers** (extract each as a separate array item):
+- Any requirement marked as "NOT IMPLEMENTED" → add to blockers array
+- Any missing precondition or unmet dependency → add to blockers array
+- Format: `"blockers": ["Requirement X not implemented", "Missing Y dependency", ...]`
+
+**Coverage Gaps** (extract each as a separate array item):
+- Any requirement with no matching changed file → add to coverageGaps array
+- Format: `"coverageGaps": ["Requirement A has no code", "Feature B not addressed", ...]`
+
+**CRITICAL:** These MUST be arrays of strings, one blocker/gap per element. Never generate as:
+- A single string: `"blockers": "If there are blockers..."` ❌
+- A string with multiple items on one line: `"blockers": ["item1, item2, item3"]` ❌
+- Do: `"blockers": ["item1", "item2", "item3"]` ✅
+
 ## 2. Create Session
 
 ```bash
@@ -105,8 +123,8 @@ noob-tester query failures --limit 20               # known failure patterns
 - `postRelease` — monitoring, metrics, canary/rollout strategy derived from FEATURE_FLAG + KEY_COMPONENTS
 - `dependencies` — dependent services, shared components, related epics from IMPACTED AREAS + PARENT/SIBLINGS
 - `outOfScope` — sibling Jira features + explicitly excluded items from ticket
-- `blockers` — items marked NOT IMPLEMENTED + missing preconditions
-- `coverageGaps` — requirements with no matching code
+- `blockers` — array of strings: each item is a NOT IMPLEMENTED requirement or missing precondition. If none, use empty array `[]`
+- `coverageGaps` — array of strings: each item is a requirement with no matching code. If none, use empty array `[]`
 - `testNotes` — P1 = implemented requirements, P2 = impacted areas, P3 = regressions
 
 ```bash
@@ -134,9 +152,9 @@ noob-tester save plan $RUN_ID --ticket <TICKET-ID> --plan '$(cat <<'PLAN'
   "postRelease": "<monitoring, metrics to track, canary/rollout strategy, Pendo/analytics>",
   "dependencies": "<dependent services, shared components, related epics — from IMPACTED AREAS + SIBLINGS>",
   "outOfScope": "<sibling Jira features + explicitly excluded items from ticket>",
-  "blockers": ["<NOT IMPLEMENTED items>"],
-  "coverageGaps": ["<requirements with no code>"],
-  "mrRefs": ["<from mr_metadata>"],
+  "blockers": ["blocker description 1", "blocker description 2"],
+  "coverageGaps": ["gap description 1", "gap description 2"],
+  "mrRefs": ["MR-123", "MR-456"],
   "testNotes": "Testing Focus:\n- <from MATCH — implemented items>\n\nPriority:\n- P1: <core changes from MR diff>\n- P2: <impacted dependencies>\n- P3: <regression risks>\n\nRisk Areas:\n- <shared components from IMPACTED AREAS>"
 }
 PLAN
