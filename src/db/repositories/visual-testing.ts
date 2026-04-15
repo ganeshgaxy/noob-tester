@@ -518,3 +518,48 @@ export function getVisualRunSummary(visualRunId: string): {
   const skipped = entries.filter((e) => e.status === "skipped").length;
   return { total, passed, failed, no_baseline: skipped };
 }
+
+/**
+ * Get run_pack logs and observations for a ticket (for display in visual runs).
+ * Returns aggregated logs and observations from run_pack_entries.
+ */
+export function getRunPackLogsForTicket(
+  ticketId: string,
+): {
+  logs: string[];
+  observations: string[];
+} {
+  const db = getDb();
+  const entries = db
+    .prepare(
+      "SELECT logs, observations FROM run_pack_entries WHERE ticket_id = ? AND (logs IS NOT NULL OR observations IS NOT NULL)",
+    )
+    .all(ticketId) as Array<{
+    logs: string | null;
+    observations: string | null;
+  }>;
+
+  const allLogs: string[] = [];
+  const allObservations: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.logs) {
+      try {
+        const parsed = JSON.parse(entry.logs);
+        if (Array.isArray(parsed)) {
+          allLogs.push(...parsed);
+        }
+      } catch {}
+    }
+    if (entry.observations) {
+      try {
+        const parsed = JSON.parse(entry.observations);
+        if (Array.isArray(parsed)) {
+          allObservations.push(...parsed);
+        }
+      } catch {}
+    }
+  }
+
+  return { logs: allLogs, observations: allObservations };
+}

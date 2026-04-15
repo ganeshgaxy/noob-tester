@@ -50,6 +50,7 @@ import {
   removeAgent as removeQaPoolAgent,
   buildInvocation,
 } from "../db/repositories/qa-pool.js";
+import { getRunPackLogsForTicket } from "../db/repositories/visual-testing.js";
 
 interface WatchOptions {
   port: number;
@@ -1076,8 +1077,19 @@ export function startWatchServer(opts: WatchOptions): void {
            ORDER BY vc.step_index ASC`,
         )
         .all(runId);
+      const runPackLogs = getRunPackLogsForTicket(
+        (run as Record<string, unknown>).ticket_id as string,
+      );
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ run, entries, screenshots, comparisons }));
+      res.end(
+        JSON.stringify({
+          run,
+          entries,
+          screenshots,
+          comparisons,
+          runPackLogs,
+        }),
+      );
       return;
     }
 

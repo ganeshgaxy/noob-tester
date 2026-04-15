@@ -123,6 +123,22 @@ fi
 
 ACTION_N=1
 PREV_PAGE_ID=""
+
+# ── Logging: Initialize arrays for logs and observations ──────────────────────
+LOGS_JSON='[]'
+OBSERVATIONS_JSON='[]'
+
+# Helper function to append to logs array
+add_log() {
+  local log_text="$1"
+  LOGS_JSON=$(echo "$LOGS_JSON" | jq --arg text "$log_text" '. += [$text]')
+}
+
+# Helper function to append to observations array
+add_observation() {
+  local obs_text="$1"
+  OBSERVATIONS_JSON=$(echo "$OBSERVATIONS_JSON" | jq --arg text "$obs_text" '. += [$text]')
+}
 ```
 
 ---
@@ -186,7 +202,7 @@ cat "$SNAPSHOT_FILE"
 PREV_PAGE_ID=$(echo "$CAPTURE" | jq -r '.pageId // empty')
 ACTION_N=$((ACTION_N + 1))
 
-noob-tester runpack log $ENTRY_ID --text "Login completed — now on $(agent-browser get url)"
+add_log "Login completed — now on $(agent-browser get url)"
 ```
 
 If login fails (URL still on /login, error visible) → log issue, mark entry skipped, end session, exit.
@@ -236,9 +252,9 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
         DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$(echo "$S_DESC" | cut -d' ' -f1)" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
         if [ -n "$DISCOVERED_REF" ]; then
           ELEMENT_REF="@${DISCOVERED_REF}"
-          noob-tester runpack log $ENTRY_ID --text "Step $i: discovered element $ELEMENT_REF matching '$S_DESC'"
+          add_log "Step $i: discovered element $ELEMENT_REF matching '$S_DESC'"
         else
-          noob-tester runpack log $ENTRY_ID --text "Step $i: WARN — could not discover element for '$S_DESC' in snapshot, skipping action"
+          add_log "Step $i: WARN — could not discover element for '$S_DESC' in snapshot, skipping action"
           ELEMENT_REF=""
         fi
       fi
@@ -291,26 +307,26 @@ if [ -n "$STEPS_JSON" ] && [ "$STEPS_JSON" != "null" ] && [ "$STEPS_JSON" != "[]
     ACTION_N=$((ACTION_N + 1))
 
     # ── Logging & Analysis ──────────────────────────────────────────────────
-    noob-tester runpack log $ENTRY_ID --text "Step $i [$S_ACTION] $S_LABEL — now on $(agent-browser get url)"
+    add_log "Step $i [$S_ACTION] $S_LABEL — now on $(agent-browser get url)"
 
     # Check a11y violations
     A11Y_COUNT=$(echo "$CAPTURE" | jq -r '.a11yIssues // 0')
     if [ "$A11Y_COUNT" -gt 0 ]; then
       A11Y_VIOLATIONS=$(echo "$CAPTURE" | jq -r '.a11yViolations // []')
-      noob-tester runpack log $ENTRY_ID --text "a11y: $A11Y_COUNT violation(s) on $S_LABEL: $A11Y_VIOLATIONS"
+      add_log "a11y: $A11Y_COUNT violation(s) on $S_LABEL: $A11Y_VIOLATIONS"
     fi
 
     # Collect per-step console logs and errors
     if [ "$ENABLE_CONSOLE" = "true" ]; then
       STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
       if [ "$STEP_CONSOLE" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Console (step $i / $S_LABEL): $STEP_CONSOLE"
+        add_log "Console (step $i / $S_LABEL): $STEP_CONSOLE"
       fi
     fi
     if [ "$ENABLE_ERRORS" = "true" ]; then
       STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
       if [ "$STEP_ERRORS" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Page errors (step $i / $S_LABEL): $STEP_ERRORS"
+        add_log "Page errors (step $i / $S_LABEL): $STEP_ERRORS"
       fi
     fi
 
@@ -357,8 +373,8 @@ if [ -n "$BDD_GIVEN" ] && [ "$BDD_GIVEN" != "null" ]; then
     PREV_PAGE_ID=$(echo "$CAPTURE" | jq -r '.pageId // empty')
     ACTION_N=$((ACTION_N + 1))
 
-    noob-tester runpack log $ENTRY_ID --text "Given step $i confirmed: $GIVEN_STEP"
-    noob-tester runpack observe $ENTRY_ID --text "<describe what you see on the page after setup>"
+    add_log "Given step $i confirmed: $GIVEN_STEP"
+    add_observation "<describe what you see on the page after setup>"
 
     STEP_INDEX=$((STEP_INDEX + 1))
   done
@@ -387,7 +403,7 @@ if [ -n "$BDD_WHEN" ] && [ "$BDD_WHEN" != "null" ]; then
         DISCOVERED_REF=$(echo "$LAST_SNAPSHOT" | grep -i "$ACTION_TARGET" | head -1 | grep -oP '\[ref=e\d+\]' | grep -oP 'e\d+' | head -1)
         if [ -n "$DISCOVERED_REF" ]; then
           ELEMENT_REF="@${DISCOVERED_REF}"
-          noob-tester runpack log $ENTRY_ID --text "When step $i: discovered element $ELEMENT_REF for action '$KEYWORD $ACTION_TARGET'"
+          add_log "When step $i: discovered element $ELEMENT_REF for action '$KEYWORD $ACTION_TARGET'"
         fi
       fi
     fi
@@ -420,19 +436,19 @@ if [ -n "$BDD_WHEN" ] && [ "$BDD_WHEN" != "null" ]; then
     ACTION_N=$((ACTION_N + 1))
 
     # Logging & Analysis
-    noob-tester runpack log $ENTRY_ID --text "When step $i: $WHEN_STEP — URL: $(agent-browser get url)"
-    noob-tester runpack observe $ENTRY_ID --text "<describe what changed on the page after this action>"
+    add_log "When step $i: $WHEN_STEP — URL: $(agent-browser get url)"
+    add_observation "<describe what changed on the page after this action>"
 
     if [ "$ENABLE_CONSOLE" = "true" ]; then
       STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
       if [ "$STEP_CONSOLE" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Console (when-$i): $STEP_CONSOLE"
+        add_log "Console (when-$i): $STEP_CONSOLE"
       fi
     fi
     if [ "$ENABLE_ERRORS" = "true" ]; then
       STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
       if [ "$STEP_ERRORS" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Page errors (when-$i): $STEP_ERRORS"
+        add_log "Page errors (when-$i): $STEP_ERRORS"
       fi
     fi
 
@@ -463,19 +479,19 @@ if [ -n "$BDD_THEN" ] && [ "$BDD_THEN" != "null" ]; then
     PREV_PAGE_ID=$(echo "$CAPTURE" | jq -r '.pageId // empty')
     ACTION_N=$((ACTION_N + 1))
 
-    noob-tester runpack log $ENTRY_ID --text "Then step $i: $THEN_STEP"
-    noob-tester runpack observe $ENTRY_ID --text "<describe whether the expected state is present or not>"
+    add_log "Then step $i: $THEN_STEP"
+    add_observation "<describe whether the expected state is present or not>"
 
     if [ "$ENABLE_CONSOLE" = "true" ]; then
       STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
       if [ "$STEP_CONSOLE" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Console (then-$i): $STEP_CONSOLE"
+        add_log "Console (then-$i): $STEP_CONSOLE"
       fi
     fi
     if [ "$ENABLE_ERRORS" = "true" ]; then
       STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
       if [ "$STEP_ERRORS" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Page errors (then-$i): $STEP_ERRORS"
+        add_log "Page errors (then-$i): $STEP_ERRORS"
       fi
     fi
 
@@ -534,19 +550,19 @@ if [ -n "$TRAD_STEPS" ] && [ "$TRAD_STEPS" != "null" ]; then
     PREV_PAGE_ID=$(echo "$CAPTURE" | jq -r '.pageId // empty')
     ACTION_N=$((ACTION_N + 1))
 
-    noob-tester runpack log $ENTRY_ID --text "Step $i: $STEP_TEXT — URL: $(agent-browser get url)"
-    noob-tester runpack observe $ENTRY_ID --text "<describe whether '$EXPECTED' is present>"
+    add_log "Step $i: $STEP_TEXT — URL: $(agent-browser get url)"
+    add_observation "<describe whether '$EXPECTED' is present>"
 
     if [ "$ENABLE_CONSOLE" = "true" ]; then
       STEP_CONSOLE=$(agent-browser console --json 2>/dev/null || echo "[]")
       if [ "$STEP_CONSOLE" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Console (step-$i): $STEP_CONSOLE"
+        add_log "Console (step-$i): $STEP_CONSOLE"
       fi
     fi
     if [ "$ENABLE_ERRORS" = "true" ]; then
       STEP_ERRORS=$(agent-browser errors 2>/dev/null || echo "[]")
       if [ "$STEP_ERRORS" != "[]" ]; then
-        noob-tester runpack log $ENTRY_ID --text "Page errors (step-$i): $STEP_ERRORS"
+        add_log "Page errors (step-$i): $STEP_ERRORS"
       fi
     fi
 
@@ -608,7 +624,7 @@ CHECK_VISUAL_STEP() {
     agent-browser screenshot "$SCREENSHOT_PATH" --selector "$SCREENSHOT_SELECTOR"
   fi
 
-  noob-tester runpack log $ENTRY_ID --text "Screenshot captured: step $STEP_IDX ($STEP_LABEL) — $DIFF_TYPE fullPage=$FULL_PAGE"
+  add_log "Screenshot captured: step $STEP_IDX ($STEP_LABEL) — $DIFF_TYPE fullPage=$FULL_PAGE"
 
   # ── Record screenshot in DB ──────────────────────────────────────────────
   SCREENSHOT_ID=$(noob-tester visual-run capture \
@@ -648,13 +664,13 @@ CHECK_VISUAL_STEP() {
         --threshold "$STEP_THRESHOLD" $PASSED_FLAG
 
       if [ $DIFF_EXIT -ne 0 ]; then
-        noob-tester runpack log $ENTRY_ID --text "DIFF FAILED: step $STEP_IDX score=$DIFF_SCORE threshold=$STEP_THRESHOLD"
+        add_log "DIFF FAILED: step $STEP_IDX score=$DIFF_SCORE threshold=$STEP_THRESHOLD"
         STEP_FAILED=1
       else
-        noob-tester runpack log $ENTRY_ID --text "DIFF PASSED: step $STEP_IDX score=$DIFF_SCORE threshold=$STEP_THRESHOLD"
+        add_log "DIFF PASSED: step $STEP_IDX score=$DIFF_SCORE threshold=$STEP_THRESHOLD"
       fi
     else
-      noob-tester runpack log $ENTRY_ID --text "No baseline for step $STEP_IDX — marking skipped"
+      add_log "No baseline for step $STEP_IDX — marking skipped"
       STEP_FAILED=2
     fi
   fi
@@ -680,21 +696,25 @@ TELEMETRY_CONFIG=$(printf '{"trace":%s,"profiler":%s,"console":%s,"errors":%s,"d
   "$ENABLE_TRACE" "$ENABLE_PROFILER" "$ENABLE_CONSOLE" "$ENABLE_ERRORS" "$DEVICE" "$DIMENSION")
 
 # ── Record result ────────────────────────────────────────────────────────────
+# Build result JSON with logs and observations
+RESULT_BASE="{\"tc\":\"$TC_TITLE\",\"type\":\"$TC_TYPE\",\"format\":\"$TC_FORMAT\",\"logs\":$LOGS_JSON,\"observations\":$OBSERVATIONS_JSON}"
+
 if [ $STEP_FAILED -eq 0 ]; then
   noob-tester visual-run entry-update "$ENTRY_ID" --status passed \
-    --result "{\"tc\":\"$TC_TITLE\",\"type\":\"$TC_TYPE\",\"format\":\"$TC_FORMAT\"}" \
+    --result "$RESULT_BASE" \
     --device "$DEVICE" --dimension "$DIMENSION" \
     --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
     --telemetry-config "$TELEMETRY_CONFIG"
 elif [ $STEP_FAILED -eq 2 ]; then
+  SKIP_RESULT="{\"reason\":\"no_baseline\",\"logs\":$LOGS_JSON,\"observations\":$OBSERVATIONS_JSON}"
   noob-tester visual-run entry-update "$ENTRY_ID" --status skipped \
-    --result '{"reason":"no_baseline"}' \
+    --result "$SKIP_RESULT" \
     --device "$DEVICE" --dimension "$DIMENSION" \
     --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
     --telemetry-config "$TELEMETRY_CONFIG"
 else
   noob-tester visual-run entry-update "$ENTRY_ID" --status failed \
-    --result "{\"tc\":\"$TC_TITLE\",\"type\":\"$TC_TYPE\",\"format\":\"$TC_FORMAT\"}" \
+    --result "$RESULT_BASE" \
     --device "$DEVICE" --dimension "$DIMENSION" \
     --trace-path "$TRACE_PATH" --profile-path "$PROFILE_PATH" \
     --telemetry-config "$TELEMETRY_CONFIG"

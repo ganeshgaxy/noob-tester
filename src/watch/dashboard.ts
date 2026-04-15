@@ -6937,6 +6937,7 @@ async function renderVisualRunsPage() {
     const entries = (data && data.entries) || [];
     const comparisons = (data && data.comparisons) || [];
     const screenshots = (data && data.screenshots) || [];
+    const runPackLogs = (data && data.runPackLogs) || { logs: [], observations: [] };
 
     // Auto-select first entry
     if (!vrSelectedEntry && entries.length > 0) vrSelectedEntry = entries[0].visual_tc_id;
@@ -6984,7 +6985,7 @@ async function renderVisualRunsPage() {
         \${selEntry.tc_viewport ? \`<div style="font-size:11px;color:var(--dim);margin-top:4px"><i class="ph ph-monitor" style="margin-right:4px"></i>\${esc(selEntry.tc_viewport)}</div>\` : ""}
       </div>\`;
 
-      html += renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline);
+      html += renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline, runPackLogs);
 
       if (selEntry.notes) {
         html += \`<div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:6px;font-size:12px;color:var(--dim)">\${esc(selEntry.notes)}</div>\`;
@@ -7005,7 +7006,7 @@ function switchVrTab(entryId, tabName) {
   window.vrActiveTab[entryId] = tabName;
   const data = window.vrTabData[entryId];
   if (!data) return;
-  const html = renderVrTab(tabName, data.selEntry, data.entryComps, data.entryScreenshots, data.isBaseline);
+  const html = renderVrTab(tabName, data.selEntry, data.entryComps, data.entryScreenshots, data.isBaseline, data.runPackLogs);
   document.getElementById(\`vr-entry-\${entryId}-content\`).innerHTML = html;
 
   // Update tab styles
@@ -7019,7 +7020,7 @@ function switchVrTab(entryId, tabName) {
   });
 }
 
-function renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline) {
+function renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline, runPackLogs) {
   let out = "";
   let result = {};
   try {
@@ -7032,7 +7033,7 @@ function renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline
   const tabs = [];
   if (entryComps.length > 0 || entryScreenshots.length > 0) tabs.push({ id: 'screenshots', label: 'Screenshots' });
   if (result.tc || result.type) tabs.push({ id: 'steps', label: 'Steps' });
-  if (result.logs || result.observations) tabs.push({ id: 'logs', label: 'Logs' });
+  if (result.logs || result.observations || (runPackLogs && (runPackLogs.logs.length > 0 || runPackLogs.observations.length > 0))) tabs.push({ id: 'logs', label: 'Logs' });
   if (result.console_errors || result.console_logs) tabs.push({ id: 'console', label: 'Console' });
   if (selEntry.trace_path) tabs.push({ id: 'trace', label: 'Trace' });
   if (selEntry.profile_path) tabs.push({ id: 'profiler', label: 'Profiler' });
@@ -7042,7 +7043,7 @@ function renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline
   }
 
   // Store data for tab switching
-  window.vrTabData[selEntry.id] = { selEntry, entryComps, entryScreenshots, isBaseline };
+  window.vrTabData[selEntry.id] = { selEntry, entryComps, entryScreenshots, isBaseline, runPackLogs };
   const activeTab = window.vrActiveTab[selEntry.id] || tabs[0].id;
 
   // Render tabs
@@ -7055,13 +7056,13 @@ function renderVrEntryContent(selEntry, entryComps, entryScreenshots, isBaseline
 
   // Tab content
   out += \`<div id="vr-entry-\${selEntry.id}-content">\`;
-  out += renderVrTab(activeTab, selEntry, entryComps, entryScreenshots, isBaseline);
+  out += renderVrTab(activeTab, selEntry, entryComps, entryScreenshots, isBaseline, runPackLogs);
   out += '</div>';
 
   return out;
 }
 
-function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
+function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline, runPackLogs) {
   let out = "";
   let result = {};
   try {
@@ -7242,6 +7243,55 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline) {
       out += '</div>';
     } else {
       out += '<div style="color:var(--dim);font-size:12px;padding:24px;text-align:center;background:var(--surface);border:1px dashed var(--border);border-radius:8px"><i class="ph ph-info" style="font-size:20px;margin-bottom:8px;display:block;opacity:0.5"></i>No step details available</div>';
+    }
+
+    // Display logs and observations from result_json or runpack
+    const allObservations: string[] = [];
+    const allLogs: string[] = [];
+
+    // Gather from result.observations
+    if (result.observations && Array.isArray(result.observations)) {
+      allObservations.push(...result.observations);
+    }
+    // Gather from result.logs
+    if (result.logs && Array.isArray(result.logs)) {
+      allLogs.push(...result.logs);
+    }
+    // Fallback to runpack if available
+    if (runPackLogs) {
+      if (runPackLogs.observations.length > 0 && allObservations.length === 0) {
+        allObservations.push(...runPackLogs.observations);
+      }
+      if (runPackLogs.logs.length > 0 && allLogs.length === 0) {
+        allLogs.push(...runPackLogs.logs);
+      }
+    }
+
+    if (allObservations.length > 0 || allLogs.length > 0) {
+      out += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">';
+      out += '<div style="font-weight:700;color:var(--text);margin-bottom:12px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Collected Logs & Observations</div>';
+
+      if (allObservations.length > 0) {
+        out += '<div style="margin-bottom:12px">';
+        out += '<div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px"><i class="ph ph-eye" style="margin-right:4px"></i>Observations</div>';
+        out += '<div style="display:flex;flex-direction:column;gap:6px">';
+        for (const obs of allObservations) {
+          out += \`<div style="padding:8px 10px;background:rgba(59,130,246,0.08);border-left:3px solid var(--accent);border-radius:4px;font-size:11px;color:var(--text);line-height:1.4">\${esc(obs)}</div>\`;
+        }
+        out += '</div></div>';
+      }
+
+      if (allLogs.length > 0) {
+        out += '<div>';
+        out += '<div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:6px"><i class="ph ph-list" style="margin-right:4px"></i>Logs</div>';
+        out += '<div style="display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto">';
+        for (const log of allLogs) {
+          out += \`<div style="padding:6px 8px;background:var(--surface);border-left:3px solid var(--green);border-radius:3px;font-size:10px;color:var(--dim);font-family:var(--font-mono);line-height:1.3">\${esc(log)}</div>\`;
+        }
+        out += '</div></div>';
+      }
+
+      out += '</div>';
     }
 
     out += '</div>';
