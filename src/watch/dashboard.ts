@@ -2776,26 +2776,13 @@ async function renderPlansPage() {
   const plan = detail.plan;
   const steps = detail.steps || [];
 
-  const blockers = (() => {
-    if (!plan.blockers) return [];
-    try {
-      const parsed = JSON.parse(plan.blockers);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  })();
+  // Use normalized data from the API (detail.blockers, detail.coverageGaps)
+  // These come from the blockers and coverage_gaps tables
+  const linkedAnalyses = detail.linkedAnalyses || [];
+  const blockers = detail.blockers || [];
+  const gaps = detail.coverageGaps || [];
 
-  const gaps = (() => {
-    if (!plan.coverage_gaps) return [];
-    try {
-      const parsed = JSON.parse(plan.coverage_gaps);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  })();
-
+  // Fallback to parsing legacy plan fields if normalized data is empty
   const mrRefs = (() => {
     if (!plan.mr_refs) return [];
     try {
@@ -2805,9 +2792,6 @@ async function renderPlansPage() {
       return [];
     }
   })();
-  const linkedAnalyses = detail.linkedAnalyses || [];
-  const normalizedGaps = detail.coverageGaps || [];
-  const normalizedBlockers = detail.blockers || [];
 
   // Stats + breadcrumb
   html += '<div class="panel" style="margin-bottom:8px">';
