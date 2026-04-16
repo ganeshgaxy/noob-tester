@@ -7531,15 +7531,15 @@ function renderSchedulerAgentsList(agents) {
     const agentName = agent.agent_path.split("/").pop() || agent.agent_path;
 
     html += '<tr style="border-bottom:1px solid var(--border-light);hover:background:var(--surface-raised)" data-agent-id="' + esc(agent.id) + '" data-agent-status="' + agent.status + '">';
-    html += '<td style="padding:10px 8px"><span style="color:var(--accent);font-family:var(--font-mono);font-size:11px;cursor:pointer" onclick="window.selectSchedulerAgent(this.closest(\'tr\').dataset.agentId)">' + esc(agentName) + '</span></td>';
+    html += '<td style="padding:10px 8px"><span style="color:var(--accent);font-family:var(--font-mono);font-size:11px;cursor:pointer" onclick='window.selectSchedulerAgent(this.closest("tr").dataset.agentId)'>' + esc(agentName) + '</span></td>';
     html += '<td style="padding:10px 8px">' + esc(agent.ticket_id) + '</td>';
     html += '<td style="padding:10px 8px;font-family:var(--font-mono);font-size:11px">' + esc(agent.cron_expression) + '</td>';
     html += '<td style="padding:10px 8px"><span style="color:' + statusColor + ';font-weight:500">' + agent.status + '</span></td>';
     html += '<td style="padding:10px 8px;color:var(--dim);font-size:11px">' + lastRun + '</td>';
     html += '<td style="padding:10px 8px;text-align:right">';
-    html += '<button onclick="window.triggerScheduler(this.closest(\'tr\').dataset.agentId)" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--accent);color:var(--bg);border:none;border-radius:3px;cursor:pointer">Run</button>';
-    html += '<button onclick="window.toggleScheduler(this.closest(\'tr\').dataset.agentId,this.closest(\'tr\').dataset.agentStatus)" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
-    html += '<button onclick="window.deleteScheduler(this.closest(\'tr\').dataset.agentId)" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--red-dim);color:var(--red);border:none;border-radius:3px;cursor:pointer">Delete</button>';
+    html += '<button onclick='window.triggerScheduler(this.closest("tr").dataset.agentId)' style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--accent);color:var(--bg);border:none;border-radius:3px;cursor:pointer">Run</button>';
+    html += '<button onclick='window.toggleScheduler(this.closest("tr").dataset.agentId,this.closest("tr").dataset.agentStatus)' style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
+    html += '<button onclick='window.deleteScheduler(this.closest("tr").dataset.agentId)' style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--red-dim);color:var(--red);border:none;border-radius:3px;cursor:pointer">Delete</button>';
     html += '</td>';
     html += '</tr>';
   }
@@ -7555,7 +7555,7 @@ async function renderSchedulerAgentDetail(agentId) {
 
   let html = '<div class="panel" style="margin-bottom:8px">';
   html += '<div class="breadcrumb">';
-  html += '<span class="breadcrumb-item" onclick="window.selectSchedulerAgent(\\'\\')">Agents</span>';
+  html += '<span class="breadcrumb-item" onclick='window.selectSchedulerAgent("")'>Agents</span>';
   html += '<span class="breadcrumb-sep">|</span>';
   html += '<span class="breadcrumb-item current">' + esc(agent.agent_path.split("/").pop() || agent.agent_path) + '</span>';
   html += '</div>';
@@ -7584,9 +7584,9 @@ async function renderSchedulerAgentDetail(agentId) {
   html += '</div>';
 
   html += '<div style="display:flex;gap:8px;margin-top:12px" data-agent-id="' + esc(agent.id) + '" data-agent-status="' + agent.status + '">';
-  html += '<button onclick="window.triggerScheduler(this.closest(\'[data-agent-id]\').dataset.agentId)" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>';
-  html += '<button onclick="window.toggleScheduler(this.closest(\'[data-agent-id]\').dataset.agentId,this.closest(\'[data-agent-id]\').dataset.agentStatus)" style="flex:1;padding:8px 12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
-  html += '<button onclick="window.deleteScheduler(this.closest(\'[data-agent-id]\').dataset.agentId)" style="flex:1;padding:8px 12px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-weight:600">Delete</button>';
+  html += '<button onclick='window.triggerScheduler(this.closest("[data-agent-id]").dataset.agentId)' style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>';
+  html += '<button onclick='window.toggleScheduler(this.closest("[data-agent-id]").dataset.agentId,this.closest("[data-agent-id]").dataset.agentStatus)' style="flex:1;padding:8px 12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
+  html += '<button onclick='window.deleteScheduler(this.closest("[data-agent-id]").dataset.agentId)' style="flex:1;padding:8px 12px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-weight:600">Delete</button>';
   html += '</div>';
   html += '</div>';
 
@@ -7619,7 +7619,7 @@ async function renderSchedulerAgentDetail(agentId) {
       html += '<td style="padding:6px">' + duration + '</td>';
       html += '<td style="padding:6px"><span style="color:' + statusColor + ';font-weight:500;text-transform:uppercase">' + exec.status + '</span></td>';
       html += '<td style="padding:6px;font-family:var(--font-mono)">' + (exec.exit_code !== undefined && exec.exit_code !== null ? exec.exit_code : "—") + '</td>';
-      html += '<td style="padding:6px"><button onclick="window.showLogs(this.closest(\'tr\').dataset.logContent)" data-log-content="' + esc((exec.logs || "No logs").slice(0, 500)) + '" style="font-size:9px;padding:2px 6px;background:var(--surface);border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--accent)">View</button></td>';
+      html += '<td style="padding:6px"><button onclick='window.showLogs(this.closest("tr").dataset.logContent)' data-log-content="' + esc((exec.logs || "No logs").slice(0, 500)) + '" style="font-size:9px;padding:2px 6px;background:var(--surface);border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--accent)">View</button></td>';
       html += '</tr>';
     }
 
