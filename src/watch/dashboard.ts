@@ -448,6 +448,7 @@ export function getDashboardHtml(
       <div class="nav-btn" data-page="swarm" onclick="switchPage('swarm')"><i class="ph ph-monitor-play nav-icon"></i>Swarm</div>
       <div class="nav-btn" data-page="issues" onclick="switchPage('issues')"><i class="ph ph-bug nav-icon"></i>Issues</div>
       <div class="nav-btn" data-page="qapool" onclick="switchPage('qapool')"><i class="ph ph-robot nav-icon"></i>Pool</div>
+      <div class="nav-btn" data-page="scheduler" onclick="switchPage('scheduler')"><i class="ph ph-timer nav-icon"></i>Scheduler</div>
 
       <div class="nav-group-label">Planning</div>
       <div class="nav-btn" data-page="analyses" onclick="switchPage('analyses')"><i class="ph ph-magnifying-glass-plus nav-icon"></i>Analyses</div>
@@ -897,6 +898,11 @@ function render() {
 
   if (currentPage === "qapool") {
     renderQaPoolPage();
+    return;
+  }
+
+  if (currentPage === "scheduler") {
+    renderSchedulerPage();
     return;
   }
 
@@ -7435,6 +7441,278 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline, ru
   }
 
   return out;
+}
+
+// ── Scheduler Page ──
+
+let schedulerViewMode = "list"; // list | create | history
+let schedulerSelectedAgentId = "";
+
+async function renderSchedulerPage() {
+  const app = document.getElementById("app");
+
+  const agents = await fetchJson("/api/scheduled-agents");
+
+  let html = "";
+
+  // Stats
+  html += '<div class="panel" style="margin-bottom:8px">';
+  const activeCount = agents.filter(a => a.status === "active").length;
+  const pausedCount = agents.filter(a => a.status === "paused").length;
+  const totalCount = agents.length;
+  html += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+  html += '<div class="stat"><div class="stat-value">' + totalCount + '</div><div class="stat-label">Scheduled</div></div>';
+  html += '<div class="stat"><div class="stat-value" style="color:var(--green)">' + activeCount + '</div><div class="stat-label">Active</div></div>';
+  html += '<div class="stat"><div class="stat-value" style="color:var(--yellow)">' + pausedCount + '</div><div class="stat-label">Paused</div></div>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;margin-top:12px">';
+  html += '<div class="tab ' + (schedulerViewMode === "list" ? "active" : "") + '" onclick="schedulerViewMode=\'list\';renderSchedulerPage()">Agents</div>';
+  html += '<div class="tab ' + (schedulerViewMode === "create" ? "active" : "") + '" onclick="schedulerViewMode=\'create\';renderSchedulerPage()">Create</div>';
+  html += '</div></div>';
+
+  if (schedulerViewMode === "create") {
+    html += renderSchedulerCreateForm();
+  } else if (schedulerViewMode === "list") {
+    if (agents.length === 0) {
+      html += '<div class="panel"><div class="empty">No scheduled agents yet. Create one to get started.</div></div>';
+    } else if (schedulerSelectedAgentId) {
+      html += await renderSchedulerAgentDetail(schedulerSelectedAgentId);
+    } else {
+      html += renderSchedulerAgentsList(agents);
+    }
+  }
+
+  setPage(html);
+}
+
+function renderSchedulerAgentsList(agents) {
+  let html = '<div class="panel">';
+  html += '<div style="overflow-x:auto">';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html += '<thead><tr style="border-bottom:1px solid var(--border)">';
+  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Agent</th>';
+  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Ticket</th>';
+  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Schedule</th>';
+  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Status</th>';
+  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Last Run</th>';
+  html += '<th style="text-align:right;padding:8px;font-weight:600;color:var(--dim)">Actions</th>';
+  html += '</tr></thead>';
+  html += '<tbody>';
+
+  for (const agent of agents) {
+    const statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
+    const lastRun = agent.last_run_at ? new Date(agent.last_run_at).toLocaleString() : "Never";
+    const agentName = agent.agent_path.split("/").pop() || agent.agent_path;
+
+    html += '<tr style="border-bottom:1px solid var(--border-light);hover:background:var(--surface-raised)">';
+    html += '<td style="padding:10px 8px"><span style="color:var(--accent);font-family:var(--font-mono);font-size:11px;cursor:pointer" onclick="schedulerSelectedAgentId=\'' + esc(agent.id) + '\';renderSchedulerPage()">' + esc(agentName) + '</span></td>';
+    html += '<td style="padding:10px 8px">' + esc(agent.ticket_id) + '</td>';
+    html += '<td style="padding:10px 8px;font-family:var(--font-mono);font-size:11px">' + esc(agent.cron_expression) + '</td>';
+    html += '<td style="padding:10px 8px"><span style="color:' + statusColor + ';font-weight:500">' + agent.status + '</span></td>';
+    html += '<td style="padding:10px 8px;color:var(--dim);font-size:11px">' + lastRun + '</td>';
+    html += '<td style="padding:10px 8px;text-align:right">';
+    html += '<button onclick="triggerScheduledAgent(\'' + esc(agent.id) + '\')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--accent);color:var(--bg);border:none;border-radius:3px;cursor:pointer">Run</button>';
+    html += '<button onclick="toggleScheduledAgent(\'' + esc(agent.id) + '\',\'' + agent.status + '\')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
+    html += '<button onclick="deleteScheduledAgent(\'' + esc(agent.id) + '\')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--red-dim);color:var(--red);border:none;border-radius:3px;cursor:pointer">Delete</button>';
+    html += '</td>';
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  html += '</div></div>';
+  return html;
+}
+
+async function renderSchedulerAgentDetail(agentId) {
+  const agent = await fetchJson("/api/scheduled-agents/" + agentId);
+  const history = await fetchJson("/api/scheduled-agents/" + agentId + "/history");
+
+  let html = '<div class="panel" style="margin-bottom:8px">';
+  html += '<div class="breadcrumb">';
+  html += '<span class="breadcrumb-item" onclick="schedulerSelectedAgentId=\'\';renderSchedulerPage()">Agents</span>';
+  html += '<span class="breadcrumb-sep">|</span>';
+  html += '<span class="breadcrumb-item current">' + esc(agent.agent_path.split("/").pop() || agent.agent_path) + '</span>';
+  html += '</div>';
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Agent</div><div style="font-family:var(--font-mono);font-size:12px">' + esc(agent.agent_path) + '</div></div>';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Ticket</div><div style="font-family:var(--font-mono);font-size:12px">' + esc(agent.ticket_id) + '</div></div>';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Schedule</div><div style="font-family:var(--font-mono);font-size:12px">' + esc(agent.cron_expression) + '</div></div>';
+
+  const statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Status</div><div style="color:' + statusColor + ';font-weight:600;text-transform:uppercase;font-size:11px">' + agent.status + '</div></div>';
+
+  const lastRun = agent.last_run_at ? new Date(agent.last_run_at).toLocaleString() : "Never";
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Last Run</div><div style="font-size:12px">' + lastRun + '</div></div>';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Created</div><div style="font-size:12px">' + new Date(agent.created_at).toLocaleString() + '</div></div>';
+
+  if (agent.description) {
+    html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Description</div><div style="color:var(--text)">' + esc(agent.description) + '</div></div>';
+  }
+
+  if (agent.parameters && Object.keys(agent.parameters).length > 0) {
+    html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Parameters</div>';
+    html += '<div style="font-family:var(--font-mono);font-size:11px;background:var(--surface);padding:8px;border-radius:4px;white-space:pre-wrap;overflow-x:auto">' + esc(JSON.stringify(agent.parameters, null, 2)) + '</div></div>';
+  }
+
+  html += '</div>';
+
+  html += '<div style="display:flex;gap:8px;margin-top:12px">';
+  html += '<button onclick="triggerScheduledAgent(\'' + esc(agent.id) + '\')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>';
+  html += '<button onclick="toggleScheduledAgent(\'' + esc(agent.id) + '\',\'' + agent.status + '\')" style="flex:1;padding:8px 12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
+  html += '<button onclick="deleteScheduledAgent(\'' + esc(agent.id) + '\')" style="flex:1;padding:8px 12px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-weight:600">Delete</button>';
+  html += '</div>';
+  html += '</div>';
+
+  // Execution history
+  html += '<div class="panel" style="margin-top:8px">';
+  html += '<div class="panel-title" style="margin-bottom:8px">Execution History</div>';
+
+  if (history.length === 0) {
+    html += '<div class="empty" style="padding:20px;text-align:center">No executions yet</div>';
+  } else {
+    html += '<div style="overflow-x:auto">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html += '<thead><tr style="border-bottom:1px solid var(--border)">';
+    html += '<th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Executed</th>';
+    html += '<th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Duration</th>';
+    html += '<th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Status</th>';
+    html += '<th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Exit Code</th>';
+    html += '<th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Logs</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+
+    for (const exec of history.slice(0, 20)) {
+      const startedAt = exec.started_at ? new Date(exec.started_at) : null;
+      const completedAt = exec.completed_at ? new Date(exec.completed_at) : null;
+      const duration = startedAt && completedAt ? Math.round((completedAt - startedAt) / 1000) + "s" : "—";
+      const statusColor = exec.status === "success" ? "var(--green)" : exec.status === "failed" ? "var(--red)" : "var(--yellow)";
+
+      html += '<tr style="border-bottom:1px solid var(--border-light)">';
+      html += '<td style="padding:6px">' + (startedAt ? startedAt.toLocaleString() : "—") + '</td>';
+      html += '<td style="padding:6px">' + duration + '</td>';
+      html += '<td style="padding:6px"><span style="color:' + statusColor + ';font-weight:500;text-transform:uppercase">' + exec.status + '</span></td>';
+      html += '<td style="padding:6px;font-family:var(--font-mono)">' + (exec.exit_code !== undefined && exec.exit_code !== null ? exec.exit_code : "—") + '</td>';
+      html += '<td style="padding:6px"><button onclick="alert(\'' + esc((exec.logs || "No logs").slice(0, 500)) + '\')" style="font-size:9px;padding:2px 6px;background:var(--surface);border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--accent)">View</button></td>';
+      html += '</tr>';
+    }
+
+    html += '</tbody></table>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  return html;
+}
+
+function renderSchedulerCreateForm() {
+  let html = '<div class="panel">';
+  html += '<div class="panel-title" style="margin-bottom:12px">Create Scheduled Agent</div>';
+  html += '<form id="schedulerForm" style="display:flex;flex-direction:column;gap:12px">';
+
+  html += '<div>';
+  html += '<label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Agent Path</label>';
+  html += '<input id="scheduler-agent-path" type="text" placeholder="e.g., noob-pool" style="width:100%;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:12px" />';
+  html += '</div>';
+
+  html += '<div>';
+  html += '<label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Ticket ID</label>';
+  html += '<input id="scheduler-ticket-id" type="text" placeholder="e.g., SCRUM-1" style="width:100%;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:12px" />';
+  html += '</div>';
+
+  html += '<div>';
+  html += '<label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Cron Expression</label>';
+  html += '<input id="scheduler-cron" type="text" placeholder="e.g., 0 9 * * 1-5" style="width:100%;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:12px" />';
+  html += '<div style="font-size:10px;color:var(--dim);margin-top:4px">Format: min(0-59) hour(0-23) day(1-31) month(1-12) dow(0-6)</div>';
+  html += '</div>';
+
+  html += '<div>';
+  html += '<label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Description (optional)</label>';
+  html += '<input id="scheduler-description" type="text" placeholder="e.g., Daily pool generation" style="width:100%;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:12px" />';
+  html += '</div>';
+
+  html += '<div>';
+  html += '<label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Parameters (JSON, optional)</label>';
+  html += '<textarea id="scheduler-parameters" placeholder="{}" style="width:100%;height:100px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:12px;resize:vertical"></textarea>';
+  html += '</div>';
+
+  html += '<button type="button" onclick="createScheduledAgent()" style="padding:10px 16px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Create Agent</button>';
+
+  html += '</form>';
+  html += '</div>';
+  return html;
+}
+
+async function triggerScheduledAgent(agentId) {
+  const agent = await fetchJson("/api/scheduled-agents/" + agentId);
+  if (!confirm("Run \"" + agent.agent_path + "\" now for " + agent.ticket_id + "?")) return;
+
+  // TODO: Add endpoint to trigger agent immediately
+  alert("Trigger endpoint not yet implemented. Use CLI: noob-tester scheduled-agents trigger " + agentId);
+}
+
+async function toggleScheduledAgent(agentId, currentStatus) {
+  const newStatus = currentStatus === "active" ? "paused" : "active";
+  const url = currentStatus === "active" ? "/api/scheduled-agents/" + agentId + "/pause" : "/api/scheduled-agents/" + agentId + "/resume";
+
+  try {
+    await postJson(url, {});
+    renderSchedulerPage();
+  } catch (e) {
+    alert("Error: " + e.message);
+  }
+}
+
+async function deleteScheduledAgent(agentId) {
+  const agent = await fetchJson("/api/scheduled-agents/" + agentId);
+  if (!confirm("Delete \"" + agent.agent_path + "\" scheduled agent?")) return;
+
+  try {
+    await fetchApi("/api/scheduled-agents/" + agentId + "/delete", { method: "DELETE" });
+    schedulerSelectedAgentId = "";
+    renderSchedulerPage();
+  } catch (e) {
+    alert("Error: " + e.message);
+  }
+}
+
+async function createScheduledAgent() {
+  const agentPath = document.getElementById("scheduler-agent-path").value.trim();
+  const ticketId = document.getElementById("scheduler-ticket-id").value.trim();
+  const cronExpr = document.getElementById("scheduler-cron").value.trim();
+  const description = document.getElementById("scheduler-description").value.trim();
+  const parametersStr = document.getElementById("scheduler-parameters").value.trim();
+
+  if (!agentPath) { alert("Agent path required"); return; }
+  if (!ticketId) { alert("Ticket ID required"); return; }
+  if (!cronExpr) { alert("Cron expression required"); return; }
+
+  let parameters = {};
+  if (parametersStr) {
+    try {
+      parameters = JSON.parse(parametersStr);
+    } catch (e) {
+      alert("Invalid JSON in parameters: " + e.message);
+      return;
+    }
+  }
+
+  try {
+    const result = await postJson("/api/scheduled-agents/create", {
+      agent_path: agentPath,
+      ticket_id: ticketId,
+      cron_expression: cronExpr,
+      description: description || undefined,
+      parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
+      status: "active",
+    });
+
+    document.getElementById("schedulerForm").reset();
+    schedulerViewMode = "list";
+    renderSchedulerPage();
+  } catch (e) {
+    alert("Error creating scheduled agent: " + e.message);
+  }
 }
 
 </script>
