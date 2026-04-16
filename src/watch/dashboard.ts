@@ -7466,8 +7466,8 @@ async function renderSchedulerPage() {
   html += '<div class="stat"><div class="stat-value" style="color:var(--yellow)">' + pausedCount + '</div><div class="stat-label">Paused</div></div>';
   html += '</div>';
   html += '<div style="display:flex;gap:6px;margin-top:12px">';
-  html += '<div class="tab ' + (schedulerViewMode === "list" ? "active" : "") + '" onclick="schedulerViewMode=\'list\';renderSchedulerPage()">Agents</div>';
-  html += '<div class="tab ' + (schedulerViewMode === "create" ? "active" : "") + '" onclick="schedulerViewMode=\'create\';renderSchedulerPage()">Create</div>';
+  html += '<div class="tab ' + (schedulerViewMode === "list" ? "active" : "") + '" onclick="schedulerViewMode=&quot;list&quot;;renderSchedulerPage()" style="cursor:pointer">Agents</div>';
+  html += '<div class="tab ' + (schedulerViewMode === "create" ? "active" : "") + '" onclick="schedulerViewMode=&quot;create&quot;;renderSchedulerPage()" style="cursor:pointer">Create</div>';
   html += '</div></div>';
 
   if (schedulerViewMode === "create") {
