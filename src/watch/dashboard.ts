@@ -7647,8 +7647,13 @@ async function triggerScheduledAgent(agentId) {
   const agent = await fetchJson("/api/scheduled-agents/" + agentId);
   if (!confirm("Run \"" + agent.agent_path + "\" now for " + agent.ticket_id + "?")) return;
 
-  // TODO: Add endpoint to trigger agent immediately
-  alert("Trigger endpoint not yet implemented. Use CLI: noob-tester scheduled-agents trigger " + agentId);
+  try {
+    const result = await postJson("/api/scheduled-agents/" + agentId + "/trigger", {});
+    alert("Agent triggered! Execution ID: " + result.executionId);
+    setTimeout(() => renderSchedulerPage(), 500);
+  } catch (e) {
+    alert("Error triggering agent: " + e.message);
+  }
 }
 
 async function toggleScheduledAgent(agentId, currentStatus) {

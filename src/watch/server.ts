@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4, v4 as uuid } from "uuid";
 import { createHash } from "crypto";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import {
   readFileSync,
   existsSync,
@@ -4336,6 +4336,209 @@ export function startWatchServer(opts: WatchOptions): void {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "invalid JSON body", detail: msg }));
         }
+      });
+      return;
+    }
+
+    // ── Scheduled Agents API ──
+
+    if (url.pathname === "/api/scheduled-agents" && req.method === "GET") {
+      import("../db/repositories/scheduled-agents.js").then((module) => {
+        const ticket = url.searchParams.get("ticket");
+        const status = url.searchParams.get("status");
+        const agents = module.listScheduledAgents({ ticket: ticket || undefined, status: status || undefined });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(agents));
+      }).catch((err) => {
+        res.writeHead(500);
+        res.end((err as Error).message);
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/scheduled-agents/create" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on("end", () => {
+        import("../db/repositories/scheduled-agents.js").then((module) => {
+          try {
+            const input = JSON.parse(body);
+            const id = module.createScheduledAgent({
+              agent_path: input.agent_path,
+              ticket_id: input.ticket_id,
+              cron_expression: input.cron_expression,
+              parameters: input.parameters,
+              description: input.description,
+              status: input.status || "active",
+            });
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ id }));
+          } catch (e) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: (e as Error).message }));
+          }
+        });
+      });
+      return;
+    }
+
+    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+$/) && req.method === "GET") {
+      import("../db/repositories/scheduled-agents.js").then((module) => {
+        const id = url.pathname.split("/").pop();
+        if (!id) {
+          res.writeHead(400);
+          res.end("Missing ID");
+          return;
+        }
+        const agent = module.getScheduledAgent(id);
+        if (!agent) {
+          res.writeHead(404);
+          res.end("Not found");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(agent));
+      });
+      return;
+    }
+
+    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/pause$/) && req.method === "POST") {
+      import("../db/repositories/scheduled-agents.js").then((module) => {
+        const parts = url.pathname.split("/");
+        const id = parts[parts.length - 2];
+        const agent = module.getScheduledAgent(id);
+        if (!agent) {
+          res.writeHead(404);
+          res.end("Not found");
+          return;
+        }
+        module.updateScheduledAgent(id, { status: "paused" });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ paused: true, id }));
+      });
+      return;
+    }
+
+    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/resume$/) && req.method === "POST") {
+      import("../db/repositories/scheduled-agents.js").then((module) => {
+        const parts = url.pathname.split("/");
+        const id = parts[parts.length - 2];
+        const agent = module.getScheduledAgent(id);
+        if (!agent) {
+          res.writeHead(404);
+          res.end("Not found");
+          return;
+        }
+        module.updateScheduledAgent(id, { status: "active" });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ resumed: true, id }));
+      });
+      return;
+    }
+
+    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/delete$/) && req.method === "DELETE") {
+      import("../db/repositories/scheduled-agents.js").then((module) => {
+        const parts = url.pathname.split("/");
+        const id = parts[parts.length - 2];
+        module.deleteScheduledAgent(id);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ deleted: true, id }));
+      });
+      return;
+    }
+
+    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/history$/) && req.method === "GET") {
+      import("../db/repositories/scheduled-agents.js").then((module) => {
+        const parts = url.pathname.split("/");
+        const id = parts[parts.length - 2];
+        const limit = parseInt(url.searchParams.get("limit") || "50");
+        const history = module.getExecutionHistory(id, limit);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(history));
+      });
+      return;
+    }
+
+    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/trigger$/) && req.method === "POST") {
+      import("../db/repositories/scheduled-agents.js").then((module) => {
+        const parts = url.pathname.split("/");
+        const id = parts[parts.length - 2];
+        const agent = module.getScheduledAgent(id);
+        if (!agent) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Agent not found" }));
+          return;
+        }
+
+        // Build invocation string
+        let invocation = "run agent " + agent.agent_path + " for ticket " + agent.ticket_id;
+        const params = agent.parameters || {};
+        for (const [key, value] of Object.entries(params)) {
+          if (value !== undefined && value !== null) {
+            if (typeof value === "string") {
+              invocation += " with " + key + " \"" + value + "\"";
+            } else if (typeof value === "number") {
+              invocation += " with " + key + " " + value;
+            } else if (typeof value === "boolean") {
+              invocation += " with " + key + " " + value;
+            } else if (Array.isArray(value)) {
+              invocation += " with " + key + " [" + value.join(", ") + "]";
+            }
+          }
+        }
+
+        // Trigger the agent immediately by spawning a Claude process
+        const agentProcess = spawn("claude", ["-p", invocation], {
+          stdio: ["ignore", "pipe", "pipe"],
+          detached: false,
+        });
+
+        // Record execution start
+        const executionId = uuid();
+        module.recordExecution({
+          schedule_id: id,
+          status: "running",
+        });
+
+        let stdout = "";
+        let stderr = "";
+
+        if (agentProcess.stdout) {
+          agentProcess.stdout.on("data", (data: Buffer) => {
+            stdout += data.toString();
+          });
+        }
+
+        if (agentProcess.stderr) {
+          agentProcess.stderr.on("data", (data: Buffer) => {
+            stderr += data.toString();
+          });
+        }
+
+        agentProcess.on("close", (exitCode: number) => {
+          const success = exitCode === 0;
+          const status = success ? "success" : "failed";
+
+          module.completeExecution(executionId, {
+            status,
+            exit_code: exitCode || undefined,
+            logs: stdout || undefined,
+          });
+
+          module.updateScheduledAgent(id, {});
+        });
+
+        agentProcess.on("error", (err: Error) => {
+          module.completeExecution(executionId, {
+            status: "failed",
+            exit_code: -1,
+          });
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ triggered: true, id, executionId }));
       });
       return;
     }

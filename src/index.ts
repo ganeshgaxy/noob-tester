@@ -32,6 +32,8 @@ import { registerPoolSpawnsCommands } from "./cli/commands/pool-spawns.js";
 import { registerVisualRunCommands } from "./cli/commands/visual-run.js";
 import { registerVisualTcCommands } from "./cli/commands/visual-tc.js";
 import { registerWorkspaceCommands } from "./cli/commands/workspace.js";
+import { registerScheduledAgentCommands } from "./cli/commands/scheduled-agents.js";
+import { registerSchedulerCommands } from "./cli/commands/scheduler.js";
 
 program
   .name("noob-tester")
@@ -101,6 +103,8 @@ registerPoolSpawnsCommands(program);
 registerVisualRunCommands(program);
 registerVisualTcCommands(program);
 registerWorkspaceCommands(program);
+registerScheduledAgentCommands(program);
+registerSchedulerCommands(program);
 registerSetupCommand(program);
 
 // Evidence path command
