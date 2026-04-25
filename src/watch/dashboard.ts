@@ -774,6 +774,7 @@ evtSource.onmessage = (e) => {
   if (!pageStateRestored) {
     restorePageState();
     pageStateRestored = true;
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === currentPage));
     render();
     return;
   }
