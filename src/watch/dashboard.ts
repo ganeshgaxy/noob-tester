@@ -7515,7 +7515,7 @@ async function renderSchedulerPage() {
   // LEFT: Agents list with new agent button
   html += '<div class="split-left panel">';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
-  html += '<button onclick="window.selectSchedulerAgent(\'\')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px">+ New Agent</button>';
+  html += '<button onclick="window.selectSchedulerAgent(' + JSON.stringify("").replace(/"/g, '&quot;') + ')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px">+ New Agent</button>';
   html += '</div>';
 
   if (agents.length === 0) {
