@@ -315,6 +315,18 @@ CREATE TABLE IF NOT EXISTS raw_outputs (
   file_path     TEXT,
   metadata_json TEXT
 );
+CREATE TABLE IF NOT EXISTS pool_spawns (
+  id            TEXT PRIMARY KEY,
+  ticket_id     TEXT NOT NULL,
+  agent_path    TEXT NOT NULL,
+  pid           INTEGER NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'running',
+  spawn_type    TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at  TEXT,
+  exit_code     INTEGER,
+  notes         TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_action_log_run ON action_log(run_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_run ON analyses(run_id);
 CREATE INDEX IF NOT EXISTS idx_test_steps_run ON test_steps(run_id);
@@ -323,6 +335,8 @@ CREATE INDEX IF NOT EXISTS idx_issues_category ON issues(category);
 CREATE INDEX IF NOT EXISTS idx_issues_severity ON issues(severity);
 CREATE INDEX IF NOT EXISTS idx_failure_patterns_hash ON failure_patterns(pattern_hash);
 CREATE INDEX IF NOT EXISTS idx_raw_outputs_run ON raw_outputs(run_id);
+CREATE INDEX IF NOT EXISTS idx_pool_spawns_ticket ON pool_spawns(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_pool_spawns_pid ON pool_spawns(pid);
 `,
 
   "002-vector.sql": `

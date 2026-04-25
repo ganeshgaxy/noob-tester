@@ -1574,7 +1574,7 @@ async function renderSettingsPage() {
   header += '<div class="tabs" style="border-bottom:1px solid var(--border)">';
   header += '<div class="tab ' + (settingsTab === "settings" ? "active" : "") + '" onclick="settingsTab=\\'settings\\';renderSettingsPage()">General</div>';
   header += '<div class="tab ' + (settingsTab === "setup" ? "active" : "") + '" onclick="settingsTab=\\'setup\\';renderSettingsPage()">Setup</div>';
-  header += '<div class="tab ' + (settingsTab === "agents" ? "active" : "") + '" onclick="settingsTab=\\'agents\\';renderSettingsPage()">Agents</div>';
+  header += '<div class="tab ' + (settingsTab === "claude" ? "active" : "") + '" onclick="settingsTab=\\'claude\\';renderSettingsPage()">Claude</div>';
   header += '<div class="tab ' + (settingsTab === "workspaces" ? "active" : "") + '" onclick="settingsTab=\\'workspaces\\';renderSettingsPage()">Workspaces</div>';
   header += '</div></div>';
 
@@ -1583,8 +1583,8 @@ async function renderSettingsPage() {
     content = await renderSettingsTab();
   } else if (settingsTab === "setup") {
     content = await renderSetupTab();
-  } else if (settingsTab === "agents") {
-    content = await renderAgentsTab();
+  } else if (settingsTab === "claude") {
+    content = await renderClaudeTab();
   } else if (settingsTab === "workspaces") {
     content = await renderWorkspacesTab();
   }
@@ -1656,8 +1656,104 @@ async function renderSetupTab() {
   return html;
 }
 
-async function renderAgentsTab() {
-  return '<div class="panel"><div style="padding:32px;text-align:center;color:var(--muted)">Agents - Coming Soon</div></div>';
+async function renderClaudeTab() {
+  let html = '';
+
+  // Loading state
+  html += '<div id="claude-content"><div style="padding:32px;text-align:center;color:var(--muted)">Checking Claude setup...</div></div>';
+
+  // Kick off async check after render
+  setTimeout(async () => {
+    const container = document.getElementById("claude-content");
+    if (!container) return;
+    try {
+      const data = await fetchJson("/api/setup/check");
+      container.innerHTML = renderClaudeContent(data);
+    } catch (err) {
+      container.innerHTML = '<div style="padding:24px;color:var(--red)">Failed to check Claude setup: ' + esc(String(err)) + '</div>';
+    }
+  }, 0);
+
+  return html;
+}
+
+function renderClaudeContent(data) {
+  var html = '';
+
+  // ── Noob-tester Skills ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  html += '<div style="font-weight:500;font-size:14px">Noob-tester Skills</div>';
+  var uninstalled = data.skills.filter(function(s) { return s.srcExists && (!s.installed || !s.upToDate); });
+  if (uninstalled.length > 0) {
+    html += '<div class="action-btn" style="color:var(--accent)" onclick="installAllSkills()">Install All (' + uninstalled.length + ')</div>';
+  }
+  html += '</div>';
+  html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add ganeshgaxy/noob-tester-skills") + '</div>';
+  for (var j = 0; j < data.skills.length; j++) {
+    var skill = data.skills[j];
+    var sIcon, sColor, sRight;
+    if (skill.installed && skill.upToDate) {
+      sIcon = '&#10003;'; sColor = 'var(--green)';
+      sRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(skill.symlinkCmd || "linked") + '</span>';
+    } else if (skill.installed) {
+      sIcon = '&#8635;'; sColor = 'var(--yellow)';
+      sRight = copyBtn(skill.symlinkCmd || skill.installCmd);
+    } else if (skill.pluginInstalled && skill.srcExists) {
+      // Plugin installed but not symlinked
+      sIcon = '&#9675;'; sColor = 'var(--yellow)';
+      sRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(skill.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(skill.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.id).replace(/"/g, '&quot;') + ')">Link</div></div>';
+    } else {
+      // Plugin not installed
+      sIcon = '&#10007;'; sColor = 'var(--red)';
+      sRight = copyBtn(skill.installCmd);
+    }
+    html += setupRow(sIcon, sColor, skill.label, '', sRight);
+  }
+  html += '</div>';
+
+  // ── External Skills ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="margin-bottom:4px;font-weight:500;font-size:14px">External Skills</div>';
+  html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add nikiforovall/claude-code-rules") + '</div>';
+  for (var k = 0; k < data.externalSkills.length; k++) {
+    var ext = data.externalSkills[k];
+    var eIcon, eColor, eRight;
+    if (ext.installed) {
+      eIcon = '&#10003;'; eColor = 'var(--green)';
+      eRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(ext.symlinkCmd || ext.installCmd) + '</span>';
+    } else if (ext.pluginInstalled && ext.src) {
+      eIcon = '&#9675;'; eColor = 'var(--yellow)';
+      eRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(ext.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(ext.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.id).replace(/"/g, '&quot;') + ')">Link</div></div>';
+    } else {
+      eIcon = '&#9675;'; eColor = 'var(--muted)';
+      eRight = copyBtn(ext.installCmd);
+    }
+    html += setupRow(eIcon, eColor, ext.label, '', eRight);
+  }
+  html += '</div>';
+
+  // ── Hooks ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Hooks</div>';
+  for (var m = 0; m < data.hooks.length; m++) {
+    var hook = data.hooks[m];
+    var hIcon, hColor, hRight;
+    if (hook.installed) {
+      hIcon = '&#10003;'; hColor = 'var(--green)';
+      hRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(hook.symlinkCmd || hook.installCmd) + '</span>';
+    } else if (hook.pluginInstalled && hook.src) {
+      hIcon = '&#9675;'; hColor = 'var(--yellow)';
+      hRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(hook.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(hook.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.id).replace(/"/g, '&quot;') + ')">Link</div></div>';
+    } else {
+      hIcon = '&#9675;'; hColor = 'var(--muted)';
+      hRight = copyBtn(hook.installCmd);
+    }
+    html += setupRow(hIcon, hColor, hook.label, '', hRight);
+  }
+  html += '</div>';
+
+  return html;
 }
 
 async function renderWorkspacesTab() {
@@ -1778,79 +1874,6 @@ function renderSetupContent(data) {
       ? '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(dep.install) + '</span>'
       : copyBtn(dep.install);
     html += setupRow(icon, color, dep.label, tag, right);
-  }
-  html += '</div>';
-
-  // ── Noob-tester Skills ──
-  html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-  html += '<div style="font-weight:500;font-size:14px">Noob-tester Skills</div>';
-  var uninstalled = data.skills.filter(function(s) { return s.srcExists && (!s.installed || !s.upToDate); });
-  if (uninstalled.length > 0) {
-    html += '<div class="action-btn" style="color:var(--accent)" onclick="installAllSkills()">Install All (' + uninstalled.length + ')</div>';
-  }
-  html += '</div>';
-  html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add ganeshgaxy/noob-tester-skills") + '</div>';
-  for (var j = 0; j < data.skills.length; j++) {
-    var skill = data.skills[j];
-    var sIcon, sColor, sRight;
-    if (skill.installed && skill.upToDate) {
-      sIcon = '&#10003;'; sColor = 'var(--green)';
-      sRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(skill.symlinkCmd || "linked") + '</span>';
-    } else if (skill.installed) {
-      sIcon = '&#8635;'; sColor = 'var(--yellow)';
-      sRight = copyBtn(skill.symlinkCmd || skill.installCmd);
-    } else if (skill.pluginInstalled && skill.srcExists) {
-      // Plugin installed but not symlinked
-      sIcon = '&#9675;'; sColor = 'var(--yellow)';
-      sRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(skill.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(\\'' + esc(skill.src) + '\\',\\'' + esc(skill.dest) + '\\',\\'' + esc(skill.id) + '\\')">Link</div></div>';
-    } else {
-      // Plugin not installed
-      sIcon = '&#10007;'; sColor = 'var(--red)';
-      sRight = copyBtn(skill.installCmd);
-    }
-    html += setupRow(sIcon, sColor, skill.label, '', sRight);
-  }
-  html += '</div>';
-
-  // ── External Skills ──
-  html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="margin-bottom:4px;font-weight:500;font-size:14px">External Skills</div>';
-  html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add nikiforovall/claude-code-rules") + '</div>';
-  for (var k = 0; k < data.externalSkills.length; k++) {
-    var ext = data.externalSkills[k];
-    var eIcon, eColor, eRight;
-    if (ext.installed) {
-      eIcon = '&#10003;'; eColor = 'var(--green)';
-      eRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(ext.symlinkCmd || ext.installCmd) + '</span>';
-    } else if (ext.pluginInstalled && ext.src) {
-      eIcon = '&#9675;'; eColor = 'var(--yellow)';
-      eRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(ext.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(\\'' + esc(ext.src) + '\\',\\'' + esc(ext.dest) + '\\',\\'' + esc(ext.id) + '\\')">Link</div></div>';
-    } else {
-      eIcon = '&#9675;'; eColor = 'var(--muted)';
-      eRight = copyBtn(ext.installCmd);
-    }
-    html += setupRow(eIcon, eColor, ext.label, '', eRight);
-  }
-  html += '</div>';
-
-  // ── Hooks ──
-  html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Hooks</div>';
-  for (var m = 0; m < data.hooks.length; m++) {
-    var hook = data.hooks[m];
-    var hIcon, hColor, hRight;
-    if (hook.installed) {
-      hIcon = '&#10003;'; hColor = 'var(--green)';
-      hRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(hook.symlinkCmd || hook.installCmd) + '</span>';
-    } else if (hook.pluginInstalled && hook.src) {
-      hIcon = '&#9675;'; hColor = 'var(--yellow)';
-      hRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(hook.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(\\'' + esc(hook.src) + '\\',\\'' + esc(hook.dest) + '\\',\\'' + esc(hook.id) + '\\')">Link</div></div>';
-    } else {
-      hIcon = '&#9675;'; hColor = 'var(--muted)';
-      hRight = copyBtn(hook.installCmd);
-    }
-    html += setupRow(hIcon, hColor, hook.label, '', hRight);
   }
   html += '</div>';
 
@@ -7512,9 +7535,7 @@ async function renderSchedulerPage() {
 }
 
 function renderSchedulerAgentsList(agents) {
-  let html = '<div class="panel">';
-  html += '<div style="overflow-x:auto">';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  let html = '<div class="panel"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
   html += '<thead><tr style="border-bottom:1px solid var(--border)">';
   html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Agent</th>';
   html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Ticket</th>';
@@ -7522,30 +7543,29 @@ function renderSchedulerAgentsList(agents) {
   html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Status</th>';
   html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Last Run</th>';
   html += '<th style="text-align:right;padding:8px;font-weight:600;color:var(--dim)">Actions</th>';
-  html += '</tr></thead>';
-  html += '<tbody>';
+  html += '</tr></thead><tbody>';
 
   for (const agent of agents) {
     const statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
     const lastRun = agent.last_run_at ? new Date(agent.last_run_at).toLocaleString() : "Never";
     const agentName = agent.agent_path.split("/").pop() || agent.agent_path;
+    const agentId = esc(agent.id);
+    const status = agent.status;
 
-    html += '<tr style="border-bottom:1px solid var(--border-light);hover:background:var(--surface-raised)" data-agent-id="' + esc(agent.id) + '" data-agent-status="' + agent.status + '">';
-    html += '<td style="padding:10px 8px"><span style="color:var(--accent);font-family:var(--font-mono);font-size:11px;cursor:pointer" onclick="window.selectSchedulerAgent(this.closest(\\\'tr\\\').dataset.agentId)">' + esc(agentName) + '</span></td>';
+    html += '<tr style="border-bottom:1px solid var(--border-light)" data-agent-id="' + agentId + '" data-agent-status="' + status + '">';
+    html += '<td style="padding:10px 8px"><span style="color:var(--accent);font-family:var(--font-mono);font-size:11px;cursor:pointer" onclick="window.selectSchedulerAgent(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')">' + esc(agentName) + '</span></td>';
     html += '<td style="padding:10px 8px">' + esc(agent.ticket_id) + '</td>';
     html += '<td style="padding:10px 8px;font-family:var(--font-mono);font-size:11px">' + esc(agent.cron_expression) + '</td>';
-    html += '<td style="padding:10px 8px"><span style="color:' + statusColor + ';font-weight:500">' + agent.status + '</span></td>';
+    html += '<td style="padding:10px 8px"><span style="color:' + statusColor + ';font-weight:500">' + status + '</span></td>';
     html += '<td style="padding:10px 8px;color:var(--dim);font-size:11px">' + lastRun + '</td>';
     html += '<td style="padding:10px 8px;text-align:right">';
-    html += '<button onclick="window.triggerScheduler(this.closest(\\\'tr\\\').dataset.agentId)" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--accent);color:var(--bg);border:none;border-radius:3px;cursor:pointer">Run</button>';
-    html += '<button onclick="window.toggleScheduler(this.closest(\\\'tr\\\').dataset.agentId,this.closest(\\\'tr\\\').dataset.agentStatus)" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
-    html += '<button onclick="window.deleteScheduler(this.closest(\\\'tr\\\').dataset.agentId)" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--red-dim);color:var(--red);border:none;border-radius:3px;cursor:pointer">Delete</button>';
-    html += '</td>';
-    html += '</tr>';
+    html += '<button onclick="window.triggerScheduler(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--accent);color:var(--bg);border:none;border-radius:3px;cursor:pointer">Run</button>';
+    html += '<button onclick="window.toggleScheduler(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ',' + JSON.stringify(status).replace(/"/g, '&quot;') + ')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer">' + (status === "active" ? "Pause" : "Resume") + '</button>';
+    html += '<button onclick="window.deleteScheduler(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--red-dim);color:var(--red);border:none;border-radius:3px;cursor:pointer">Delete</button>';
+    html += '</td></tr>';
   }
 
-  html += '</tbody></table>';
-  html += '</div></div>';
+  html += '</tbody></table></div></div>';
   return html;
 }
 
@@ -7555,7 +7575,7 @@ async function renderSchedulerAgentDetail(agentId) {
 
   let html = '<div class="panel" style="margin-bottom:8px">';
   html += '<div class="breadcrumb">';
-  html += '<span class="breadcrumb-item" onclick="window.selectSchedulerAgent(\\\"\\\")">Agents</span>';
+  html += '<span class="breadcrumb-item" onclick="window.selectSchedulerAgent(' + JSON.stringify("").replace(/"/g, '&quot;') + ')">Agents</span>';
   html += '<span class="breadcrumb-sep">|</span>';
   html += '<span class="breadcrumb-item current">' + esc(agent.agent_path.split("/").pop() || agent.agent_path) + '</span>';
   html += '</div>';
@@ -7583,10 +7603,11 @@ async function renderSchedulerAgentDetail(agentId) {
 
   html += '</div>';
 
-  html += '<div style="display:flex;gap:8px;margin-top:12px" data-agent-id="' + esc(agent.id) + '" data-agent-status="' + agent.status + '">';
-  html += '<button onclick="window.triggerScheduler(this.closest(\\\'[data-agent-id]\\\').dataset.agentId)" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>';
-  html += '<button onclick="window.toggleScheduler(this.closest(\\\'[data-agent-id]\\\').dataset.agentId,this.closest(\\\'[data-agent-id]\\\').dataset.agentStatus)" style="flex:1;padding:8px 12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
-  html += '<button onclick="window.deleteScheduler(this.closest(\\\'[data-agent-id]\\\').dataset.agentId)" style="flex:1;padding:8px 12px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-weight:600">Delete</button>';
+  const agentIdEsc = esc(agent.id);
+  html += '<div style="display:flex;gap:8px;margin-top:12px" data-agent-id="' + agentIdEsc + '" data-agent-status="' + agent.status + '">';
+  html += '<button onclick="window.triggerScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>';
+  html += '<button onclick="window.toggleScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.status).replace(/"/g, '&quot;') + ')" style="flex:1;padding:8px 12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
+  html += '<button onclick="window.deleteScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ')" style="flex:1;padding:8px 12px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-weight:600">Delete</button>';
   html += '</div>';
   html += '</div>';
 
@@ -7613,13 +7634,14 @@ async function renderSchedulerAgentDetail(agentId) {
       const completedAt = exec.completed_at ? new Date(exec.completed_at) : null;
       const duration = startedAt && completedAt ? Math.round((completedAt - startedAt) / 1000) + "s" : "—";
       const statusColor = exec.status === "success" ? "var(--green)" : exec.status === "failed" ? "var(--red)" : "var(--yellow)";
+      const logContent = (exec.logs || "No logs").slice(0, 500);
 
       html += '<tr style="border-bottom:1px solid var(--border-light)">';
       html += '<td style="padding:6px">' + (startedAt ? startedAt.toLocaleString() : "—") + '</td>';
       html += '<td style="padding:6px">' + duration + '</td>';
       html += '<td style="padding:6px"><span style="color:' + statusColor + ';font-weight:500;text-transform:uppercase">' + exec.status + '</span></td>';
       html += '<td style="padding:6px;font-family:var(--font-mono)">' + (exec.exit_code !== undefined && exec.exit_code !== null ? exec.exit_code : "—") + '</td>';
-      html += '<td style="padding:6px"><button onclick="window.showLogs(this.closest(\\\'tr\\\').dataset.logContent)" data-log-content="' + esc((exec.logs || "No logs").slice(0, 500)) + '" style="font-size:9px;padding:2px 6px;background:var(--surface);border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--accent)">View</button></td>';
+      html += '<td style="padding:6px"><button onclick="window.showLogs(' + JSON.stringify(logContent).replace(/"/g, '&quot;') + ')" style="font-size:9px;padding:2px 6px;background:var(--surface);border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--accent)">View</button></td>';
       html += '</tr>';
     }
 
@@ -7635,6 +7657,14 @@ function renderSchedulerCreateForm() {
   let html = '<div class="panel">';
   html += '<div class="panel-title" style="margin-bottom:12px">Create Scheduled Agent</div>';
   html += '<form id="schedulerForm" style="display:flex;flex-direction:column;gap:12px">';
+
+  html += '<div>';
+  html += '<label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Template</label>';
+  html += '<select id="scheduler-template" onchange="window.applySchedulerTemplate(this.value)" style="width:100%;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-sans);font-size:12px">';
+  html += '<option value="">— Custom —</option>';
+  html += '<option value="ticket-polling">Ticket Polling Agent</option>';
+  html += '</select>';
+  html += '</div>';
 
   html += '<div>';
   html += '<label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Agent Path</label>';
@@ -7671,7 +7701,7 @@ function renderSchedulerCreateForm() {
 
 async function triggerScheduledAgent(agentId) {
   const agent = await fetchJson("/api/scheduled-agents/" + agentId);
-  if (!confirm("Run \"" + agent.agent_path + "\" now for " + agent.ticket_id + "?")) return;
+  if (!confirm('Run "' + agent.agent_path + '" now for ' + agent.ticket_id + '?')) return;
 
   try {
     const result = await postJson("/api/scheduled-agents/" + agentId + "/trigger", {});
@@ -7696,7 +7726,7 @@ async function toggleScheduledAgent(agentId, currentStatus) {
 
 async function deleteScheduledAgent(agentId) {
   const agent = await fetchJson("/api/scheduled-agents/" + agentId);
-  if (!confirm("Delete \"" + agent.agent_path + "\" scheduled agent?")) return;
+  if (!confirm('Delete "' + agent.agent_path + '" scheduled agent?')) return;
 
   try {
     await fetchApi("/api/scheduled-agents/" + agentId + "/delete", { method: "DELETE" });
@@ -7704,6 +7734,23 @@ async function deleteScheduledAgent(agentId) {
     renderSchedulerPage();
   } catch (e) {
     alert("Error: " + e.message);
+  }
+}
+
+function applySchedulerTemplate(templateId) {
+  if (templateId === "ticket-polling") {
+    document.getElementById("scheduler-agent-path").value = ".claude/agents/ticket-polling.md";
+    document.getElementById("scheduler-description").value = "Poll tickets using filter";
+    document.getElementById("scheduler-cron").value = "0 9 * * 1-5";
+    document.getElementById("scheduler-parameters").value = JSON.stringify({
+      filter_id: "",
+      jql: ""
+    }, null, 2);
+  } else {
+    document.getElementById("scheduler-agent-path").value = "";
+    document.getElementById("scheduler-description").value = "";
+    document.getElementById("scheduler-cron").value = "";
+    document.getElementById("scheduler-parameters").value = "{}";
   }
 }
 
