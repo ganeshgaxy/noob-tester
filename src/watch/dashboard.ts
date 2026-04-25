@@ -7468,13 +7468,7 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline, ru
 
 // ── Scheduler Page ──
 
-let schedulerViewMode = "list"; // list | create | history
 let schedulerSelectedAgentId = "";
-
-function setSchedulerMode(mode) {
-  schedulerViewMode = mode;
-  renderSchedulerPage();
-}
 
 function selectSchedulerAgent(id) {
   schedulerSelectedAgentId = id;
@@ -7513,23 +7507,49 @@ async function renderSchedulerPage() {
   html += '<div class="stat"><div class="stat-value">' + totalCount + '</div><div class="stat-label">Scheduled</div></div>';
   html += '<div class="stat"><div class="stat-value" style="color:var(--green)">' + activeCount + '</div><div class="stat-label">Active</div></div>';
   html += '<div class="stat"><div class="stat-value" style="color:var(--yellow)">' + pausedCount + '</div><div class="stat-label">Paused</div></div>';
-  html += '</div>';
-  html += '<div style="display:flex;gap:6px;margin-top:12px">';
-  html += '<div class="tab ' + (schedulerViewMode === "list" ? "active" : "") + '" data-mode="list" onclick="window.setSchedulerMode(this.dataset.mode)" style="cursor:pointer">Agents</div>';
-  html += '<div class="tab ' + (schedulerViewMode === "create" ? "active" : "") + '" data-mode="create" onclick="window.setSchedulerMode(this.dataset.mode)" style="cursor:pointer">Create</div>';
   html += '</div></div>';
 
-  if (schedulerViewMode === "create") {
-    html += renderSchedulerCreateForm();
-  } else if (schedulerViewMode === "list") {
-    if (agents.length === 0) {
-      html += '<div class="panel"><div class="empty">No scheduled agents yet. Create one to get started.</div></div>';
-    } else if (schedulerSelectedAgentId) {
-      html += await renderSchedulerAgentDetail(schedulerSelectedAgentId);
-    } else {
-      html += renderSchedulerAgentsList(agents);
+  // Split view: agents list on left, detail/create on right
+  html += '<div class="split-view wide-left" style="margin-top:8px">';
+
+  // LEFT: Agents list with new agent button
+  html += '<div class="split-left panel">';
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
+  html += '<button onclick="window.selectSchedulerAgent(\'\')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px">+ New Agent</button>';
+  html += '</div>';
+
+  if (agents.length === 0) {
+    html += '<div class="empty" style="padding:20px;text-align:center">No scheduled agents yet.</div>';
+  } else {
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html += '<tbody>';
+    for (const agent of agents) {
+      const statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
+      const agentName = agent.agent_path.split("/").pop() || agent.agent_path;
+      const agentId = esc(agent.id);
+      const isSelected = agent.id === schedulerSelectedAgentId;
+      html += '<tr style="border-bottom:1px solid var(--border-light);background:' + (isSelected ? 'var(--surface-raised)' : 'transparent') + '">';
+      html += '<td style="padding:10px 8px;cursor:pointer" onclick="window.selectSchedulerAgent(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')">';
+      html += '<div style="font-family:var(--font-mono);font-size:11px;color:var(--accent)">' + esc(agentName) + '</div>';
+      html += '<div style="font-size:10px;color:var(--dim);margin-top:2px">' + esc(agent.ticket_id) + '</div>';
+      html += '<div style="font-size:10px;color:' + statusColor + ';font-weight:500;margin-top:2px;text-transform:uppercase">' + agent.status + '</div>';
+      html += '</td></tr>';
     }
+    html += '</tbody></table>';
+    html += '</div>';
   }
+  html += '</div>';
+
+  // RIGHT: Detail or create form
+  html += '<div class="split-right panel" style="overflow-y:auto">';
+  if (agents.length === 0 || !schedulerSelectedAgentId) {
+    html += renderSchedulerCreateForm();
+  } else {
+    html += await renderSchedulerAgentDetail(schedulerSelectedAgentId);
+  }
+  html += '</div>';
+
+  html += '</div>';
 
   setPage(html);
 }
@@ -7786,7 +7806,7 @@ async function createScheduledAgent() {
     });
 
     document.getElementById("schedulerForm").reset();
-    schedulerViewMode = "list";
+    schedulerSelectedAgentId = "";
     renderSchedulerPage();
   } catch (e) {
     alert("Error creating scheduled agent: " + e.message);
