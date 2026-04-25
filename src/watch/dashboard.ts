@@ -774,6 +774,8 @@ evtSource.onmessage = (e) => {
   if (!pageStateRestored) {
     restorePageState();
     pageStateRestored = true;
+    render();
+    return;
   }
   // Update sidebar stats always
   const se = document.getElementById("stat-sessions");
