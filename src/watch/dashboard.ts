@@ -516,11 +516,40 @@ let viewingSession = ${filterSessionId ? '"' + filterSessionId + '"' : 'null'};
 let activeTab = "issues";
 let currentPage = "dashboard";
 
+function savePageState() {
+  const state = {
+    page: currentPage,
+    activeTab: activeTab,
+    viewingSession: viewingSession,
+    schedulerSelectedAgentId: schedulerSelectedAgentId || "",
+    dashSelectedTicket: dashSelectedTicket || "",
+    qaPoolSelectedTicket: qaPoolSelectedTicket || "",
+  };
+  sessionStorage.setItem('pageState', JSON.stringify(state));
+}
+
+function restorePageState() {
+  const saved = sessionStorage.getItem('pageState');
+  if (!saved) return;
+  try {
+    const state = JSON.parse(saved);
+    currentPage = state.page || "dashboard";
+    activeTab = state.activeTab || "issues";
+    viewingSession = state.viewingSession || null;
+    schedulerSelectedAgentId = state.schedulerSelectedAgentId || "";
+    dashSelectedTicket = state.dashSelectedTicket || "";
+    qaPoolSelectedTicket = state.qaPoolSelectedTicket || "";
+  } catch (e) {
+    console.error("Failed to restore page state:", e);
+  }
+}
+
 function switchPage(page) {
   // Clean up swarm WebSocket connections when leaving the swarm page
   if (currentPage === "swarm" && page !== "swarm") swarmCleanup();
   currentPage = page;
   viewingSession = null;
+  savePageState();
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === page));
   render();
 }
@@ -734,10 +763,18 @@ window.wsCleanup = function(type) {
 // Load workspaces on startup
 loadWorkspaces();
 
+// Restore page state on startup
+let pageStateRestored = false;
+
 // SSE connection
 const evtSource = new EventSource(API + "/api/stream");
 evtSource.onmessage = (e) => {
   state = JSON.parse(e.data);
+  // Restore page state on first data load
+  if (!pageStateRestored) {
+    restorePageState();
+    pageStateRestored = true;
+  }
   // Update sidebar stats always
   const se = document.getElementById("stat-sessions");
   if (se) se.textContent = state.stats.activeSessions;
@@ -1065,7 +1102,7 @@ async function renderDashboardTicketDetail() {
   // Stats + breadcrumb
   html += '<div class="panel" style="margin-bottom:8px">';
   html += \`<div class="breadcrumb">
-    <span class="breadcrumb-item" onclick="dashSelectedTicket='';renderDashboard()">Dashboard</span>
+    <span class="breadcrumb-item" onclick="dashSelectedTicket='';savePageState();renderDashboard()">Dashboard</span>
     <span class="breadcrumb-sep">|</span>
     <span class="breadcrumb-item current">\${esc(ticketLabel)}</span>
   </div>\`;
@@ -1128,6 +1165,7 @@ function bindDashboardClicks() {
   document.querySelectorAll("[data-ticket]").forEach(el => {
     el.addEventListener("click", () => {
       dashSelectedTicket = el.dataset.ticket;
+      savePageState();
       renderDashboard();
     });
   });
@@ -1424,7 +1462,7 @@ async function renderSessionDetail(sessionId) {
       <div class="breadcrumb">
         <span class="breadcrumb-item" id="back-btn">Dashboard</span>
         \${sessionTicket ? \`<span class="breadcrumb-sep">|</span>
-        <span class="breadcrumb-item" onclick="viewingSession=null;dashSelectedTicket='\${esc(sessionTicket)}';render()">\${esc(sessionTicket)}</span>\` : ""}
+        <span class="breadcrumb-item" onclick="viewingSession=null;dashSelectedTicket='\${esc(sessionTicket)}';savePageState();render()">\${esc(sessionTicket)}</span>\` : ""}
         <span class="breadcrumb-sep">|</span>
         <span class="breadcrumb-item current">\${s.id.slice(0,8)}</span>
       </div>
@@ -1549,12 +1587,13 @@ async function renderSessionDetail(sessionId) {
   }
 
   document.querySelectorAll(".tab").forEach(t => {
-    t.addEventListener("click", () => { activeTab = t.dataset.tab; renderTab(); });
+    t.addEventListener("click", () => { activeTab = t.dataset.tab; savePageState(); renderTab(); });
   });
   document.getElementById("back-btn").addEventListener("click", () => {
     viewingSession = null;
     dashSelectedTicket = "";
     activeTab = "issues";
+    savePageState();
     render();
   });
   renderTab();
@@ -7472,6 +7511,7 @@ let schedulerSelectedAgentId = "";
 
 function selectSchedulerAgent(id) {
   schedulerSelectedAgentId = id;
+  savePageState();
   renderSchedulerPage();
 }
 
