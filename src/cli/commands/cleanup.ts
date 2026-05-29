@@ -61,22 +61,40 @@ export function registerCleanupCommands(program: Command): void {
     .description("Kill the noob-tester watch process")
     .option("-p, --port <port>", "Port to kill", "4040")
     .action((opts) => {
+      const port = opts.port;
       try {
-        const pids = execSync(`lsof -ti:${opts.port}`, {
-          encoding: "utf-8",
-        }).trim();
-        if (!pids) {
-          console.log(chalk.dim(`No process found on port ${opts.port}.`));
-          return;
+        let pids: string[] = [];
+        if (process.platform === "win32") {
+          // netstat -ano lists PID in last column for LISTENING/ESTABLISHED entries
+          const out = execSync(`netstat -ano`, { encoding: "utf-8" });
+          for (const line of out.split("\n")) {
+            if (line.includes(`:${port} `) || line.includes(`:${port}\t`)) {
+              const pid = line.trim().split(/\s+/).pop();
+              if (pid && /^\d+$/.test(pid) && pid !== "0") pids.push(pid);
+            }
+          }
+          pids = [...new Set(pids)];
+          if (pids.length === 0) {
+            console.log(chalk.dim(`No process found on port ${port}.`));
+            return;
+          }
+          for (const pid of pids) {
+            try { execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" }); } catch { /**/ }
+          }
+        } else {
+          const raw = execSync(`lsof -ti:${port}`, { encoding: "utf-8" }).trim();
+          if (!raw) {
+            console.log(chalk.dim(`No process found on port ${port}.`));
+            return;
+          }
+          pids = raw.split("\n").filter(Boolean);
+          for (const pid of pids) {
+            try { execSync(`kill -9 ${pid}`, { stdio: "ignore" }); } catch { /**/ }
+          }
         }
-        execSync(`lsof -ti:${opts.port} | xargs kill -9`, { stdio: "ignore" });
-        console.log(
-          chalk.green(
-            `Killed process(es) on port ${opts.port}: ${pids.replace(/\n/g, ", ")}`,
-          ),
-        );
+        console.log(chalk.green(`Killed process(es) on port ${port}: ${pids.join(", ")}`));
       } catch {
-        console.log(chalk.dim(`No process found on port ${opts.port}.`));
+        console.log(chalk.dim(`No process found on port ${port}.`));
       }
     });
 
@@ -101,45 +119,22 @@ export function registerCleanupCommands(program: Command): void {
       db.transaction(() => {
         for (const table of [
           "run_artifacts",
-          "ui_map_forms",
-          "ui_map_navigations",
-          "ui_map_elements",
-          "ui_map_pages",
-          "ui_maps",
-          "run_pack_entries",
-          "raw_outputs",
-          "issues",
-          "test_steps",
-          "test_plans",
-          "test_cases",
-          "tech_issues",
-          "analyses",
-          "action_log",
-          "runs",
-          "sessions",
-          "failure_patterns",
-          "rca_results",
-          "a11y_issues",
-          "coverage_map",
-          "visual_diffs",
-          "visual_baselines",
-          "impact_areas",
-          "coverage_gaps",
-          "phase_transitions",
-          "blockers",
-          "reports",
-          "ticket_context_index",
-          "resource_stats",
-          "api_map_chains",
-          "api_map_responses",
-          "api_map_params",
-          "api_map_endpoints",
-          "api_maps",
+          "ui_map_forms", "ui_map_navigations", "ui_map_elements", "ui_map_pages", "ui_maps",
+          "run_pack_entries", "raw_outputs",
+          "issues", "test_steps", "test_plans", "test_cases", "tech_issues",
+          "analyses", "action_log", "runs", "sessions",
+          "failure_patterns", "rca_results", "a11y_issues",
+          "coverage_map", "visual_diffs", "visual_baselines",
+          "visual_comparisons", "visual_screenshots", "visual_run_entries", "visual_runs", "visual_test_cases",
+          "impact_areas", "coverage_gaps", "phase_transitions",
+          "blockers", "reports", "ticket_context_index", "resource_stats",
+          "api_map_chains", "api_map_responses", "api_map_params", "api_map_endpoints", "api_maps",
           "default_files",
+          "agent_runs", "agent_execution_history", "pool_spawns", "qa_pool_agents",
+          "ticket_workflow", "workflow_polling_history",
+          "datadog_monitors",
         ]) {
-          try {
-            db.prepare(`DELETE FROM ${table}`).run();
-          } catch {}
+          try { db.prepare(`DELETE FROM "${table}"`).run(); } catch {}
         }
       })();
       db.pragma("foreign_keys = ON");
@@ -397,17 +392,11 @@ export function registerCleanupCommands(program: Command): void {
         // All repos
         db.pragma("foreign_keys = OFF");
         db.transaction(() => {
-          db.prepare("DELETE FROM code_fts").run();
-          db.prepare("DELETE FROM import_graph").run();
-          db.prepare("DELETE FROM coverage_map").run();
-          db.prepare("DELETE FROM repo_group_members").run();
-          db.prepare("DELETE FROM repo_groups").run();
-          db.prepare("DELETE FROM repos").run();
-          // Clear all repo/coverage cached stats
+          for (const t of ["code_fts", "code_chunks", "code_chunk_embeddings", "import_graph", "coverage_map", "repo_group_members", "repo_groups", "repos"]) {
+            try { db.prepare(`DELETE FROM "${t}"`).run(); } catch {}
+          }
           try {
-            db.prepare(
-              "DELETE FROM resource_stats WHERE key LIKE 'repo:%' OR key LIKE 'coverage:%'",
-            ).run();
+            db.prepare("DELETE FROM resource_stats WHERE key LIKE 'repo:%' OR key LIKE 'coverage:%'").run();
           } catch {}
         })();
         db.pragma("foreign_keys = ON");

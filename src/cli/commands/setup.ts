@@ -5,27 +5,40 @@ import { join } from "path";
 import { homedir } from "os";
 import chalk from "chalk";
 import { getDb } from "../../db/client.js";
+import { mkSymlinkCmd, mkdirCmd, pkgInstallCmd } from "../../platform-cmds.js";
 
-/** Extra bin directories to search when `which` fails (covers all nvm-managed Node versions). */
+/** Extra bin directories to search when `which`/`where` fails. */
 function extraNvmBins(): string[] {
   const home = homedir();
-  const candidates = [
-    join(home, ".nvm", "versions", "node"),
-    join(home, ".local", "share", "nvm"),
-  ];
   const bins: string[] = [];
-  for (const base of candidates) {
-    if (!existsSync(base)) continue;
-    try {
-      for (const entry of readdirSync(base)) {
-        const bin = join(base, entry, "bin");
-        if (existsSync(bin)) bins.push(bin);
-        // also handle ~/.nvm/versions/node/vX.Y.Z/bin
-        const nested = join(base, entry);
-        if (existsSync(join(nested, "bin"))) bins.push(join(nested, "bin"));
-      }
-    } catch {
-      /* ignore */
+
+  if (process.platform === "win32") {
+    // nvm-windows: executables live directly in %APPDATA%\nvm\<version>\ (no bin/ subdir)
+    const nvmWin = join(process.env.APPDATA ?? "", "nvm");
+    if (existsSync(nvmWin)) {
+      try {
+        for (const entry of readdirSync(nvmWin)) {
+          const dir = join(nvmWin, entry);
+          if (existsSync(join(dir, "node.exe"))) bins.push(dir);
+        }
+      } catch { /* ignore */ }
+    }
+    // Standard Windows Node.js installer puts node.exe directly in %ProgramFiles%\nodejs
+    const nodeDir = join(process.env.ProgramFiles ?? "", "nodejs");
+    if (existsSync(join(nodeDir, "node.exe"))) bins.push(nodeDir);
+  } else {
+    // Unix nvm: executables are in <base>/<version>/bin/
+    for (const base of [
+      join(home, ".nvm", "versions", "node"),
+      join(home, ".local", "share", "nvm"),
+    ]) {
+      if (!existsSync(base)) continue;
+      try {
+        for (const entry of readdirSync(base)) {
+          const bin = join(base, entry, "bin");
+          if (existsSync(bin)) bins.push(bin);
+        }
+      } catch { /* ignore */ }
     }
   }
   return bins;
@@ -39,10 +52,16 @@ function cmdExists(cmd: string): boolean {
   } catch {
     /* fall through */
   }
-  // Fallback: search nvm-managed bin dirs (handles cross-version installs on Unix)
+  // Fallback: search nvm/node bin dirs
   const extra = extraNvmBins();
-  const suffix = process.platform === "win32" ? ".cmd" : "";
-  return extra.some((dir) => existsSync(join(dir, cmd + suffix)) || existsSync(join(dir, cmd)));
+  if (process.platform === "win32") {
+    return extra.some((dir) =>
+      existsSync(join(dir, cmd + ".exe")) ||
+      existsSync(join(dir, cmd + ".cmd")) ||
+      existsSync(join(dir, cmd))
+    );
+  }
+  return extra.some((dir) => existsSync(join(dir, cmd)));
 }
 
 function pathExists(p: string): boolean {
@@ -127,10 +146,9 @@ export function registerSetupCommand(program: Command): void {
 
       // ── 1. Core CLIs ──
       console.log(chalk.bold("Core CLIs:\n"));
-      if (!check("git", cmdExists("git"), "brew install git")) allGood = false;
-      if (!check("curl", cmdExists("curl"), "brew install curl"))
-        allGood = false;
-      if (!check("jq", cmdExists("jq"), "brew install jq")) allGood = false;
+      if (!check("git", cmdExists("git"), pkgInstallCmd("git", "Git.Git"))) allGood = false;
+      if (!check("curl", cmdExists("curl"), pkgInstallCmd("curl", "cURL.cURL"))) allGood = false;
+      if (!check("jq", cmdExists("jq"), pkgInstallCmd("jq", "jqlang.jq"))) allGood = false;
       if (
         !check(
           "claude",
@@ -178,11 +196,11 @@ export function registerSetupCommand(program: Command): void {
         console.log(chalk.bold("\nGitLab (glab):\n"));
 
         const hasGlab = cmdExists("glab");
-        checkOptional("glab CLI", hasGlab, "brew install glab");
+        checkOptional("glab CLI", hasGlab, pkgInstallCmd("glab", "Glab.Glab"));
         if (!hasGlab)
           missingSteps.push({
             section: "GitLab CLI",
-            command: "brew install glab && glab auth login",
+            command: pkgInstallCmd("glab", "Glab.Glab") + " && glab auth login",
           });
 
         // glab auth
@@ -224,8 +242,9 @@ export function registerSetupCommand(program: Command): void {
           "handbook-glab",
           "skills/glab-skill",
         );
-        const glabSymCmd =
-          "ln -s " + glabResolved.path + " ~/.claude/skills/glab";
+        const glabSymCmd = glabResolved.path
+          ? mkSymlinkCmd(glabResolved.path, join(claudeDir, "skills", "glab"))
+          : "";
         checkOptional("glab skill symlink", hasGlabSkill, glabSymCmd);
         if (!hasGlabSkill)
           missingSteps.push({
@@ -284,7 +303,9 @@ export function registerSetupCommand(program: Command): void {
           "bb",
           "skills/bb",
         );
-        const bbSymCmd = "ln -s " + bbResolved.path + " ~/.claude/skills/bb";
+        const bbSymCmd = bbResolved.path
+          ? mkSymlinkCmd(bbResolved.path, join(claudeDir, "skills", "bb"))
+          : "";
         checkOptional("bb skill symlink", hasBbSkill, bbSymCmd);
         if (!hasBbSkill)
           missingSteps.push({
@@ -296,11 +317,11 @@ export function registerSetupCommand(program: Command): void {
       // ── 4. 1Password (optional) ──
       console.log(chalk.bold("\n1Password (optional):\n"));
       const hasOp = cmdExists("op");
-      checkOptional("1Password CLI (op)", hasOp, "brew install 1password-cli");
+      checkOptional("1Password CLI (op)", hasOp, pkgInstallCmd("1password-cli", "AgileBits.1Password.CLI"));
       if (!hasOp)
         missingSteps.push({
           section: "1Password CLI",
-          command: "brew install 1password-cli && op signin",
+          command: pkgInstallCmd("1password-cli", "AgileBits.1Password.CLI") + " && op signin",
         });
       if (hasOp) {
         let opAuthed = false;
@@ -327,10 +348,10 @@ export function registerSetupCommand(program: Command): void {
         "subagent-metrics",
         "hooks/subagent-metrics.sh",
       );
-      const hookCmd =
-        "mkdir -p ~/.claude/hooks && ln -sf " +
-        hookResolved.path +
-        " ~/.claude/hooks/subagent-metrics.sh";
+      const hooksPath = join(claudeDir, "hooks");
+      const hookCmd = hookResolved.path
+        ? mkdirCmd(hooksPath) + " && " + mkSymlinkCmd(hookResolved.path, join(hooksPath, "subagent-metrics.sh"))
+        : "";
       checkOptional("subagent-metrics hook", hasMetricsHook, hookCmd);
       if (!hasMetricsHook)
         missingSteps.push({ section: "Metrics Hook", command: hookCmd });

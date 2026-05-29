@@ -17,7 +17,8 @@ import {
   writeFileSync,
 } from "fs";
 import { extname, resolve as resolvePath, join } from "path";
-import { homedir } from "os";
+import { fileURLToPath } from "url";
+import { homedir, tmpdir } from "os";
 import {
   getDb,
   dataDir,
@@ -47,6 +48,15 @@ import {
 } from "../secrets/store.js";
 import chalk from "chalk";
 import { gatherTicketReport } from "../cli/commands/report.js";
+import {
+  shellPath,
+  rmFileCmd,
+  rmDirCmd,
+  mkSymlinkCmd,
+  copyFileCmd,
+  checkPathCmd,
+  pkgInstallCmd,
+} from "../platform-cmds.js";
 import {
   getResourceStatsFromCache,
   refreshAllStats,
@@ -157,7 +167,7 @@ async function pollDatadog(
     ? `&monitor_tags=${encodeURIComponent(tags.trim())}`
     : "";
   const monitorsUrl = `https://api.${site}/api/v1/monitor?group_states=all&page_size=100&page=0${tagParam}`;
-  const tmpFile = `/tmp/dd_monitors_${Date.now()}.json`;
+  const tmpFile = join(tmpdir(), `dd_monitors_${Date.now()}.json`);
   const curlResult = spawnSync(
     "curl",
     [
@@ -591,16 +601,21 @@ export function startWatchServer(opts: WatchOptions): void {
         let statusCode: number;
         let responseBody: string;
         try {
-          const out = execSync(
-            `curl -s -o /tmp/dd_validate.txt -w "%{http_code}" -H "DD-API-KEY: ${apiKey}" --max-time 10 "${validateUrl}"`,
-            { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-          ).trim();
+          const ddTmpFile = join(tmpdir(), `dd_validate_${Date.now()}.txt`);
+          const ddCurl = spawnSync(
+            "curl",
+            ["-s", "-o", ddTmpFile, "-w", "%{http_code}", "-H", `DD-API-KEY: ${apiKey}`, "--max-time", "10", validateUrl],
+            { encoding: "utf-8", timeout: 15000 },
+          );
+          if (ddCurl.error) throw new Error(ddCurl.error.message);
+          const out = ddCurl.stdout.trim();
           statusCode = parseInt(out, 10);
           try {
-            responseBody = readFileSync("/tmp/dd_validate.txt", "utf-8");
+            responseBody = readFileSync(ddTmpFile, "utf-8");
           } catch {
             responseBody = "";
           }
+          try { rmSync(ddTmpFile); } catch { /**/ }
         } catch (curlErr) {
           throw new Error(
             `curl failed: ${curlErr instanceof Error ? curlErr.message : String(curlErr)}`,
@@ -4000,78 +4015,85 @@ export function startWatchServer(opts: WatchOptions): void {
             deleted = 1;
           } else if (type === "repos") {
             db.pragma("foreign_keys = OFF");
+            for (const t of ["code_fts", "code_chunks", "code_chunk_embeddings", "import_graph", "coverage_map", "repo_group_members", "repo_groups", "repos"]) {
+              try { db.prepare(`DELETE FROM "${t}"`).run(); } catch {}
+            }
             try {
-              db.prepare("DELETE FROM code_fts").run();
-            } catch {}
-            try {
-              db.prepare("DELETE FROM import_graph").run();
-            } catch {}
-            try {
-              db.prepare("DELETE FROM coverage_map").run();
-            } catch {}
-            try {
-              db.prepare("DELETE FROM repo_group_members").run();
-            } catch {}
-            try {
-              db.prepare("DELETE FROM repo_groups").run();
-            } catch {}
-            try {
-              db.prepare("DELETE FROM repos").run();
-            } catch {}
-            try {
-              db.prepare(
-                "DELETE FROM resource_stats WHERE key LIKE 'repo:%' OR key LIKE 'coverage:%'",
-              ).run();
+              db.prepare("DELETE FROM resource_stats WHERE key LIKE 'repo:%' OR key LIKE 'coverage:%'").run();
             } catch {}
             db.pragma("foreign_keys = ON");
             const reposDir = join(dataDir(), "repos");
             if (existsSync(reposDir))
               rmSync(reposDir, { recursive: true, force: true });
             deleted = 1;
+          } else if (type === "stale") {
+            db.prepare(`UPDATE sessions SET status = 'stale' WHERE status = 'active' AND last_heartbeat < datetime('now', '-5 minutes')`).run();
+            const staleSessions = db.prepare("SELECT id FROM sessions WHERE status IN ('stale', 'crashed')").all() as Array<{ id: string }>;
+            let totalRuns = 0;
+            db.transaction(() => {
+              for (const s of staleSessions) {
+                const runs2 = db.prepare("SELECT id FROM runs WHERE session_id = ?").all(s.id) as Array<{ id: string }>;
+                const runIds2 = runs2.map((r) => r.id);
+                if (runIds2.length > 0) {
+                  const ph2 = runIds2.map(() => "?").join(",");
+                  for (const tbl of ["run_pack_entries", "raw_outputs", "issues", "test_steps", "test_plans", "analyses", "action_log"]) {
+                    try { db.prepare(`DELETE FROM ${tbl} WHERE run_id IN (${ph2})`).run(...runIds2); } catch {}
+                  }
+                  try { db.prepare(`UPDATE failure_patterns SET first_seen_run = NULL WHERE first_seen_run IN (${ph2})`).run(...runIds2); } catch {}
+                  try { db.prepare(`UPDATE failure_patterns SET last_seen_run = NULL WHERE last_seen_run IN (${ph2})`).run(...runIds2); } catch {}
+                  db.prepare(`DELETE FROM runs WHERE id IN (${ph2})`).run(...runIds2);
+                  totalRuns += runIds2.length;
+                }
+                db.prepare("DELETE FROM sessions WHERE id = ?").run(s.id);
+              }
+            })();
+            deleted = staleSessions.length;
+          } else if (type === "visual") {
+            db.pragma("foreign_keys = OFF");
+            for (const t of ["visual_comparisons", "visual_screenshots", "visual_run_entries", "visual_runs", "visual_test_cases", "visual_diffs", "visual_baselines"]) {
+              try { db.prepare(`DELETE FROM "${t}"`).run(); } catch {}
+            }
+            db.pragma("foreign_keys = ON");
+            deleted = 1;
+          } else if (type === "agent-runs") {
+            db.pragma("foreign_keys = OFF");
+            for (const t of ["agent_runs", "agent_execution_history", "pool_spawns", "qa_pool_agents"]) {
+              try { db.prepare(`DELETE FROM "${t}"`).run(); } catch {}
+            }
+            db.pragma("foreign_keys = ON");
+            deleted = 1;
+          } else if (type === "ticket-workflow") {
+            db.pragma("foreign_keys = OFF");
+            for (const t of ["ticket_workflow", "workflow_polling_history"]) {
+              try { db.prepare(`DELETE FROM "${t}"`).run(); } catch {}
+            }
+            db.pragma("foreign_keys = ON");
+            deleted = 1;
+          } else if (type === "evidence") {
+            const evidenceDir = join(dataDir(), "evidence");
+            if (existsSync(evidenceDir)) rmSync(evidenceDir, { recursive: true, force: true });
+            deleted = 1;
           } else if (type === "all") {
             db.pragma("foreign_keys = OFF");
             const tables = [
               "run_artifacts",
-              "ui_map_forms",
-              "ui_map_navigations",
-              "ui_map_elements",
-              "ui_map_pages",
-              "ui_maps",
-              "run_pack_entries",
-              "raw_outputs",
-              "issues",
-              "test_steps",
-              "test_plans",
-              "test_cases",
-              "tech_issues",
-              "analyses",
-              "action_log",
-              "runs",
-              "sessions",
-              "failure_patterns",
-              "rca_results",
-              "a11y_issues",
-              "coverage_map",
-              "visual_diffs",
-              "visual_baselines",
-              "impact_areas",
-              "coverage_gaps",
-              "phase_transitions",
-              "blockers",
-              "reports",
-              "ticket_context_index",
-              "resource_stats",
-              "api_map_chains",
-              "api_map_responses",
-              "api_map_params",
-              "api_map_endpoints",
-              "api_maps",
+              "ui_map_forms", "ui_map_navigations", "ui_map_elements", "ui_map_pages", "ui_maps",
+              "run_pack_entries", "raw_outputs",
+              "issues", "test_steps", "test_plans", "test_cases", "tech_issues",
+              "analyses", "action_log", "runs", "sessions",
+              "failure_patterns", "rca_results", "a11y_issues",
+              "coverage_map", "visual_diffs", "visual_baselines",
+              "visual_comparisons", "visual_screenshots", "visual_run_entries", "visual_runs", "visual_test_cases",
+              "impact_areas", "coverage_gaps", "phase_transitions",
+              "blockers", "reports", "ticket_context_index", "resource_stats",
+              "api_map_chains", "api_map_responses", "api_map_params", "api_map_endpoints", "api_maps",
               "default_files",
+              "agent_runs", "agent_execution_history", "pool_spawns", "qa_pool_agents",
+              "ticket_workflow", "workflow_polling_history",
+              "datadog_monitors",
             ];
             for (const t of tables) {
-              try {
-                db.prepare(`DELETE FROM ${t}`).run();
-              } catch {}
+              try { db.prepare(`DELETE FROM "${t}"`).run(); } catch {}
             }
             db.pragma("foreign_keys = ON");
             for (const dir of ["ticket-context", "evidence", "files"]) {
@@ -4644,7 +4666,7 @@ export function startWatchServer(opts: WatchOptions): void {
       const runId = url.pathname.slice("/api/agent-runs/".length);
       const active = activeRuns.get(runId);
       if (active) {
-        active.proc.kill("SIGTERM");
+        active.proc.kill();
         killAgentRun(runId);
         activeRuns.delete(runId);
         // notify watchers
@@ -4973,34 +4995,43 @@ export function startWatchServer(opts: WatchOptions): void {
       const hooksDir = join(claudeDir, "hooks");
 
       // Package dir = where noob-tester is installed (the skills/ folder is relative to it)
+      // fileURLToPath handles the Windows leading-slash bug in URL.pathname (e.g. /C:/Users/...)
       const packageDir = join(
-        new URL(".", import.meta.url).pathname,
+        fileURLToPath(new URL(".", import.meta.url)),
         "..",
         "..",
       );
 
-      const home = homedir();
-      function tilde(p: string): string {
-        return p.replace(home, "~");
-      }
       function extraNvmBins(): string[] {
-        const candidates = [
-          join(home, ".nvm", "versions", "node"),
-          join(home, ".local", "share", "nvm"),
-        ];
+        const home = homedir();
         const bins: string[] = [];
-        for (const base of candidates) {
-          if (!existsSync(base)) continue;
-          try {
-            for (const entry of readdirSync(base)) {
-              const bin = join(base, entry, "bin");
-              if (existsSync(bin)) bins.push(bin);
-              const nested = join(base, entry);
-              if (existsSync(join(nested, "bin")))
-                bins.push(join(nested, "bin"));
-            }
-          } catch {
-            /* ignore */
+        if (process.platform === "win32") {
+          // nvm-windows: executables directly in %APPDATA%\nvm\<version>\ (no bin/ subdir)
+          const nvmWin = join(process.env.APPDATA ?? "", "nvm");
+          if (existsSync(nvmWin)) {
+            try {
+              for (const entry of readdirSync(nvmWin)) {
+                const dir = join(nvmWin, entry);
+                if (existsSync(join(dir, "node.exe"))) bins.push(dir);
+              }
+            } catch { /* ignore */ }
+          }
+          // Standard Windows Node.js installer: node.exe directly in %ProgramFiles%\nodejs
+          const nodeDir = join(process.env.ProgramFiles ?? "", "nodejs");
+          if (existsSync(join(nodeDir, "node.exe"))) bins.push(nodeDir);
+        } else {
+          // Unix nvm: executables are in <base>/<version>/bin/
+          for (const base of [
+            join(home, ".nvm", "versions", "node"),
+            join(home, ".local", "share", "nvm"),
+          ]) {
+            if (!existsSync(base)) continue;
+            try {
+              for (const entry of readdirSync(base)) {
+                const bin = join(base, entry, "bin");
+                if (existsSync(bin)) bins.push(bin);
+              }
+            } catch { /* ignore */ }
           }
         }
         return bins;
@@ -5013,10 +5044,16 @@ export function startWatchServer(opts: WatchOptions): void {
         } catch {
           /* fall through */
         }
-        // Fallback: search nvm-managed bin dirs (handles cross-version installs on Unix)
+        // Fallback: search nvm/node bin dirs
         const extra = extraNvmBins();
-        const suffix = process.platform === "win32" ? ".cmd" : "";
-        return extra.some((dir) => existsSync(join(dir, cmd + suffix)) || existsSync(join(dir, cmd)));
+        if (process.platform === "win32") {
+          return extra.some((dir) =>
+            existsSync(join(dir, cmd + ".exe")) ||
+            existsSync(join(dir, cmd + ".cmd")) ||
+            existsSync(join(dir, cmd))
+          );
+        }
+        return extra.some((dir) => existsSync(join(dir, cmd)));
       }
       function findPluginVersion(basePath: string): string | null {
         if (!existsSync(basePath)) return null;
@@ -5036,35 +5073,35 @@ export function startWatchServer(opts: WatchOptions): void {
           id: "git",
           label: "Git",
           installed: cmdExists("git"),
-          install: "brew install git",
+          install: pkgInstallCmd("git", "Git.Git"),
           required: true,
         },
         {
           id: "curl",
           label: "curl",
           installed: cmdExists("curl"),
-          install: "brew install curl",
+          install: pkgInstallCmd("curl", "cURL.cURL"),
           required: true,
         },
         {
           id: "jq",
           label: "jq",
           installed: cmdExists("jq"),
-          install: "brew install jq",
+          install: pkgInstallCmd("jq", "jqlang.jq"),
           required: true,
         },
         {
           id: "gh",
           label: "GitHub CLI (gh)",
           installed: cmdExists("gh"),
-          install: "brew install gh",
+          install: pkgInstallCmd("gh", "GitHub.cli"),
           required: false,
         },
         {
           id: "glab",
           label: "GitLab CLI (glab)",
           installed: cmdExists("glab"),
-          install: "brew install glab",
+          install: pkgInstallCmd("glab", "Glab.Glab"),
           required: false,
         },
         {
@@ -5086,7 +5123,7 @@ export function startWatchServer(opts: WatchOptions): void {
           id: "op",
           label: "1Password CLI (op)",
           installed: cmdExists("op"),
-          install: "brew install 1password-cli",
+          install: pkgInstallCmd("1password-cli", "AgileBits.1Password.CLI"),
           required: false,
         },
       ];
@@ -5194,10 +5231,14 @@ export function startWatchServer(opts: WatchOptions): void {
         const srcExists = src ? existsSync(src) : false;
         let upToDate = false;
         if (destExists && srcExists && src) {
-          try {
-            const target = readlinkSync(dest);
-            upToDate = target === src;
-          } catch {
+          if (process.platform !== "win32") {
+            // Unix: check symlink target matches src
+            try {
+              upToDate = readlinkSync(dest) === src;
+            } catch { /* not a symlink — fall through to content check */ }
+          }
+          if (!upToDate) {
+            // Windows (copied) or symlink check failed — compare SKILL.md content
             try {
               const srcContent = readFileSync(join(src!, "SKILL.md"), "utf8");
               const destContent = readFileSync(join(dest, "SKILL.md"), "utf8");
@@ -5209,9 +5250,7 @@ export function startWatchServer(opts: WatchOptions): void {
         }
         const installCmd =
           "claude plugin install " + s.pluginName + "@noob-tester-skills";
-        const symlinkCmd = src
-          ? "ln -sf " + tilde(src) + " " + tilde(dest)
-          : "";
+        const symlinkCmd = src ? mkSymlinkCmd(src, dest) : "";
         return {
           id: s.id,
           label: s.id,
@@ -5224,8 +5263,9 @@ export function startWatchServer(opts: WatchOptions): void {
           installCmd,
           symlinkCmd,
           marketplaceCmd,
-          unlinkCmd: "rm -rf " + tilde(dest),
-          uninstallCmd: "rm -rf " + tilde(dest) + " && rm -rf " + tilde(pkgDir),
+          unlinkCmd: rmDirCmd(dest),
+          uninstallCmd: rmDirCmd(dest) + " && " + rmDirCmd(pkgDir),
+          checkCmd: checkPathCmd(dest),
         };
       });
 
@@ -5248,15 +5288,12 @@ export function startWatchServer(opts: WatchOptions): void {
         fullInstallCmd:
           "claude plugin marketplace add ganeshgaxy/noob-tester-skills && claude plugin marketplace update noob-tester-skills && claude plugin install bb@noob-tester-skills",
         symlinkCmd: bbSkillSrc
-          ? "ln -sf " + tilde(bbSkillSrc) + " " + tilde(join(skillsDir, "bb"))
+          ? mkSymlinkCmd(bbSkillSrc, join(skillsDir, "bb"))
           : "",
         marketplaceCmd: marketplaceCmd,
-        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "bb")),
-        uninstallCmd:
-          "rm -rf " +
-          tilde(join(skillsDir, "bb")) +
-          " && rm -rf " +
-          tilde(bbPkgDir),
+        unlinkCmd: rmDirCmd(join(skillsDir, "bb")),
+        uninstallCmd: rmDirCmd(join(skillsDir, "bb")) + " && " + rmDirCmd(bbPkgDir),
+        checkCmd: checkPathCmd(join(skillsDir, "bb")),
       });
 
       // glab skill (from cc-handbook)
@@ -5277,19 +5314,13 @@ export function startWatchServer(opts: WatchOptions): void {
         fullInstallCmd:
           "claude plugin marketplace add nikiforovall/claude-code-rules && claude plugin install handbook-glab@cc-handbook",
         symlinkCmd: glabSkillSrc
-          ? "ln -sf " +
-            tilde(glabSkillSrc) +
-            " " +
-            tilde(join(skillsDir, "glab"))
+          ? mkSymlinkCmd(glabSkillSrc, join(skillsDir, "glab"))
           : "",
         marketplaceCmd:
           "claude plugin marketplace add nikiforovall/claude-code-rules",
-        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "glab")),
-        uninstallCmd:
-          "rm -rf " +
-          tilde(join(skillsDir, "glab")) +
-          " && rm -rf " +
-          tilde(glabPkgDir),
+        unlinkCmd: rmDirCmd(join(skillsDir, "glab")),
+        uninstallCmd: rmDirCmd(join(skillsDir, "glab")) + " && " + rmDirCmd(glabPkgDir),
+        checkCmd: checkPathCmd(join(skillsDir, "glab")),
       });
 
       // agent-browser + dogfood skills (from vercel-labs/agent-browser via npx)
@@ -5304,8 +5335,9 @@ export function startWatchServer(opts: WatchOptions): void {
         installCmd: "npx skills add vercel-labs/agent-browser",
         symlinkCmd: "",
         marketplaceCmd: "",
-        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "agent-browser")),
+        unlinkCmd: rmDirCmd(join(skillsDir, "agent-browser")),
         uninstallCmd: "",
+        checkCmd: checkPathCmd(join(skillsDir, "agent-browser")),
       });
       externalSkills.push({
         id: "dogfood-skill",
@@ -5318,8 +5350,9 @@ export function startWatchServer(opts: WatchOptions): void {
         installCmd: "npx skills add vercel-labs/agent-browser",
         symlinkCmd: "",
         marketplaceCmd: "",
-        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "dogfood")),
+        unlinkCmd: rmDirCmd(join(skillsDir, "dogfood")),
         uninstallCmd: "",
+        checkCmd: checkPathCmd(join(skillsDir, "dogfood")),
       });
 
       // ── Hooks ──
@@ -5340,15 +5373,12 @@ export function startWatchServer(opts: WatchOptions): void {
           installCmd:
             "claude plugin install subagent-metrics@noob-tester-skills",
           symlinkCmd: metricsHookSrc
-            ? "ln -sf " + tilde(metricsHookSrc) + " " + tilde(metricsHookDest)
+            ? mkSymlinkCmd(metricsHookSrc, metricsHookDest)
             : "",
           marketplaceCmd: marketplaceCmd,
-          unlinkCmd: "rm -f " + tilde(metricsHookDest),
-          uninstallCmd:
-            "rm -f " +
-            tilde(metricsHookDest) +
-            " && rm -rf " +
-            tilde(metricsPkgDir),
+          unlinkCmd: rmFileCmd(metricsHookDest),
+          uninstallCmd: rmFileCmd(metricsHookDest) + " && " + rmDirCmd(metricsPkgDir),
+          checkCmd: checkPathCmd(metricsHookDest),
         },
       ];
 
@@ -5391,7 +5421,7 @@ export function startWatchServer(opts: WatchOptions): void {
           }
         }
         const installCmd = "claude plugin install " + name + "@noob-tester-skills";
-        const copyCmd = src ? "cp " + tilde(src) + " " + tilde(dest) : "";
+        const agentCopyCmd = src ? copyFileCmd(src, dest) : "";
         return {
           id: name,
           label: name,
@@ -5402,10 +5432,11 @@ export function startWatchServer(opts: WatchOptions): void {
           srcExists,
           pluginInstalled: !!ver,
           installCmd,
-          copyCmd,
+          copyCmd: agentCopyCmd,
           marketplaceCmd,
-          unlinkCmd: "rm -f " + tilde(dest),
-          uninstallCmd: "rm -f " + tilde(dest) + " && rm -rf " + tilde(pkgDir),
+          unlinkCmd: rmFileCmd(dest),
+          uninstallCmd: rmFileCmd(dest) + " && " + rmDirCmd(pkgDir),
+          checkCmd: checkPathCmd(dest),
         };
       });
 
@@ -5449,17 +5480,24 @@ export function startWatchServer(opts: WatchOptions): void {
             return;
           }
 
-          // Remove existing dest if present
-          if (existsSync(dest)) {
-            try {
-              rmSync(dest, { recursive: true, force: true });
-            } catch {}
-          }
+          // Remove existing dest if present (use lstatSync to catch broken symlinks)
+          try { lstatSync(dest); rmSync(dest, { recursive: true, force: true }); } catch {}
           // Create parent dir
           const parentDir = join(dest, "..");
           if (!existsSync(parentDir)) mkdirSync(parentDir, { recursive: true });
-          // Symlink
-          symlinkSync(src, dest);
+          // Windows requires Developer Mode for symlinks — copy the directory instead
+          if (process.platform === "win32") {
+            const copyDir = (s: string, d: string) => {
+              mkdirSync(d, { recursive: true });
+              for (const entry of readdirSync(s)) {
+                const sp = join(s, entry), dp = join(d, entry);
+                statSync(sp).isDirectory() ? copyDir(sp, dp) : copyFileSync(sp, dp);
+              }
+            };
+            statSync(src).isDirectory() ? copyDir(src, dest) : copyFileSync(src, dest);
+          } else {
+            symlinkSync(src, dest);
+          }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true }));
         } catch (err) {
@@ -5493,6 +5531,34 @@ export function startWatchServer(opts: WatchOptions): void {
           if (!existsSync(parentDir)) mkdirSync(parentDir, { recursive: true });
           // Copy (not symlink)
           copyFileSync(src, dest);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/setup/unlink-skill" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { dest } = JSON.parse(body);
+          if (!dest || typeof dest !== "string") {
+            res.writeHead(400);
+            res.end('{"error":"dest required"}');
+            return;
+          }
+          // Use lstatSync so broken symlinks are also caught
+          try { lstatSync(dest); } catch {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, note: "already absent" }));
+            return;
+          }
+          rmSync(dest, { recursive: true, force: true });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true }));
         } catch (err) {

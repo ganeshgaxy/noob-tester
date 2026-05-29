@@ -4,7 +4,7 @@
  */
 
 import type { Command } from "commander";
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -40,7 +40,20 @@ function runCmd(cmd: string, timeout = 15000): string {
       stdio: ["pipe", "pipe", "pipe"],
       timeout,
     }).trim();
-  } catch (err) {
+  } catch {
+    return "";
+  }
+}
+
+// Array-form runner — avoids shell quoting entirely, safe on all platforms
+function runArgs(args: string[], timeout = 15000): string {
+  try {
+    const result = spawnSync(args[0], args.slice(1), {
+      encoding: "utf-8",
+      timeout,
+    });
+    return (result.stdout ?? "").trim();
+  } catch {
     return "";
   }
 }
@@ -307,8 +320,8 @@ export function registerChainCommands(program: Command): void {
         captured.push("snapshot");
       }
 
-      // Capture screenshot
-      const ssResult = runCmd(`agent-browser screenshot "${screenshotPath}"`);
+      // Capture screenshot — use array form so path backslashes are safe on Windows
+      const ssResult = runArgs(["agent-browser", "screenshot", screenshotPath]);
       if (existsSync(screenshotPath)) captured.push("screenshot");
 
       // Capture console
@@ -381,11 +394,11 @@ export function registerChainCommands(program: Command): void {
       try {
         const axeScript =
           '(async () => { if (!window.axe) { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js"; await new Promise((ok, fail) => { s.onload = ok; s.onerror = fail; document.head.appendChild(s); }); } const results = await window.axe.run(document, { runOnly: ["wcag2a", "wcag2aa", "best-practice"] }); return JSON.stringify(results.violations); })()';
-        const axeRaw = execSync(`agent-browser eval '${axeScript}'`, {
+        const axeResult = spawnSync("agent-browser", ["eval", axeScript], {
           encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
           timeout: 30000,
-        }).trim();
+        });
+        const axeRaw = (axeResult.stdout ?? "").trim();
         if (axeRaw) {
           // agent-browser eval returns JSON-encoded value — parse twice: outer quotes then inner JSON
           const inner = JSON.parse(axeRaw);
@@ -903,19 +916,26 @@ export function registerChainCommands(program: Command): void {
       const url = opts.url;
       const dir = evidenceDir();
 
-      // Build curl command
-      let curlCmd = `curl -s -w "\\n---NOOB_META---\\nHTTP_STATUS:%{http_code}\\nTIME_TOTAL:%{time_total}\\nSIZE_DOWNLOAD:%{size_download}" -X ${method} "${url}"`;
-      curlCmd += ' -H "Content-Type: application/json"';
-      if (opts.auth) curlCmd += ` -H "Authorization: Bearer ${opts.auth}"`;
+      // Build curl args as array — avoids shell quoting issues on all platforms
+      const curlArgs = [
+        "-s",
+        "-w", "\n---NOOB_META---\nHTTP_STATUS:%{http_code}\nTIME_TOTAL:%{time_total}\nSIZE_DOWNLOAD:%{size_download}",
+        "-X", method,
+        "-H", "Content-Type: application/json",
+      ];
+      if (opts.auth) curlArgs.push("-H", `Authorization: Bearer ${opts.auth}`);
       if (opts.header) {
-        for (const h of opts.header) curlCmd += ` -H "${h}"`;
+        for (const h of opts.header) curlArgs.push("-H", h);
       }
-      if (opts.body) curlCmd += ` -d '${opts.body}'`;
+      if (opts.body) curlArgs.push("-d", opts.body);
+      curlArgs.push(url);
 
       // Execute
       let rawResponse: string;
       try {
-        rawResponse = execSync(curlCmd, { encoding: "utf-8", timeout: 30000 });
+        const result = spawnSync("curl", curlArgs, { encoding: "utf-8", timeout: 30000 });
+        if (result.error) throw result.error;
+        rawResponse = result.stdout ?? "";
       } catch (err) {
         console.log(
           JSON.stringify({

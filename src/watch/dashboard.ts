@@ -1812,14 +1812,102 @@ async function renderSettingsPage() {
 }
 
 async function renderSettingsTab() {
-  const settings = await fetchJson("/api/settings");
+  const [settings, agentsList] = await Promise.all([
+    fetchJson("/api/settings"),
+    fetchJson("/api/agents").catch(() => []),
+  ]);
   const providers = ["github", "gitlab", "bitbucket"];
   const currentProvider = (settings.repo_provider || "").toLowerCase();
+  const currentAiProvider = (settings.ai_provider || "claude").toLowerCase();
 
   let html = '';
 
-  // Repository Provider
-  html += '<div class="panel">';
+  // ── AI Provider ──
+  const aiProviders = [
+    { id: "claude",  label: "Claude",  icon: "ph-robot",         available: true },
+    { id: "openai",  label: "OpenAI",  icon: "ph-open-ai-logo",  available: false },
+    { id: "codex",   label: "Codex",   icon: "ph-code",          available: false },
+    { id: "gemini",  label: "Gemini",  icon: "ph-sparkle",       available: false },
+  ];
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">AI Provider</div>';
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+  for (const ap of aiProviders) {
+    const selected = currentAiProvider === ap.id;
+    if (ap.available) {
+      html += \`<div onclick="saveAiProvider('\${ap.id}')" style="padding:8px 18px;border-radius:var(--radius-xs);border:1px solid \${selected ? 'var(--accent)' : 'var(--border)'};background:\${selected ? 'var(--accent-dim)' : 'var(--surface-raised)'};color:\${selected ? 'var(--accent)' : 'var(--text)'};cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px">
+        <i class="ph \${ap.icon}"></i> \${ap.label}
+      </div>\`;
+    } else {
+      html += \`<div style="padding:8px 18px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;opacity:0.5;cursor:not-allowed" title="Coming soon">
+        <i class="ph \${ap.icon}"></i> \${ap.label}
+      </div>\`;
+    }
+  }
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--dim)">Other providers coming soon. Currently only Claude is supported.</div>';
+  html += '</div>';
+
+  // ── Default Agents per Page (accordion, only when claude selected) ──
+  if (currentAiProvider === "claude") {
+    const pageConfigs = await Promise.all([
+      "explore", "plan", "pool", "analyze", "visual", "testcases"
+    ].map(async (p) => ({ page: p, cfg: await fetchJson("/api/page-config/" + p).catch(() => ({})) })));
+
+    const globalAgents = agentsList.filter(function(a) { return a.scope === "global"; });
+    const agentOptions = globalAgents.map(function(a) { return { name: a.name, desc: a.description || "" }; });
+
+    const pageLabels = {
+      explore:    { label: "Explore",       icon: "ph-compass",               desc: "Browser-based UI test execution" },
+      plan:       { label: "Plan",          icon: "ph-map-trifold",           desc: "Test planning & strategy" },
+      pool:       { label: "Pool",          icon: "ph-users-three",           desc: "Parallel agent pool execution" },
+      analyze:    { label: "Analysis",      icon: "ph-magnifying-glass-plus", desc: "Ticket analysis & gap detection" },
+      visual:     { label: "Visual Run",    icon: "ph-image",                 desc: "Visual regression testing" },
+      testcases:  { label: "Test Cases",    icon: "ph-check-square",          desc: "Test case generation" },
+    };
+
+    const isOpen = window._agentAccordionOpen !== false;
+    html += '<div class="panel" style="margin-bottom:16px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none" onclick="window._agentAccordionOpen=!(window._agentAccordionOpen!==false);renderSettingsPage()">';
+    html += '<div style="font-weight:500;font-size:14px"><i class="ph ph-robot" style="margin-right:6px;color:var(--accent)"></i>Default Agents per Page</div>';
+    html += '<i class="ph ' + (isOpen ? 'ph-caret-up' : 'ph-caret-down') + '" style="color:var(--muted);font-size:14px"></i>';
+    html += '</div>';
+
+    if (isOpen) {
+      html += '<div style="margin-top:2px;font-size:11px;color:var(--dim);margin-bottom:14px">Set the default Claude agent used when running each page. Leave blank to use no agent.</div>';
+      if (agentOptions.length === 0) {
+        html += '<div style="font-size:12px;color:var(--yellow);padding:8px 0"><i class="ph ph-warning" style="margin-right:4px"></i>No global agents installed yet. Install agents from the Claude tab first.</div>';
+      }
+      for (const { page, cfg } of pageConfigs) {
+        const meta = pageLabels[page];
+        const curAgent = cfg.agent_name || "";
+        const curAuto  = !!(cfg.auto_run);
+        html += '<div style="display:grid;grid-template-columns:180px 1fr auto;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border)">';
+        // Label
+        html += '<div style="display:flex;align-items:center;gap:8px">';
+        html += '<i class="ph ' + meta.icon + '" style="color:var(--accent);font-size:14px;flex-shrink:0"></i>';
+        html += '<div><div style="font-size:13px;font-weight:500">' + meta.label + '</div>';
+        html += '<div style="font-size:10px;color:var(--dim)">' + meta.desc + '</div></div>';
+        html += '</div>';
+        // Agent selector
+        html += '<select id="page-agent-' + page + '" onchange="savePageAgent(\\'' + page + '\\')" style="font-size:12px;padding:5px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);outline:none;width:100%">';
+        html += '<option value=""' + (!curAgent ? ' selected' : '') + '>— None —</option>';
+        for (const ag of agentOptions) {
+          html += '<option value="' + esc(ag.name) + '"' + (curAgent === ag.name ? ' selected' : '') + '>' + esc(ag.name) + '</option>';
+        }
+        html += '</select>';
+        // Auto-run toggle
+        html += '<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap">';
+        html += '<input type="checkbox" id="page-autorun-' + page + '" onchange="savePageAgent(\\'' + page + '\\')" ' + (curAuto ? 'checked' : '') + ' style="cursor:pointer;accent-color:var(--accent)">';
+        html += 'Auto-run</label>';
+        html += '</div>';
+      }
+    }
+    html += '</div>';
+  }
+
+  // ── Repository Provider ──
+  html += '<div class="panel" style="margin-bottom:16px">';
   html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Repository Provider</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
   for (const p of providers) {
@@ -1839,10 +1927,10 @@ async function renderSettingsTab() {
   }
   html += '</div>';
 
-  // All settings table
+  // ── All settings table ──
   const allKeys = Object.keys(settings);
   if (allKeys.length > 0) {
-    html += '<div class="panel" style="margin-top:16px">';
+    html += '<div class="panel" style="margin-top:0">';
     html += '<div style="margin-bottom:10px;font-weight:500;font-size:14px">All Settings</div>';
     html += '<table class="data-table"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
     for (const key of allKeys) {
@@ -1923,8 +2011,8 @@ function renderClaudeContent(data) {
   for (var j = 0; j < data.skills.length; j++) {
     var skill = data.skills[j];
     var sIcon, sColor, sRight;
-    var sCheckCmd = JSON.stringify('ls -la ' + skill.dest + ' 2>&1').replace(/"/g, '&quot;');
-    var sUnlinkBtn = skill.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + skill.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var sCheckCmd = JSON.stringify(skill.checkCmd || ('ls -la ' + skill.dest + ' 2>&1')).replace(/"/g, '&quot;');
+    var sUnlinkBtn = '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="unlinkSkill(' + JSON.stringify(skill.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.id).replace(/"/g, '&quot;') + ')">Unlink</div>';
     var sUninstallBtn = skill.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + skill.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
     if (skill.installed && skill.upToDate) {
       sIcon = '&#10003;'; sColor = 'var(--green)';
@@ -1961,8 +2049,8 @@ function renderClaudeContent(data) {
   for (var k = 0; k < pluginExternals.length; k++) {
     var ext = pluginExternals[k];
     var eIcon, eColor, eRight;
-    var eCheckCmd = JSON.stringify('ls -la ' + ext.dest + ' 2>&1').replace(/"/g, '&quot;');
-    var eUnlinkBtn = ext.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + ext.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var eCheckCmd = JSON.stringify(ext.checkCmd || ('ls -la ' + ext.dest + ' 2>&1')).replace(/"/g, '&quot;');
+    var eUnlinkBtn = '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="unlinkSkill(' + JSON.stringify(ext.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.id).replace(/"/g, '&quot;') + ')">Unlink</div>';
     var eUninstallBtn = ext.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + ext.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
     var eFullInstallCmd = JSON.stringify(ext.fullInstallCmd || ext.installCmd).replace(/"/g, '&quot;');
     if (ext.installed) {
@@ -1986,8 +2074,8 @@ function renderClaudeContent(data) {
     for (var n = 0; n < npxExternals.length; n++) {
       var npx = npxExternals[n];
       var nIcon, nColor, nRight;
-      var nCheckCmd = JSON.stringify('ls -la ' + npx.dest + ' 2>&1').replace(/"/g, '&quot;');
-      var nUnlinkBtn = npx.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + npx.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(npx.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+      var nCheckCmd = JSON.stringify(npx.checkCmd || ('ls -la ' + npx.dest + ' 2>&1')).replace(/"/g, '&quot;');
+      var nUnlinkBtn = '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="unlinkSkill(' + JSON.stringify(npx.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(npx.id).replace(/"/g, '&quot;') + ')">Unlink</div>';
       var nLinkBtn = '<div class="action-btn" style="color:var(--accent);font-size:11px" onclick="runCmdInClaudeTab(' + JSON.stringify(npx.installCmd).replace(/"/g, '&quot;') + ',this)">Link</div>';
       if (npx.installed) {
         nIcon = '&#10003;'; nColor = 'var(--green)';
@@ -2007,8 +2095,8 @@ function renderClaudeContent(data) {
   for (var m = 0; m < data.hooks.length; m++) {
     var hook = data.hooks[m];
     var hIcon, hColor, hRight;
-    var hCheckCmd = JSON.stringify('ls -la ' + hook.dest + ' 2>&1').replace(/"/g, '&quot;');
-    var hUnlinkBtn = hook.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + hook.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var hCheckCmd = JSON.stringify(hook.checkCmd || ('ls -la ' + hook.dest + ' 2>&1')).replace(/"/g, '&quot;');
+    var hUnlinkBtn = '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="unlinkSkill(' + JSON.stringify(hook.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.id).replace(/"/g, '&quot;') + ')">Unlink</div>';
     var hUninstallBtn = hook.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + hook.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
     if (hook.installed) {
       hIcon = '&#10003;'; hColor = 'var(--green)';
@@ -2049,8 +2137,8 @@ function renderClaudeContent(data) {
   for (var p = 0; p < data.agents.length; p++) {
     var agent = data.agents[p];
     var aIcon, aColor, aRight;
-    var aCheckCmd = JSON.stringify('ls -la ' + agent.dest + ' 2>&1').replace(/"/g, '&quot;');
-    var aUnlinkBtn = agent.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + agent.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var aCheckCmd = JSON.stringify(agent.checkCmd || ('ls -la ' + agent.dest + ' 2>&1')).replace(/"/g, '&quot;');
+    var aUnlinkBtn = '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="unlinkSkill(' + JSON.stringify(agent.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.id).replace(/"/g, '&quot;') + ')">Unlink</div>';
     var aUninstallBtn = agent.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + agent.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
     if (agent.installed && agent.upToDate) {
       aIcon = '&#10003;'; aColor = 'var(--green)';
@@ -2151,12 +2239,17 @@ async function renderWorkspacesTab() {
   html += '<div id="ws-cleanup-result" style="margin-bottom:8px"></div>';
   html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
   var cleanupItems = [
-    { type: "sessions", label: "Sessions & Runs", icon: "ph-compass", color: "var(--yellow)" },
+    { type: "stale", label: "Stale Sessions", icon: "ph-clock-countdown", color: "var(--yellow)" },
+    { type: "sessions", label: "All Sessions & Runs", icon: "ph-compass", color: "var(--yellow)" },
     { type: "testcases", label: "Test Cases", icon: "ph-check-square", color: "var(--accent)" },
     { type: "issues", label: "Issues", icon: "ph-bug", color: "var(--red)" },
     { type: "analyses", label: "Analyses", icon: "ph-magnifying-glass-plus", color: "var(--purple)" },
     { type: "runpacks", label: "Run Packs", icon: "ph-play-circle", color: "var(--green)" },
     { type: "tech-issues", label: "Tech Issues", icon: "ph-wrench", color: "var(--dim)" },
+    { type: "visual", label: "Visual Data", icon: "ph-image", color: "var(--accent)" },
+    { type: "agent-runs", label: "Agent Runs", icon: "ph-robot", color: "var(--purple)" },
+    { type: "ticket-workflow", label: "Ticket Workflow", icon: "ph-kanban", color: "var(--dim)" },
+    { type: "evidence", label: "Evidence Files", icon: "ph-folder-open", color: "var(--muted)" },
     { type: "secrets", label: "Secrets", icon: "ph-key", color: "var(--yellow)" },
     { type: "repos", label: "Repos & Index", icon: "ph-git-branch", color: "var(--accent)" },
   ];
@@ -2173,9 +2266,13 @@ async function renderWorkspacesTab() {
   html += '</div>';
   html += '<div style="margin-top:10px;font-size:11px;color:var(--muted);line-height:1.6">';
   html += '<i class="ph ph-info" style="font-size:12px;margin-right:4px;vertical-align:middle"></i> ';
-  html += '<strong style="color:var(--dim)">Clean All Data</strong> removes sessions, runs, test cases, issues, analyses, and other content. ';
-  html += '<strong style="color:var(--dim)">Nuke Everything</strong> removes repos, files, and secrets. ';
-  html += 'To fully clean a workspace, run both.';
+  html += '<strong style="color:var(--dim)">Stale Sessions</strong> removes only crashed/idle sessions. ';
+  html += '<strong style="color:var(--dim)">Visual Data</strong> clears all visual runs, baselines, comparisons. ';
+  html += '<strong style="color:var(--dim)">Agent Runs</strong> clears agent_runs, pool_spawns, execution history. ';
+  html += '<strong style="color:var(--dim)">Ticket Workflow</strong> clears ticket_workflow and polling history. ';
+  html += '<strong style="color:var(--dim)">Evidence Files</strong> deletes the evidence directory from disk. ';
+  html += '<strong style="color:var(--dim)">Clean All Data</strong> removes all of the above plus sessions, runs, test cases, issues, analyses. ';
+  html += '<strong style="color:var(--dim)">Nuke Everything</strong> also removes repos, files, and secrets.';
   html += '</div></div>';
 
   return html;
@@ -2244,6 +2341,21 @@ window.installSkill = async function(src, dest, id) {
   } catch (err) {
     btn.textContent = "Failed";
     btn.style.color = "var(--red)";
+  }
+};
+
+window.unlinkSkill = async function(dest, id) {
+  if (!await showConfirm('Unlink ' + id + '?')) return;
+  try {
+    const result = await postJson("/api/setup/unlink-skill", { dest });
+    if (!result.ok) {
+      alert("Failed to unlink " + id + ": " + (result.error || "unknown error"));
+      return;
+    }
+    settingsTab = "claude";
+    renderSettingsPage();
+  } catch (err) {
+    alert("Failed to unlink " + id + ": " + String(err));
   }
 };
 
@@ -2401,6 +2513,24 @@ async function runCmdInClaudeTab(script, btn) {
 window.saveRepoProvider = async function(provider) {
   await postJson("/api/settings", { key: "repo_provider", value: provider });
   renderSettingsPage();
+};
+
+window.saveAiProvider = async function(provider) {
+  await postJson("/api/settings", { key: "ai_provider", value: provider });
+  renderSettingsPage();
+};
+
+window.savePageAgent = async function(page) {
+  const select = document.getElementById("page-agent-" + page);
+  const autoRun = document.getElementById("page-autorun-" + page);
+  if (!select) return;
+  const agentName = select ? (select.value || null) : null;
+  const isAutoRun = autoRun ? (autoRun.checked ? 1 : 0) : 0;
+  await fetch(API + "/api/page-config/" + encodeURIComponent(page), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agent_name: agentName, auto_run: isAutoRun }),
+  });
 };
 
 
