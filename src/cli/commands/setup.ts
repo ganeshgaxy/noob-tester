@@ -32,15 +32,17 @@ function extraNvmBins(): string[] {
 }
 
 function cmdExists(cmd: string): boolean {
+  const finder = process.platform === "win32" ? `where ${cmd}` : `which ${cmd}`;
   try {
-    execSync(`which ${cmd}`, { stdio: "ignore" });
+    execSync(finder, { stdio: "ignore" });
     return true;
   } catch {
     /* fall through */
   }
-  // which failed — search nvm-managed bin dirs directly (handles cross-version installs)
+  // Fallback: search nvm-managed bin dirs (handles cross-version installs on Unix)
   const extra = extraNvmBins();
-  return extra.some((dir) => existsSync(join(dir, cmd)));
+  const suffix = process.platform === "win32" ? ".cmd" : "";
+  return extra.some((dir) => existsSync(join(dir, cmd + suffix)) || existsSync(join(dir, cmd)));
 }
 
 function pathExists(p: string): boolean {

@@ -1,7 +1,19 @@
 import cron from "node-cron";
 import { spawn } from "child_process";
-import { listScheduledAgents, recordExecution, updateLastRun, completeExecution } from "../db/repositories/scheduled-agents.js";
-import { v4 as uuid } from "uuid";
+import {
+  listScheduledAgents,
+  updateLastRun,
+} from "../db/repositories/scheduled-agents.js";
+import {
+  createAgentRun,
+  finishAgentRun,
+  hasAgentRunForTicket,
+} from "../db/repositories/agent-runs.js";
+import {
+  listTicketWorkflows,
+  recordWorkflowPollingRun,
+  wasPolledToday,
+} from "../db/repositories/ticket-workflow.js";
 
 interface ScheduledTask {
   id: string;
@@ -37,7 +49,9 @@ function scheduleAgent(agent: any): void {
   try {
     // Validate cron expression
     if (!cron.validate(agent.cron_expression)) {
-      console.error(`Invalid cron expression for ${agent.id}: ${agent.cron_expression}`);
+      console.error(
+        `Invalid cron expression for ${agent.id}: ${agent.cron_expression}`,
+      );
       return;
     }
 
@@ -46,93 +60,193 @@ function scheduleAgent(agent: any): void {
     });
 
     activeTasks.set(agent.id, { id: agent.id, task });
-    console.log(`Scheduled agent ${agent.id}: ${agent.agent_path} on "${agent.cron_expression}"`);
+    console.log(
+      `Scheduled agent ${agent.id}: ${agent.agent_path} on "${agent.cron_expression}"`,
+    );
   } catch (err) {
     console.error(`Failed to schedule agent ${agent.id}:`, err);
   }
 }
 
-function executeAgent(agent: any): void {
-  const executionId = uuid();
-
-  console.log(`\n→ Executing scheduled agent: ${agent.agent_path} (${agent.ticket_id})`);
-  console.log(`  Execution ID: ${executionId}`);
-
-  // Record execution start
-  recordExecution({
-    schedule_id: agent.id,
-    status: "running",
+function spawnClaudeProcess(
+  fullPrompt: string,
+  displayCmd: string,
+  agentName: string,
+  ticketId: string | null,
+  scheduleId: string,
+): void {
+  const run = createAgentRun({
+    page: "scheduler",
+    agent_name: agentName,
+    ticket_id: ticketId,
+    command: displayCmd,
   });
 
-  // Build the Claude invocation
-  const params = agent.parameters || {};
-  const invocation = buildInvocation(agent.agent_path, agent.ticket_id, params);
-
-  // Spawn the agent process
-  const agentProcess = spawn("claude", ["-p", invocation], {
-    stdio: ["ignore", "pipe", "pipe"],
+  const spawnEnv = { ...process.env, FORCE_COLOR: "0" };
+  delete spawnEnv.ANTHROPIC_API_KEY;
+  const agentProcess = spawn("claude", ["-p", fullPrompt], {
+    cwd: process.cwd(),
+    env: spawnEnv,
+    stdio: ["ignore", "ignore", "ignore"],
     detached: false,
   });
 
-  let stdout = "";
-  let stderr = "";
+  let finished = false;
+  const finish = (exitCode: number) => {
+    if (finished) return;
+    finished = true;
+    const status = exitCode === 0 ? "done" : "failed";
+    console.log(`✓ Scheduled run ${status}: ${agentName} (exit: ${exitCode})`);
+    finishAgentRun(run.id, status, exitCode);
+    updateLastRun(scheduleId);
+  };
 
-  if (agentProcess.stdout) {
-    agentProcess.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-  }
-
-  if (agentProcess.stderr) {
-    agentProcess.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-  }
-
-  agentProcess.on("close", (exitCode) => {
-    const success = exitCode === 0;
-    const status = success ? "success" : "failed";
-
-    console.log(`✓ Execution ${status}: ${agent.agent_path} (exit code: ${exitCode})`);
-
-    // Record execution completion
-    completeExecution(executionId, {
-      status,
-      exit_code: exitCode || undefined,
-      logs: stdout || undefined,
-    });
-
-    // Update last run time
-    updateLastRun(agent.id);
-  });
-
+  agentProcess.on("close", (code) => finish(code ?? -1));
   agentProcess.on("error", (err) => {
-    console.error(`✗ Execution error: ${agent.agent_path}:`, err.message);
-    completeExecution(executionId, {
-      status: "failed",
-      exit_code: -1,
-    });
+    console.error(`✗ Scheduled run error: ${agentName}:`, err.message);
+    finish(1);
   });
 }
 
-function buildInvocation(agentPath: string, ticketId: string, params: Record<string, any>): string {
-  let inv = `run agent ${agentPath} for ticket ${ticketId}`;
+function executeAgent(agent: any): void {
+  const params = (agent.parameters || {}) as Record<string, any>;
+  const agentPath = agent.agent_path || "";
+  const agentName = agentPath.split("/").pop() || agentPath;
+  const scheduleType = params.type || "polling";
 
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null) {
-      if (typeof value === "string") {
-        inv += ` with ${key} "${value}"`;
-      } else if (typeof value === "number") {
-        inv += ` with ${key} ${value}`;
-      } else if (typeof value === "boolean") {
-        inv += ` with ${key} ${value}`;
-      } else if (Array.isArray(value)) {
-        inv += ` with ${key} [${value.join(", ")}]`;
-      }
+  if (scheduleType === "workflow") {
+    executeWorkflowAgent(agent, agentPath, agentName, params);
+  } else {
+    executePollingAgent(agent, agentPath, agentName, params);
+  }
+}
+
+function executePollingAgent(
+  agent: any,
+  agentPath: string,
+  agentName: string,
+  params: Record<string, any>,
+): void {
+  const prompt = typeof params.prompt === "string" ? params.prompt : "";
+  const fullPrompt = `use agent @${agentPath} to run ticket polling on ${prompt}`;
+  const displayCmd = `claude -p "${fullPrompt.slice(0, 160)}${fullPrompt.length > 160 ? "..." : ""}"`;
+  console.log(`\n→ Polling Scheduled: ${displayCmd}`);
+  spawnClaudeProcess(fullPrompt, displayCmd, agentName, null, agent.id);
+}
+
+function executeWorkflowAgent(
+  agent: any,
+  agentPath: string,
+  agentName: string,
+  params: Record<string, any>,
+): void {
+  const days = params.days || "today";
+  const requireRepo = !!params.requireRepo;
+  const requireMrPr = !!params.requireMrPr;
+  const requirePriorRun = !!params.requirePriorRun;
+  const priorRunSameDay = !!params.priorRunSameDay;
+  const requirePriorRunAgents: string[] = Array.isArray(
+    params.requirePriorRunAgents,
+  )
+    ? params.requirePriorRunAgents
+    : [];
+  const maxTickets = Math.min(5, Math.max(1, Number(params.maxTickets) || 5));
+
+  // Fetch all tickets
+  let tickets = listTicketWorkflows();
+
+  // Filter: only tickets explicitly marked ready (ready = 1)
+  tickets = tickets.filter((t) => {
+    if (t.ready === 0) {
+      console.log(`  → Skipping ticket ${t.ticket_id} (on hold / not ready)`);
+      return false;
     }
+    return true;
+  });
+
+  // Filter by days
+  if (days === "today") {
+    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    tickets = tickets.filter(
+      (t) => t.added_at && t.added_at.startsWith(todayStr),
+    );
   }
 
-  return inv;
+  // Filter by link condition (checkbox-based)
+  // At least one checkbox must be checked; if both — both must be present
+  if (requireRepo || requireMrPr) {
+    tickets = tickets.filter((t) => {
+      const hasRepo = !!t.git_repo;
+      const hasMrPr = !!t.mr_pr_link;
+      if (requireRepo && requireMrPr) return hasRepo && hasMrPr;
+      if (requireRepo) return hasRepo;
+      return hasMrPr;
+    });
+  }
+
+  // Filter by prior agent run condition
+  if (requirePriorRun) {
+    const agentFilter =
+      requirePriorRunAgents.length > 0 ? requirePriorRunAgents : undefined;
+    tickets = tickets.filter((t) => {
+      const hasPrior = hasAgentRunForTicket(
+        t.ticket_id,
+        priorRunSameDay,
+        agentFilter,
+      );
+      if (!hasPrior) {
+        const agentDesc = agentFilter
+          ? ` by [${agentFilter.map((p) => p.split("/").pop()).join(", ")}]`
+          : "";
+        console.log(
+          `  → Skipping ticket ${t.ticket_id} (no ${priorRunSameDay ? "same-day " : ""}prior agent run${agentDesc} found)`,
+        );
+      }
+      return hasPrior;
+    });
+  }
+
+  // Deduplicate: skip tickets already processed by this agent today
+  const pendingTickets = tickets.filter((t) => {
+    if (wasPolledToday(t.ticket_id, agentPath)) {
+      console.log(
+        `  → Skipping ticket ${t.ticket_id} (already processed today by ${agentName})`,
+      );
+      return false;
+    }
+    return true;
+  });
+
+  if (pendingTickets.length === 0) {
+    console.log(
+      `→ Workflow agent ${agentName}: no new tickets to process for days=${days} requireRepo=${requireRepo} requireMrPr=${requireMrPr}`,
+    );
+    updateLastRun(agent.id);
+    return;
+  }
+
+  const batch = pendingTickets.slice(0, maxTickets);
+  console.log(
+    `\n→ Workflow agent ${agentName}: spawning ${batch.length}/${pendingTickets.length} ticket(s) (max=${maxTickets}, ${tickets.length - pendingTickets.length} already ran today)`,
+  );
+
+  for (const ticket of batch) {
+    const repoPart = ticket.git_repo ? ` and repo is ${ticket.git_repo}` : "";
+    const mrPart = ticket.mr_pr_link
+      ? ` and mr/pr is ${ticket.mr_pr_link}`
+      : "";
+    const fullPrompt = `use agent @${agentPath} on ticket ${ticket.ticket_id}${repoPart}${mrPart}`;
+    const displayCmd = `claude -p "${fullPrompt.slice(0, 200)}${fullPrompt.length > 200 ? "..." : ""}"`;
+    console.log(`  → Spawning for ticket ${ticket.ticket_id}: ${displayCmd}`);
+    recordWorkflowPollingRun(ticket.ticket_id, agentPath);
+    spawnClaudeProcess(
+      fullPrompt,
+      displayCmd,
+      agentName,
+      ticket.ticket_id,
+      agent.id,
+    );
+  }
 }
 
 export function stopScheduler(): void {

@@ -77,6 +77,7 @@ export function registerChainCommands(program: Command): void {
       "Capture types: screenshot,snapshot,video,har,console,trace (default: all)",
     )
     .option("--fresh", "Force new run and run pack")
+    .option("--single-session", "End previous sessions (for sequential testing, not pools)")
     .action((opts) => {
       const db = getDb();
       const ticket = opts.ticket;
@@ -96,11 +97,14 @@ export function registerChainCommands(program: Command): void {
       }
 
       // 1. Session start
-      // End any previous active sessions for this ticket so only one is live at a time
-      db.prepare(
-        `UPDATE sessions SET status = 'completed', ended_at = datetime('now')
-         WHERE status = 'active' AND ticket_refs = ?`,
-      ).run(JSON.stringify([ticket]));
+      // When --single-session is set, end previous sessions for sequential testing.
+      // By default, allow concurrent sessions (required for pool orchestration).
+      if (opts.singleSession) {
+        db.prepare(
+          `UPDATE sessions SET status = 'completed', ended_at = datetime('now')
+           WHERE status = 'active' AND ticket_refs = ?`,
+        ).run(JSON.stringify([ticket]));
+      }
 
       const sessionId = uuid();
       const streamPort = allocateStreamPort();

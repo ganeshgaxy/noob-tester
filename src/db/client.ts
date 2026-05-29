@@ -2069,6 +2069,136 @@ CREATE INDEX IF NOT EXISTS idx_execution_history_status ON agent_execution_histo
       "058-scheduled-agents-fix",
     );
   }
+
+  if (!applied.has("059-datadog-monitors")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS datadog_monitors (
+  id           TEXT PRIMARY KEY,
+  target_name  TEXT NOT NULL UNIQUE,
+  enabled      INTEGER NOT NULL DEFAULT 1,
+  dd_service   TEXT,
+  dd_env       TEXT,
+  last_polled_at TEXT,
+  last_data_json TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_datadog_monitors_target ON datadog_monitors(target_name);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "059-datadog-monitors",
+    );
+  }
+
+  if (!applied.has("060-ticket-workflow")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS ticket_workflow (
+  id                  TEXT PRIMARY KEY,
+  ticket_id           TEXT NOT NULL UNIQUE,
+  status              TEXT NOT NULL DEFAULT 'new',
+                      -- new | queued | running | paused | completed | failed | cancelled
+  current_phase       TEXT,
+                      -- analyze | plan | test | review | done
+  progress            INTEGER NOT NULL DEFAULT 0,
+  active              INTEGER NOT NULL DEFAULT 0,
+  added_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at          TEXT,
+  completed_at        TEXT,
+  last_run_id         TEXT REFERENCES runs(id),
+  last_session_id     TEXT REFERENCES sessions(id),
+  error_message       TEXT,
+  notes               TEXT,
+  metadata_json       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ticket_workflow_ticket   ON ticket_workflow(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_workflow_status   ON ticket_workflow(status);
+CREATE INDEX IF NOT EXISTS idx_ticket_workflow_active   ON ticket_workflow(active);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "060-ticket-workflow",
+    );
+  }
+
+  if (!applied.has("061-page-agent-config")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS page_agent_config (
+  id          TEXT PRIMARY KEY,
+  page        TEXT NOT NULL UNIQUE,
+  agent_name  TEXT,
+  auto_run    INTEGER NOT NULL DEFAULT 0,
+  config_json TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_page_agent_config_page ON page_agent_config(page);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "061-page-agent-config",
+    );
+  }
+
+  if (!applied.has("062-agent-runs")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id          TEXT PRIMARY KEY,
+  page        TEXT NOT NULL,
+  agent_name  TEXT,
+  ticket_id   TEXT,
+  command     TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'running',
+  exit_code   INTEGER,
+  started_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  ended_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_page ON agent_runs(page);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "062-agent-runs",
+    );
+  }
+
+  if (!applied.has("063-ticket-workflow-links")) {
+    db.exec(`
+ALTER TABLE ticket_workflow ADD COLUMN git_repo TEXT;
+ALTER TABLE ticket_workflow ADD COLUMN mr_pr_link TEXT;
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "063-ticket-workflow-links",
+    );
+  }
+
+  if (!applied.has("064-workflow-polling-history")) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS workflow_polling_history (
+  id         TEXT PRIMARY KEY,
+  ticket_id  TEXT NOT NULL,
+  agent_path TEXT NOT NULL,
+  run_date   TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wph_dedup ON workflow_polling_history(ticket_id, agent_path, run_date);
+CREATE INDEX IF NOT EXISTS idx_wph_ticket ON workflow_polling_history(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_wph_date ON workflow_polling_history(run_date);
+    `);
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "064-workflow-polling-history",
+    );
+  }
+
+  if (!applied.has("065-ticket-workflow-ready")) {
+    try {
+      db.exec(
+        "ALTER TABLE ticket_workflow ADD COLUMN ready INTEGER NOT NULL DEFAULT 1",
+      );
+    } catch {
+      /* column already exists */
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(
+      "065-ticket-workflow-ready",
+    );
+  }
 }
 
 function tryLoadVss(db: Database.Database): void {

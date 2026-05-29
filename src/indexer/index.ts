@@ -4,7 +4,7 @@
 
 import { execSync } from "child_process";
 import { join } from "path";
-import { readdirSync, readFileSync, statSync, mkdirSync, existsSync } from "fs";
+import { readdirSync, readFileSync, statSync, mkdirSync, existsSync, rmSync } from "fs";
 import { v4 as uuid } from "uuid";
 import { getDb, dataDir } from "../db/client.js";
 import { addRepo, getRepo, deleteRepo, updateRepoPath, updateRepoBranch, updateRepoIndexed, resolveRepoNames, listRepos } from "../db/repositories/repos.js";
@@ -293,14 +293,17 @@ export function syncRepo(name: string): string {
     } catch {
       try {
         execSync("git fetch origin", { cwd: localPath, stdio: "ignore" });
-        const defaultBranch = execSync("git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || echo refs/remotes/origin/main", { cwd: localPath, encoding: "utf-8" }).trim().replace("refs/remotes/origin/", "");
-        execSync(`git checkout ${defaultBranch} 2>/dev/null || true`, { cwd: localPath, stdio: "ignore" });
+        let defaultBranch = "main";
+        try {
+          defaultBranch = execSync("git symbolic-ref refs/remotes/origin/HEAD", { cwd: localPath, encoding: "utf-8" }).trim().replace("refs/remotes/origin/", "");
+        } catch { /* fallback to main */ }
+        try { execSync(`git checkout ${defaultBranch}`, { cwd: localPath, stdio: "ignore" }); } catch { /* already on branch */ }
         execSync(`git reset --hard origin/${defaultBranch}`, { cwd: localPath, stdio: "ignore" });
         pullOk = true;
       } catch {
         // Corrupt or incomplete clone — nuke and re-clone
         console.log(chalk.yellow(`  Pull failed for ${name}, removing corrupt repo and re-cloning...`));
-        try { execSync(`rm -rf "${localPath}"`, { stdio: "ignore" }); } catch {}
+        try { rmSync(localPath, { recursive: true, force: true }); } catch {}
       }
     }
     if (!pullOk && !existsSync(join(localPath, ".git"))) {
@@ -347,7 +350,11 @@ export function switchRepoBranch(name: string, branch: string): boolean {
       // Branch may not exist locally — create tracking branch
       execSync(`git checkout -b ${branch} origin/${branch}`, { cwd: localPath, stdio: "ignore" });
     }
-    execSync(`git pull origin ${branch} --ff-only 2>/dev/null || git reset --hard origin/${branch}`, { cwd: localPath, stdio: "ignore" });
+    try {
+      execSync(`git pull origin ${branch} --ff-only`, { cwd: localPath, stdio: "ignore" });
+    } catch {
+      execSync(`git reset --hard origin/${branch}`, { cwd: localPath, stdio: "ignore" });
+    }
 
     const commit = getGitCommit(localPath);
     const actualBranch = getGitBranch(localPath);

@@ -33,6 +33,21 @@ function drawUiMapCanvas(pages, elements, navs, forms, canvasId, highlightPageId
   const minW = 140, maxW = 220, minH = 50, maxH = 80;
   const maxEls = Math.max(1, ...pages.map(p => elements.filter(e => e.page_id === p.id).length));
 
+  // Compute common origin to strip from labels (e.g. "https://staging.app.com")
+  let _uimapCommonOrigin = "";
+  try {
+    const origins = pages.map(p => { try { return new URL(p.url_pattern).origin; } catch { return ""; } }).filter(Boolean);
+    if (origins.length > 0 && origins.every(o => o === origins[0])) _uimapCommonOrigin = origins[0];
+  } catch {}
+
+  function _shortUrl(fullUrl) {
+    if (_uimapCommonOrigin && fullUrl.startsWith(_uimapCommonOrigin)) {
+      const sub = fullUrl.slice(_uimapCommonOrigin.length);
+      return sub || "/";
+    }
+    return fullUrl;
+  }
+
   for (const p of pages) {
     const elCount = elements.filter(e => e.page_id === p.id).length;
     const formCount = forms.filter(f => f.page_id === p.id).length;
@@ -43,8 +58,9 @@ function drawUiMapCanvas(pages, elements, navs, forms, canvasId, highlightPageId
     const w = minW + t * (maxW - minW);
     const h = minH + t * (maxH - minH);
 
-    // Cluster by first two URL segments
-    const parts = p.url_pattern.split("/").filter(Boolean);
+    // Cluster by first two path segments (using short URL)
+    const shortP = _shortUrl(p.url_pattern);
+    const parts = shortP.split("/").filter(Boolean);
     const cluster = parts.length >= 2 ? "/" + parts[0] + "/" + parts[1] : "/" + (parts[0] || "");
 
     // Preload screenshot

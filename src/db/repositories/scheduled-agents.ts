@@ -89,6 +89,14 @@ export function updateScheduledAgent(id: string, updates: Partial<ScheduledAgent
   const fields: string[] = [];
   const values: any[] = [];
 
+  if (updates.agent_path !== undefined) {
+    fields.push("agent_path = ?");
+    values.push(updates.agent_path);
+  }
+  if (updates.ticket_id !== undefined) {
+    fields.push("ticket_id = ?");
+    values.push(updates.ticket_id);
+  }
   if (updates.cron_expression !== undefined) {
     fields.push("cron_expression = ?");
     values.push(updates.cron_expression);

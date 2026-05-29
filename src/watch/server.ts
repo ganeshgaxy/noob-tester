@@ -1,11 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { v4 as uuidv4, v4 as uuid } from "uuid";
 import { createHash } from "crypto";
-import { execSync, spawn } from "child_process";
+import { execSync, spawn, spawnSync } from "child_process";
 import {
   readFileSync,
   existsSync,
   statSync,
+  lstatSync,
   rmSync,
   readdirSync,
   unlinkSync,
@@ -32,12 +33,17 @@ import { getDocsHtml } from "./docs.js";
 import {
   getAllSecretsMasked,
   addTarget,
+  getTargetByName,
   setSecret,
   deleteSecret,
   deleteRole,
   deleteTarget,
   resolveProfile,
+  resolveValue,
+  getSecretRaw,
   importFromOnePassword,
+  maskValue,
+  getSourceType,
 } from "../secrets/store.js";
 import chalk from "chalk";
 import { gatherTicketReport } from "../cli/commands/report.js";
@@ -51,16 +57,251 @@ import {
   buildInvocation,
 } from "../db/repositories/qa-pool.js";
 import { getRunPackLogsForTicket } from "../db/repositories/visual-testing.js";
+import {
+  upsertTicketWorkflow,
+  getTicketWorkflowSummary,
+  listTicketWorkflows,
+  listTicketWorkflowSummaries,
+  transitionStatus,
+  deleteTicketWorkflow,
+  touchTicketAddedAt,
+  wasPolledToday,
+  setTicketReady,
+  listPollingHistoryForTicket,
+  deleteWorkflowPollingRun,
+  type TicketWorkflowStatus,
+} from "../db/repositories/ticket-workflow.js";
+import {
+  getPageAgentConfig,
+  setPageAgentConfig,
+  deletePageAgentConfig,
+} from "../db/repositories/page-agent-config.js";
+import {
+  createAgentRun,
+  getAgentRun,
+  listAgentRuns,
+  listAgentRunsByTicket,
+  finishAgentRun,
+  killAgentRun,
+  deleteAgentRun,
+  hasAgentRunForTicket,
+} from "../db/repositories/agent-runs.js";
 
 interface WatchOptions {
   port: number;
   sessionId?: string;
 }
 
+const DD_POLL_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const DD_GLOBAL_KEY = "_dd_global_";
+
+interface ActiveRun {
+  proc: ReturnType<typeof spawn>;
+  buf: Array<{ type: string; text?: string; code?: number }>;
+  watchers: Set<(obj: object) => void>;
+}
+const activeRuns = new Map<string, ActiveRun>();
+
+async function pollDatadog(
+  force = false,
+  tags = "",
+): Promise<{ ok: boolean; data?: unknown; cached?: boolean; error?: string }> {
+  const DATADOG_TARGET = "_datadog_";
+  const rawApiKey = getSecretRaw(DATADOG_TARGET, "connection", "DD_API_KEY");
+  if (!rawApiKey)
+    return {
+      ok: false,
+      error:
+        "Datadog not configured. Add API key in Secrets → External Connections.",
+    };
+  const apiKey = resolveValue(rawApiKey);
+  const rawAppKey = getSecretRaw(DATADOG_TARGET, "connection", "DD_APP_KEY");
+  if (!rawAppKey)
+    return {
+      ok: false,
+      error:
+        "App Key required for monitors. Add DD_APP_KEY in Secrets → External Connections.",
+    };
+  const appKey = resolveValue(rawAppKey);
+  const rawSite = getSecretRaw(DATADOG_TARGET, "connection", "DD_SITE");
+  const rawSiteVal = rawSite ? resolveValue(rawSite) : "datadoghq.com";
+  const site =
+    rawSiteVal
+      .replace(/^https?:\/\//, "")
+      .replace(/^app\./, "")
+      .replace(/\/.*$/, "")
+      .trim() || "datadoghq.com";
+
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM datadog_monitors WHERE target_name = ?")
+    .get(DD_GLOBAL_KEY) as
+    | {
+        dd_service: string | null;
+        last_polled_at: string | null;
+        last_data_json: string | null;
+      }
+    | undefined;
+
+  // Return cached data if polled within TTL and not forced
+  if (!force && row?.last_polled_at && row?.last_data_json) {
+    const lastPolled = new Date(
+      row.last_polled_at.replace(" ", "T") + "Z",
+    ).getTime();
+    if (Date.now() - lastPolled < DD_POLL_TTL_MS) {
+      return { ok: true, data: JSON.parse(row.last_data_json), cached: true };
+    }
+  }
+
+  const tagParam = tags.trim()
+    ? `&monitor_tags=${encodeURIComponent(tags.trim())}`
+    : "";
+  const monitorsUrl = `https://api.${site}/api/v1/monitor?group_states=all&page_size=100&page=0${tagParam}`;
+  const tmpFile = `/tmp/dd_monitors_${Date.now()}.json`;
+  const curlResult = spawnSync(
+    "curl",
+    [
+      "-s",
+      "-4",
+      "-o",
+      tmpFile,
+      "-w",
+      "%{http_code}",
+      "-H",
+      `DD-API-KEY: ${apiKey}`,
+      "-H",
+      `DD-APPLICATION-KEY: ${appKey}`,
+      "--max-time",
+      "30",
+      monitorsUrl,
+    ],
+    { encoding: "utf-8", timeout: 35000 },
+  );
+
+  if (curlResult.error || curlResult.status !== 0) {
+    const errMsg =
+      curlResult.stderr ||
+      curlResult.error?.message ||
+      `curl exit ${curlResult.status}`;
+    return { ok: false, error: `curl failed: ${errMsg}` };
+  }
+  const statusCode = parseInt(curlResult.stdout.trim(), 10);
+  let responseBody = "";
+  try {
+    responseBody = readFileSync(tmpFile, "utf-8");
+  } catch {
+    /**/
+  }
+  try {
+    rmSync(tmpFile);
+  } catch {
+    /**/
+  }
+
+  if (statusCode === 403)
+    return {
+      ok: false,
+      error:
+        "403 Forbidden — your App Key is missing the monitors_read scope. In Datadog go to Organization Settings → Application Keys and add monitors_read permission.",
+    };
+  if (statusCode === 401)
+    return {
+      ok: false,
+      error:
+        "401 Unauthorized — API key or App Key is invalid. Check your keys in Secrets → External Connections.",
+    };
+  if (statusCode !== 200)
+    return { ok: false, error: `HTTP ${statusCode}: ${responseBody}` };
+
+  const monitors = JSON.parse(responseBody) as Array<{
+    id: number;
+    name: string;
+    overall_state: string;
+    type: string;
+    tags: string[];
+    query: string;
+    message: string;
+    created: string;
+    modified: string;
+    state_changed_at?: string;
+    last_triggered_at?: string | null;
+    creator?: { name?: string; email?: string };
+    priority?: number | null;
+  }>;
+  const stateOrder: Record<string, number> = {
+    Alert: 0,
+    Warn: 1,
+    "No Data": 2,
+    OK: 3,
+    Ignored: 4,
+  };
+  const sorted = [...monitors].sort(
+    (a, b) =>
+      (stateOrder[a.overall_state] ?? 5) - (stateOrder[b.overall_state] ?? 5),
+  );
+
+  // Build knownTags map: { service: ["api","web"], team: ["backend"], env: ["prod","staging"], ... }
+  const tagMap: Record<string, Set<string>> = {};
+  for (const m of monitors) {
+    for (const tag of m.tags ?? []) {
+      const colon = tag.indexOf(":");
+      if (colon > 0) {
+        const key = tag.slice(0, colon);
+        const val = tag.slice(colon + 1);
+        if (!tagMap[key]) tagMap[key] = new Set();
+        tagMap[key].add(val);
+      }
+    }
+  }
+  const knownTags: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(tagMap)) knownTags[k] = [...v].sort();
+
+  const summary = {
+    total: monitors.length,
+    ok: monitors.filter((m) => m.overall_state === "OK").length,
+    alert: monitors.filter((m) => m.overall_state === "Alert").length,
+    warn: monitors.filter((m) => m.overall_state === "Warn").length,
+    noData: monitors.filter((m) => m.overall_state === "No Data").length,
+    ignored: monitors.filter((m) => m.overall_state === "Ignored").length,
+    truncated: monitors.length === 100,
+    knownTags,
+    monitors: sorted.map((m) => ({
+      id: m.id,
+      name: m.name,
+      state: m.overall_state,
+      type: m.type,
+      tags: m.tags,
+      query: m.query,
+      message: m.message,
+      created: m.created,
+      modified: m.modified,
+      state_changed_at: m.state_changed_at,
+      last_triggered_at: m.last_triggered_at,
+      creator: m.creator,
+      priority: m.priority,
+    })),
+  };
+
+  const existing = db
+    .prepare("SELECT id FROM datadog_monitors WHERE target_name = ?")
+    .get(DD_GLOBAL_KEY) as { id: string } | undefined;
+  if (existing) {
+    db.prepare(
+      "UPDATE datadog_monitors SET last_polled_at=datetime('now'), last_data_json=?, updated_at=datetime('now') WHERE target_name=?",
+    ).run(JSON.stringify(summary), DD_GLOBAL_KEY);
+  } else {
+    db.prepare(
+      "INSERT INTO datadog_monitors (id, target_name, enabled, last_polled_at, last_data_json) VALUES (?,?,1,datetime('now'),?)",
+    ).run(uuid(), DD_GLOBAL_KEY, JSON.stringify(summary));
+  }
+
+  return { ok: true, data: summary };
+}
+
 export function startWatchServer(opts: WatchOptions): void {
   const sseClients: Set<ServerResponse> = new Set();
 
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${opts.port}`);
 
     // CORS for local dev
@@ -241,6 +482,242 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
+    // ── Connections API (external service integrations) ──
+
+    if (url.pathname === "/api/connections/datadog" && req.method === "GET") {
+      const DATADOG_TARGET = "_datadog_";
+      const t = getTargetByName(DATADOG_TARGET);
+      if (!t) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ configured: false, secrets: {} }));
+        return;
+      }
+      const db = getDb();
+      const rows = db
+        .prepare(
+          "SELECT key, value, source_type FROM secrets WHERE target_id = ? AND role = 'connection' ORDER BY key",
+        )
+        .all(t.id) as Array<{
+        key: string;
+        value: string;
+        source_type: string;
+      }>;
+      const secrets: Record<string, { masked: string; source: string }> = {};
+      for (const r of rows)
+        secrets[r.key] = { masked: maskValue(r.value), source: r.source_type };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ configured: rows.length > 0, secrets }));
+      return;
+    }
+
+    if (url.pathname === "/api/connections/datadog" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { apiKey, appKey, site } = JSON.parse(body) as {
+            apiKey?: string;
+            appKey?: string;
+            site?: string;
+          };
+          const DATADOG_TARGET = "_datadog_";
+          const alreadyExists = !!getTargetByName(DATADOG_TARGET);
+          if (!alreadyExists && !apiKey) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "apiKey required" }));
+            return;
+          }
+          if (!alreadyExists) {
+            addTarget(
+              DATADOG_TARGET,
+              undefined,
+              "Datadog integration (managed)",
+            );
+          }
+          if (apiKey)
+            setSecret(DATADOG_TARGET, "connection", "DD_API_KEY", apiKey);
+          if (appKey)
+            setSecret(DATADOG_TARGET, "connection", "DD_APP_KEY", appKey);
+          if (site) setSecret(DATADOG_TARGET, "connection", "DD_SITE", site);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (
+      url.pathname === "/api/connections/datadog" &&
+      req.method === "DELETE"
+    ) {
+      deleteTarget("_datadog_");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (
+      url.pathname === "/api/connections/datadog/test" &&
+      req.method === "GET"
+    ) {
+      try {
+        const DATADOG_TARGET = "_datadog_";
+        const rawApiKey = getSecretRaw(
+          DATADOG_TARGET,
+          "connection",
+          "DD_API_KEY",
+        );
+        if (!rawApiKey) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: "No API key configured" }),
+          );
+          return;
+        }
+        const apiKey = resolveValue(rawApiKey);
+        const rawSite = getSecretRaw(DATADOG_TARGET, "connection", "DD_SITE");
+        const rawSiteVal = rawSite ? resolveValue(rawSite) : "datadoghq.com";
+        const site =
+          rawSiteVal
+            .replace(/^https?:\/\//, "")
+            .replace(/^app\./, "")
+            .replace(/\/.*$/, "")
+            .trim() || "datadoghq.com";
+
+        const validateUrl = `https://api.${site}/api/v1/validate`;
+        let statusCode: number;
+        let responseBody: string;
+        try {
+          const out = execSync(
+            `curl -s -o /tmp/dd_validate.txt -w "%{http_code}" -H "DD-API-KEY: ${apiKey}" --max-time 10 "${validateUrl}"`,
+            { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+          ).trim();
+          statusCode = parseInt(out, 10);
+          try {
+            responseBody = readFileSync("/tmp/dd_validate.txt", "utf-8");
+          } catch {
+            responseBody = "";
+          }
+        } catch (curlErr) {
+          throw new Error(
+            `curl failed: ${curlErr instanceof Error ? curlErr.message : String(curlErr)}`,
+          );
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        if (statusCode >= 200 && statusCode < 300) {
+          res.end(JSON.stringify({ ok: true, site }));
+        } else if (statusCode === 403) {
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "Invalid API key (403 Forbidden)",
+            }),
+          );
+        } else {
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: `HTTP ${statusCode}: ${responseBody}`,
+            }),
+          );
+        }
+      } catch (err) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
+      return;
+    }
+
+    // ── Datadog Monitors API ──
+
+    if (url.pathname === "/api/datadog/monitors" && req.method === "GET") {
+      const db = getDb();
+      const row = db
+        .prepare("SELECT * FROM datadog_monitors WHERE target_name = ?")
+        .get(DD_GLOBAL_KEY) as
+        | {
+            dd_service: string | null;
+            last_polled_at: string | null;
+            last_data_json: string | null;
+          }
+        | undefined;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          tagFilter: row?.dd_service ?? null,
+          lastPolledAt: row?.last_polled_at ?? null,
+          data: row?.last_data_json ? JSON.parse(row.last_data_json) : null,
+        }),
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/datadog/monitors" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { dd_tags } = JSON.parse(body) as { dd_tags?: string };
+          const db = getDb();
+          const existing = db
+            .prepare("SELECT id FROM datadog_monitors WHERE target_name = ?")
+            .get(DD_GLOBAL_KEY) as { id: string } | undefined;
+          if (existing) {
+            db.prepare(
+              "UPDATE datadog_monitors SET dd_service=?, updated_at=datetime('now') WHERE target_name=?",
+            ).run(dd_tags ?? null, DD_GLOBAL_KEY);
+          } else {
+            db.prepare(
+              "INSERT INTO datadog_monitors (id, target_name, enabled, dd_service) VALUES (?,?,1,?)",
+            ).run(uuid(), DD_GLOBAL_KEY, dd_tags ?? null);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (
+      url.pathname === "/api/datadog/monitors/poll" &&
+      req.method === "POST"
+    ) {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const { force, tags } = JSON.parse(body) as {
+            force?: boolean;
+            tags?: string;
+          };
+          const result = await pollDatadog(force === true, tags ?? "");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+      });
+      return;
+    }
+
     if (url.pathname === "/api/secrets/import-op" && req.method === "POST") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
@@ -298,8 +775,18 @@ export function startWatchServer(opts: WatchOptions): void {
         .all() as any[];
       const spawnsByTicket: Record<string, any[]> = {};
       for (const s of spawns) {
-        if (!spawnsByTicket[s.ticket_id]) spawnsByTicket[s.ticket_id] = [];
-        spawnsByTicket[s.ticket_id].push(s);
+        // Only show running spawns if process is actually alive
+        if (s.status === "running" && s.pid) {
+          try {
+            process.kill(s.pid, 0);
+          } catch {
+            // Process is dead, skip it
+            continue;
+          }
+          if (!spawnsByTicket[s.ticket_id]) spawnsByTicket[s.ticket_id] = [];
+          spawnsByTicket[s.ticket_id].push(s);
+        }
+        // Don't show error/completed spawns
       }
 
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -360,7 +847,8 @@ export function startWatchServer(opts: WatchOptions): void {
               const { execSync } = require("child_process");
               const os = require("os");
               const platform = os.platform();
-              const killCmd = platform === "win32" ? "taskkill /F /PID" : "kill -9";
+              const killCmd =
+                platform === "win32" ? "taskkill /F /PID" : "kill -9";
 
               for (const pid of pids) {
                 try {
@@ -3630,6 +4118,811 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
+    // ── Agents API ──
+
+    // ── Ticket Workflow API ──
+
+    if (url.pathname === "/api/tickets" && req.method === "GET") {
+      const status = url.searchParams.get(
+        "status",
+      ) as TicketWorkflowStatus | null;
+      const rows = listTicketWorkflowSummaries(status ? { status } : {});
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(rows));
+      return;
+    }
+
+    if (url.pathname === "/api/tickets" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { ticket_id, notes, ready } = JSON.parse(body) as {
+            ticket_id: string;
+            notes?: string;
+            ready?: number | boolean;
+          };
+          if (!ticket_id?.trim()) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: "ticket_id required" }));
+            return;
+          }
+          const row = upsertTicketWorkflow(ticket_id.trim().toUpperCase(), {
+            status: "new",
+            notes: notes ?? null,
+            ready: ready ? 1 : 0,
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, ticket: row }));
+        } catch (err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // Run-history MUST be checked before the generic single-ticket GET below
+    if (
+      url.pathname.startsWith("/api/tickets/") &&
+      url.pathname.endsWith("/run-history") &&
+      req.method === "GET"
+    ) {
+      const ticketId = decodeURIComponent(
+        url.pathname.slice("/api/tickets/".length, -"/run-history".length),
+      );
+      const agentRuns = listAgentRunsByTicket(ticketId);
+      const pollingHistory = listPollingHistoryForTicket(ticketId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ agentRuns, pollingHistory }));
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/tickets/") && req.method === "GET") {
+      const ticketId = decodeURIComponent(
+        url.pathname.slice("/api/tickets/".length),
+      );
+      const summary = getTicketWorkflowSummary(ticketId);
+      if (!summary) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: "not found" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(summary));
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/tickets/") && req.method === "PATCH") {
+      const ticketId = decodeURIComponent(
+        url.pathname.slice("/api/tickets/".length),
+      );
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { status, current_phase, notes, git_repo, mr_pr_link } =
+            JSON.parse(body) as {
+              status?: TicketWorkflowStatus;
+              current_phase?: string;
+              notes?: string;
+              git_repo?: string | null;
+              mr_pr_link?: string | null;
+            };
+          if (status)
+            transitionStatus(ticketId, status, current_phase as never);
+          else {
+            const updates: Record<string, unknown> = {};
+            if (notes !== undefined) updates.notes = notes;
+            if (git_repo !== undefined) updates.git_repo = git_repo;
+            if (mr_pr_link !== undefined) updates.mr_pr_link = mr_pr_link;
+            if (Object.keys(updates).length > 0)
+              upsertTicketWorkflow(ticketId, updates as never);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/tickets/") && req.method === "DELETE") {
+      const ticketId = decodeURIComponent(
+        url.pathname.slice("/api/tickets/".length),
+      );
+      deleteTicketWorkflow(ticketId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Touch added_at → make ticket "today's"
+    if (
+      url.pathname.startsWith("/api/tickets/") &&
+      url.pathname.endsWith("/touch") &&
+      req.method === "POST"
+    ) {
+      const ticketId = decodeURIComponent(
+        url.pathname.slice("/api/tickets/".length, -"/touch".length),
+      );
+      touchTicketAddedAt(ticketId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Toggle ready flag on a ticket
+    if (
+      url.pathname.startsWith("/api/tickets/") &&
+      url.pathname.endsWith("/ready") &&
+      req.method === "POST"
+    ) {
+      const ticketId = decodeURIComponent(
+        url.pathname.slice("/api/tickets/".length, -"/ready".length),
+      );
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { ready } = JSON.parse(body || "{}");
+          setTicketReady(ticketId, !!ready);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, ready: !!ready }));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // Delete a single agent run
+    if (
+      url.pathname.startsWith("/api/agent-runs/") &&
+      url.pathname.endsWith("/delete") &&
+      req.method === "POST"
+    ) {
+      const runId = decodeURIComponent(
+        url.pathname.slice("/api/agent-runs/".length, -"/delete".length),
+      );
+      deleteAgentRun(runId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Delete a single workflow polling history row
+    if (
+      url.pathname.startsWith("/api/polling-history/") &&
+      url.pathname.endsWith("/delete") &&
+      req.method === "POST"
+    ) {
+      const rowId = decodeURIComponent(
+        url.pathname.slice("/api/polling-history/".length, -"/delete".length),
+      );
+      deleteWorkflowPollingRun(rowId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // ── Page agent config ─────────────────────────────────────────────────────
+    if (url.pathname.startsWith("/api/page-config/") && req.method === "GET") {
+      const page = decodeURIComponent(
+        url.pathname.slice("/api/page-config/".length),
+      );
+      const cfg = getPageAgentConfig(page);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(cfg ?? {}));
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/page-config/") && req.method === "PUT") {
+      const page = decodeURIComponent(
+        url.pathname.slice("/api/page-config/".length),
+      );
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { agent_name, auto_run, config_json } = JSON.parse(
+            body || "{}",
+          );
+          const cfg = setPageAgentConfig(page, {
+            agent_name: agent_name ?? null,
+            auto_run: auto_run ? 1 : 0,
+            config_json: config_json ?? null,
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(cfg));
+        } catch (err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/page-config/") &&
+      req.method === "DELETE"
+    ) {
+      const page = decodeURIComponent(
+        url.pathname.slice("/api/page-config/".length),
+      );
+      deletePageAgentConfig(page);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (url.pathname === "/api/agents" && req.method === "GET") {
+      const globalDir = join(homedir(), ".claude", "agents");
+      const projectDir = join(process.cwd(), ".claude", "agents");
+      const agents: object[] = [];
+      for (const [scope, dir] of [
+        ["global", globalDir],
+        ["project", projectDir],
+      ] as [string, string][]) {
+        if (!existsSync(dir)) continue;
+        for (const f of readdirSync(dir)) {
+          if (!f.endsWith(".md")) continue;
+          try {
+            const content = readFileSync(join(dir, f), "utf8");
+            const fm = content.match(/^---\n([\s\S]*?)\n---/);
+            const meta: Record<string, unknown> = {};
+            if (fm) {
+              let lastListKey = "";
+              for (const line of fm[1].split("\n")) {
+                const m = line.match(/^(\w+):\s*(.+)/);
+                if (m) {
+                  meta[m[1]] = m[2].trim();
+                  lastListKey = "";
+                  continue;
+                }
+                const listKeyM = line.match(/^(\w+):\s*$/);
+                if (listKeyM) {
+                  meta[listKeyM[1]] = [];
+                  lastListKey = listKeyM[1];
+                  continue;
+                }
+                const listM = line.match(/^  - (.+)/);
+                if (listM && lastListKey) {
+                  (meta[lastListKey] as string[]).push(listM[1].trim());
+                }
+              }
+            }
+            const body = fm
+              ? content.slice(fm[0].length).trim()
+              : content.trim();
+            agents.push({
+              scope,
+              file: f,
+              path: join(dir, f),
+              content,
+              body,
+              ...meta,
+            });
+          } catch {
+            /* skip unreadable */
+          }
+        }
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(agents));
+      return;
+    }
+
+    // ── Global Claude settings file ───────────────────────────────────────────
+    if (url.pathname === "/api/claude-settings" && req.method === "GET") {
+      const settingsPath = join(homedir(), ".claude", "settings.json");
+      let content = "{}";
+      try {
+        content = readFileSync(settingsPath, "utf-8");
+      } catch {
+        /* file doesn't exist yet */
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          content,
+          path: settingsPath,
+          exists: content !== "{}",
+        }),
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/claude-settings" && req.method === "PUT") {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c));
+      req.on("end", () => {
+        try {
+          const { content } = JSON.parse(body);
+          if (typeof content !== "string") {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: "content required" }));
+            return;
+          }
+          JSON.parse(content); // validate JSON
+          const settingsPath = join(homedir(), ".claude", "settings.json");
+          mkdirSync(join(homedir(), ".claude"), { recursive: true });
+          writeFileSync(settingsPath, content, "utf-8");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, path: settingsPath }));
+        } catch (err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/agent-run/stream" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c));
+      req.on("end", () => {
+        let parsed: {
+          agentPath?: string;
+          agentName?: string;
+          prompt?: string;
+          ticketId?: string;
+          page?: string;
+        };
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "invalid JSON" }));
+          return;
+        }
+        const { agentPath, agentName, prompt, ticketId, page } = parsed;
+        if (!prompt?.trim() && !ticketId?.trim()) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "prompt required" }));
+          return;
+        }
+        const promptPart = prompt?.trim() || "";
+        const fullPrompt = agentPath
+          ? ticketId
+            ? `use agent @${agentPath} on ticket ${ticketId}${promptPart ? ` and ${promptPart}` : ""}`
+            : `use agent @${agentPath} and ${promptPart}`
+          : ticketId
+            ? `on ticket ${ticketId}${promptPart ? ` and ${promptPart}` : ""}`
+            : promptPart;
+        const displayPath = agentPath ? agentPath.replace(homedir(), "~") : "";
+        const displayPrompt = agentPath
+          ? ticketId
+            ? `use agent @${displayPath} on ticket ${ticketId}${promptPart ? ` and ${promptPart}` : ""}`
+            : `use agent @${displayPath} and ${promptPart}`
+          : fullPrompt;
+        const displayCmd = `claude -p "${displayPrompt.slice(0, 160)}${displayPrompt.length > 160 ? "..." : ""}"`;
+
+        // Create DB record and in-memory entry
+        const run = createAgentRun({
+          page: page || "unknown",
+          agent_name: agentName || null,
+          ticket_id: ticketId || null,
+          command: displayCmd,
+        });
+        const active: ActiveRun = {
+          proc: null as any,
+          buf: [],
+          watchers: new Set(),
+        };
+        activeRuns.set(run.id, active);
+
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Run-Id": run.id,
+        });
+
+        const broadcast = (obj: object) => {
+          // push to ring buffer (keep last 2000 events)
+          active.buf.push(obj as any);
+          if (active.buf.length > 2000) active.buf.shift();
+          // send to original caller
+          try {
+            res.write(`data: ${JSON.stringify(obj)}\n\n`);
+          } catch {
+            /* ignore */
+          }
+          // send to all watchers
+          active.watchers.forEach((fn) => fn(obj));
+        };
+
+        broadcast({ type: "cmd", text: displayCmd });
+        broadcast({ type: "run_id", id: run.id });
+
+        const spawnEnv = { ...process.env, FORCE_COLOR: "0" };
+        delete spawnEnv.ANTHROPIC_API_KEY;
+        const proc = spawn("claude", ["-p", fullPrompt], {
+          cwd: process.cwd(),
+          env: spawnEnv,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        active.proc = proc;
+
+        let finished = false;
+        const finish = (code: number) => {
+          if (finished) return;
+          finished = true;
+          const status = code === 0 ? "done" : "failed";
+          finishAgentRun(run.id, status, code);
+          broadcast({ type: "done", code });
+          activeRuns.delete(run.id);
+          res.end();
+        };
+        proc.stdout.on("data", (d: Buffer) =>
+          broadcast({ type: "stdout", text: d.toString() }),
+        );
+        proc.stderr.on("data", (d: Buffer) =>
+          broadcast({ type: "stderr", text: d.toString() }),
+        );
+        proc.on("close", (code: number | null) => finish(code ?? -1));
+        proc.on("error", (err: Error) => {
+          broadcast({ type: "stderr", text: err.message + "\n" });
+          finish(1);
+        });
+        res.on("close", () => {
+          // caller disconnected — keep process running, remove from watchers implicitly
+        });
+      });
+      return;
+    }
+
+    // List agent runs for a page
+    if (url.pathname === "/api/agent-runs" && req.method === "GET") {
+      const page = url.searchParams.get("page") || undefined;
+      const runs = listAgentRuns(page);
+      // annotate with live status
+      const annotated = runs.map((r) => ({
+        ...r,
+        active: activeRuns.has(r.id),
+      }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(annotated));
+      return;
+    }
+
+    // Stream output of a specific run (replay buffer + live tail)
+    if (
+      url.pathname.startsWith("/api/agent-runs/") &&
+      url.pathname.endsWith("/stream") &&
+      req.method === "GET"
+    ) {
+      const runId = url.pathname.slice(
+        "/api/agent-runs/".length,
+        -"/stream".length,
+      );
+      const run = getAgentRun(runId);
+      if (!run) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: "not found" }));
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      const send = (obj: object) => {
+        try {
+          res.write(`data: ${JSON.stringify(obj)}\n\n`);
+        } catch {
+          /* ignore */
+        }
+      };
+      const active = activeRuns.get(runId);
+      if (active) {
+        // replay buffer then subscribe live
+        active.buf.forEach((e) => send(e));
+        active.watchers.add(send);
+        res.on("close", () => active.watchers.delete(send));
+      } else {
+        // run finished or server restarted
+        send({
+          type: "info",
+          text: "Run finished. Output no longer available.\n",
+        });
+        send({ type: "done", code: run.exit_code ?? 0 });
+        res.end();
+      }
+      return;
+    }
+
+    // Kill a run
+    if (
+      url.pathname.startsWith("/api/agent-runs/") &&
+      req.method === "DELETE"
+    ) {
+      const runId = url.pathname.slice("/api/agent-runs/".length);
+      const active = activeRuns.get(runId);
+      if (active) {
+        active.proc.kill("SIGTERM");
+        killAgentRun(runId);
+        activeRuns.delete(runId);
+        // notify watchers
+        active.watchers.forEach((fn) => fn({ type: "killed" }));
+      } else {
+        deleteAgentRun(runId);
+      }
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (url.pathname === "/api/agents" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c));
+      req.on("end", () => {
+        try {
+          const {
+            name,
+            model,
+            description,
+            skills,
+            tools,
+            instructions,
+            scope,
+          } = JSON.parse(body);
+          if (!name) {
+            res.writeHead(400);
+            res.end('{"error":"name required"}');
+            return;
+          }
+          const dir =
+            scope === "project"
+              ? join(process.cwd(), ".claude", "agents")
+              : join(homedir(), ".claude", "agents");
+          mkdirSync(dir, { recursive: true });
+          const skillLines = (skills || [])
+            .map((s: string) => `  - ${s}`)
+            .join("\n");
+          const toolLines = (tools || [])
+            .map((t: string) => `  - ${t}`)
+            .join("\n");
+          const frontmatter = [
+            "---",
+            `name: ${name}`,
+            model ? `model: ${model}` : null,
+            description ? `description: ${description}` : null,
+            skillLines ? `skills:\n${skillLines}` : null,
+            toolLines ? `tools:\n${toolLines}` : null,
+            "---",
+          ]
+            .filter(Boolean)
+            .join("\n");
+          const content =
+            `${frontmatter}\n\n${instructions || ""}`.trimEnd() + "\n";
+          writeFileSync(join(dir, `${name}.md`), content, "utf8");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, path: join(dir, `${name}.md`) }));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/agents/generate" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c));
+      req.on("end", () => {
+        let parsed: {
+          name?: string;
+          description?: string;
+          skills?: string[];
+          tools?: string[];
+        };
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "invalid JSON" }));
+          return;
+        }
+        const {
+          name = "agent",
+          description = "",
+          skills = [],
+          tools = [],
+        } = parsed;
+        const promptLines = [
+          "Generate clear, detailed system prompt instructions for a Claude subagent with the following configuration.",
+          "Output ONLY the instructions markdown — no preamble, no explanation, no code fences.",
+          "",
+          `Agent name: ${name}`,
+          description ? `Description: ${description}` : "",
+          skills.length ? `Skills available: ${skills.join(", ")}` : "",
+          tools.length ? `Tools available: ${tools.join(", ")}` : "",
+          "",
+          "Write concise agent instructions with the following structure:",
+          "1. A header block listing: agent name, description, available skills (as .claude/skills/<name>/SKILL.md file references), and available tools.",
+          "2. Role and purpose (1-2 sentences).",
+          "3. Operating procedure — for each skill, write ONE line telling the agent to read and follow the skill file exactly (e.g. 'Follow .claude/skills/<name>/SKILL.md exactly.'). Do NOT reproduce skill content.",
+          "4. Tool usage — one line per tool explaining when/why to use it.",
+          "5. Critical rules and constraints.",
+          "Keep it short and reference-based.",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        const send = (obj: object) => {
+          try {
+            res.write(`data: ${JSON.stringify(obj)}\n\n`);
+          } catch {
+            /* ignore */
+          }
+        };
+        const spawnEnv = { ...process.env, FORCE_COLOR: "0" };
+        delete spawnEnv.ANTHROPIC_API_KEY;
+        const proc = spawn("claude", ["-p", promptLines], {
+          cwd: process.cwd(),
+          env: spawnEnv,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let finished = false;
+        const finish = (code: number) => {
+          if (finished) return;
+          finished = true;
+          send({ type: "done", code });
+          res.end();
+        };
+        proc.stdout.on("data", (d: Buffer) =>
+          send({ type: "stdout", text: d.toString() }),
+        );
+        proc.stderr.on("data", (d: Buffer) =>
+          send({ type: "stderr", text: d.toString() }),
+        );
+        proc.on("close", (code: number | null) => finish(code ?? -1));
+        proc.on("error", (err: Error) => {
+          send({ type: "stderr", text: err.message + "\n" });
+          finish(1);
+        });
+        res.on("close", () => {
+          if (!finished) proc.kill();
+        });
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/agents/reveal" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c));
+      req.on("end", () => {
+        try {
+          const { path: filePath } = JSON.parse(body);
+          if (!filePath || typeof filePath !== "string") {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: "path required" }));
+            return;
+          }
+          const platform = process.platform;
+          const dir = join(filePath, "..");
+          const cmd =
+            platform === "darwin"
+              ? `open -R ${JSON.stringify(filePath)}`
+              : platform === "win32"
+                ? `explorer /select,${JSON.stringify(filePath)}`
+                : `xdg-open ${JSON.stringify(dir)}`;
+          try {
+            execSync(cmd);
+          } catch {
+            /* best-effort */
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/agents/validate" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c));
+      req.on("end", () => {
+        let parsed: { content?: string };
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "invalid JSON" }));
+          return;
+        }
+        const { content = "" } = parsed;
+        const prompt = [
+          "You are reviewing a Claude subagent definition file. Validate and improve ONLY the instructions body (everything after the --- frontmatter block).",
+          "Rules:",
+          "- Skill references must use the exact form: 'Follow .claude/skills/<name>/SKILL.md exactly.' — do not reproduce skill content inline.",
+          "- Instructions must be concise, actionable, and reference-based.",
+          "- Fix any unclear steps, missing critical rules, or broken references.",
+          "- Output ONLY the corrected instructions body — no frontmatter, no code fences, no explanation.",
+          "- If the instructions are already correct, return them unchanged.",
+          "",
+          "Agent file content:",
+          content,
+        ].join("\n");
+
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        const send = (obj: object) => {
+          try {
+            res.write(`data: ${JSON.stringify(obj)}\n\n`);
+          } catch {
+            /* ignore */
+          }
+        };
+        const spawnEnv = { ...process.env, FORCE_COLOR: "0" };
+        delete spawnEnv.ANTHROPIC_API_KEY;
+        const proc = spawn("claude", ["-p", prompt], {
+          cwd: process.cwd(),
+          env: spawnEnv,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let finished = false;
+        const finish = (code: number) => {
+          if (finished) return;
+          finished = true;
+          send({ type: "done", code });
+          res.end();
+        };
+        proc.stdout.on("data", (d: Buffer) =>
+          send({ type: "stdout", text: d.toString() }),
+        );
+        proc.stderr.on("data", (d: Buffer) =>
+          send({ type: "stderr", text: d.toString() }),
+        );
+        proc.on("close", (code: number | null) => finish(code ?? -1));
+        proc.on("error", (err: Error) => {
+          send({ type: "stderr", text: err.message + "\n" });
+          finish(1);
+        });
+        res.on("close", () => {
+          if (!finished) proc.kill();
+        });
+      });
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/agents/") && req.method === "DELETE") {
+      const name = decodeURIComponent(
+        url.pathname.slice("/api/agents/".length),
+      );
+      const scope = url.searchParams.get("scope") || "global";
+      const dir =
+        scope === "project"
+          ? join(process.cwd(), ".claude", "agents")
+          : join(homedir(), ".claude", "agents");
+      const filePath = join(dir, `${name}.md`);
+      try {
+        if (existsSync(filePath)) unlinkSync(filePath);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+      return;
+    }
+
     // ── Settings API ──
 
     if (url.pathname === "/api/settings" && req.method === "GET") {
@@ -3713,15 +5006,17 @@ export function startWatchServer(opts: WatchOptions): void {
         return bins;
       }
       function cmdExists(cmd: string): boolean {
+        const finder = process.platform === "win32" ? `where ${cmd}` : `which ${cmd}`;
         try {
-          execSync(`which ${cmd}`, { stdio: "ignore" });
+          execSync(finder, { stdio: "ignore" });
           return true;
         } catch {
           /* fall through */
         }
-        // Fallback: search nvm-managed bin dirs (handles cross-version installs)
+        // Fallback: search nvm-managed bin dirs (handles cross-version installs on Unix)
         const extra = extraNvmBins();
-        return extra.some((dir) => existsSync(join(dir, cmd)));
+        const suffix = process.platform === "win32" ? ".cmd" : "";
+        return extra.some((dir) => existsSync(join(dir, cmd + suffix)) || existsSync(join(dir, cmd)));
       }
       function findPluginVersion(basePath: string): string | null {
         if (!existsSync(basePath)) return null;
@@ -3859,14 +5154,34 @@ export function startWatchServer(opts: WatchOptions): void {
           skillPath: "skills/noob-ticket-cache",
         },
         {
+          id: "noob-workflow",
+          pluginName: "noob-workflow",
+          skillPath: "skills/noob-workflow",
+        },
+        {
           id: "noob-claim",
           pluginName: "noob-claim",
           skillPath: "skills/noob-claim",
         },
         {
-          id: "noob-pool",
-          pluginName: "noob-pool",
-          skillPath: "skills/noob-pool",
+          id: "noob-visual",
+          pluginName: "noob-visual",
+          skillPath: "skills/noob-visual",
+        },
+        {
+          id: "noob-visual-claim",
+          pluginName: "noob-visual-claim",
+          skillPath: "skills/noob-visual-claim",
+        },
+        {
+          id: "noob-visual-testcase",
+          pluginName: "noob-visual-testcase",
+          skillPath: "skills/noob-visual-testcase",
+        },
+        {
+          id: "noob-visual-rca",
+          pluginName: "noob-visual-rca",
+          skillPath: "skills/noob-visual-rca",
         },
       ];
 
@@ -3909,6 +5224,8 @@ export function startWatchServer(opts: WatchOptions): void {
           installCmd,
           symlinkCmd,
           marketplaceCmd,
+          unlinkCmd: "rm -rf " + tilde(dest),
+          uninstallCmd: "rm -rf " + tilde(dest) + " && rm -rf " + tilde(pkgDir),
         };
       });
 
@@ -3922,15 +5239,24 @@ export function startWatchServer(opts: WatchOptions): void {
       externalSkills.push({
         id: "bb-skill",
         label: "bb (Bitbucket skill)",
+        category: "plugin",
         dest: join(skillsDir, "bb"),
         installed: existsSync(join(skillsDir, "bb")),
         pluginInstalled: !!bbVer,
         src: bbSkillSrc,
         installCmd: "claude plugin install bb@noob-tester-skills",
+        fullInstallCmd:
+          "claude plugin marketplace add ganeshgaxy/noob-tester-skills && claude plugin marketplace update noob-tester-skills && claude plugin install bb@noob-tester-skills",
         symlinkCmd: bbSkillSrc
           ? "ln -sf " + tilde(bbSkillSrc) + " " + tilde(join(skillsDir, "bb"))
           : "",
         marketplaceCmd: marketplaceCmd,
+        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "bb")),
+        uninstallCmd:
+          "rm -rf " +
+          tilde(join(skillsDir, "bb")) +
+          " && rm -rf " +
+          tilde(bbPkgDir),
       });
 
       // glab skill (from cc-handbook)
@@ -3942,11 +5268,14 @@ export function startWatchServer(opts: WatchOptions): void {
       externalSkills.push({
         id: "glab-skill",
         label: "glab (GitLab skill)",
+        category: "plugin",
         dest: join(skillsDir, "glab"),
         installed: existsSync(join(skillsDir, "glab")),
         pluginInstalled: !!glabVer,
         src: glabSkillSrc,
         installCmd: "claude plugin install handbook-glab@cc-handbook",
+        fullInstallCmd:
+          "claude plugin marketplace add nikiforovall/claude-code-rules && claude plugin install handbook-glab@cc-handbook",
         symlinkCmd: glabSkillSrc
           ? "ln -sf " +
             tilde(glabSkillSrc) +
@@ -3955,12 +5284,19 @@ export function startWatchServer(opts: WatchOptions): void {
           : "",
         marketplaceCmd:
           "claude plugin marketplace add nikiforovall/claude-code-rules",
+        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "glab")),
+        uninstallCmd:
+          "rm -rf " +
+          tilde(join(skillsDir, "glab")) +
+          " && rm -rf " +
+          tilde(glabPkgDir),
       });
 
       // agent-browser + dogfood skills (from vercel-labs/agent-browser via npx)
       externalSkills.push({
         id: "agent-browser-skill",
         label: "Agent Browser skill",
+        category: "npx",
         dest: join(skillsDir, "agent-browser"),
         installed: existsSync(join(skillsDir, "agent-browser")),
         pluginInstalled: true,
@@ -3968,10 +5304,13 @@ export function startWatchServer(opts: WatchOptions): void {
         installCmd: "npx skills add vercel-labs/agent-browser",
         symlinkCmd: "",
         marketplaceCmd: "",
+        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "agent-browser")),
+        uninstallCmd: "",
       });
       externalSkills.push({
         id: "dogfood-skill",
         label: "Dogfood skill",
+        category: "npx",
         dest: join(skillsDir, "dogfood"),
         installed: existsSync(join(skillsDir, "dogfood")),
         pluginInstalled: true,
@@ -3979,6 +5318,8 @@ export function startWatchServer(opts: WatchOptions): void {
         installCmd: "npx skills add vercel-labs/agent-browser",
         symlinkCmd: "",
         marketplaceCmd: "",
+        unlinkCmd: "rm -rf " + tilde(join(skillsDir, "dogfood")),
+        uninstallCmd: "",
       });
 
       // ── Hooks ──
@@ -4002,8 +5343,71 @@ export function startWatchServer(opts: WatchOptions): void {
             ? "ln -sf " + tilde(metricsHookSrc) + " " + tilde(metricsHookDest)
             : "",
           marketplaceCmd: marketplaceCmd,
+          unlinkCmd: "rm -f " + tilde(metricsHookDest),
+          uninstallCmd:
+            "rm -f " +
+            tilde(metricsHookDest) +
+            " && rm -rf " +
+            tilde(metricsPkgDir),
         },
       ];
+
+      // ── Agents ──
+      // Each agent is a separate package in noob-tester-skills, same as skills.
+      const agentsDir = join(claudeDir, "agents");
+      const pluginAgents = [
+        "analyzer",
+        "forger",
+        "general-pre-claim",
+        "kicker",
+        "planner",
+        "poller",
+        "pool-api-executor",
+        "pool-ui-executor",
+        "pool-visual-executor",
+        "solo-ui-executor",
+        "solo-visual-executor",
+        "visual-forger",
+        "visual-pre-claim",
+      ];
+
+      const agentItems = pluginAgents.map((name) => {
+        const pkgDir = join(noobTesterPluginBase, name);
+        const ver = findPluginVersion(pkgDir);
+        const src = ver ? join(pkgDir, ver, "agents", name + ".md") : null;
+        const dest = join(agentsDir, name + ".md");
+        // lstatSync detects broken symlinks that existsSync would miss
+        let destExists = false;
+        try { lstatSync(dest); destExists = true; } catch {}
+        const srcExists = src ? existsSync(src) : false;
+        let upToDate = false;
+        if (destExists && srcExists && src) {
+          try {
+            const srcContent = readFileSync(src, "utf8");
+            const destContent = readFileSync(dest, "utf8");
+            upToDate = srcContent === destContent;
+          } catch {
+            upToDate = false;
+          }
+        }
+        const installCmd = "claude plugin install " + name + "@noob-tester-skills";
+        const copyCmd = src ? "cp " + tilde(src) + " " + tilde(dest) : "";
+        return {
+          id: name,
+          label: name,
+          src,
+          dest,
+          installed: destExists,
+          upToDate,
+          srcExists,
+          pluginInstalled: !!ver,
+          installCmd,
+          copyCmd,
+          marketplaceCmd,
+          unlinkCmd: "rm -f " + tilde(dest),
+          uninstallCmd: "rm -f " + tilde(dest) + " && rm -rf " + tilde(pkgDir),
+        };
+      });
 
       // DB status
       let dbOk = false;
@@ -4026,6 +5430,7 @@ export function startWatchServer(opts: WatchOptions): void {
           skills: skillItems,
           externalSkills,
           hooks,
+          agents: agentItems,
           db: { ok: dbOk, tables: dbTables },
         }),
       );
@@ -4055,6 +5460,72 @@ export function startWatchServer(opts: WatchOptions): void {
           if (!existsSync(parentDir)) mkdirSync(parentDir, { recursive: true });
           // Symlink
           symlinkSync(src, dest);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/setup/install-agent" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { src, dest } = JSON.parse(body);
+          if (!src || !dest) {
+            res.writeHead(400);
+            res.end('{"error":"src and dest required"}');
+            return;
+          }
+          if (!existsSync(src)) {
+            res.writeHead(404);
+            res.end('{"error":"source file not found"}');
+            return;
+          }
+          // Remove existing dest — use lstatSync so broken symlinks are caught too
+          try { lstatSync(dest); unlinkSync(dest); } catch {}
+          // Create parent dir
+          const parentDir = join(dest, "..");
+          if (!existsSync(parentDir)) mkdirSync(parentDir, { recursive: true });
+          // Copy (not symlink)
+          copyFileSync(src, dest);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/cli/run" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { command } = JSON.parse(body);
+          if (!command) {
+            res.writeHead(400);
+            res.end('{"error":"command required"}');
+            return;
+          }
+
+          // Only allow safe commands
+          if (
+            !command.startsWith("claude plugin install") &&
+            !command.startsWith("claude plugin marketplace")
+          ) {
+            res.writeHead(403);
+            res.end('{"error":"command not allowed"}');
+            return;
+          }
+
+          execSync(command, { stdio: "inherit" });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true }));
         } catch (err) {
@@ -4309,7 +5780,11 @@ export function startWatchServer(opts: WatchOptions): void {
               ["-q", "chat", chatMsg],
               {
                 timeout: 30000,
-                env: { ...process.env },
+                env: (() => {
+                  const e = { ...process.env };
+                  delete e.ANTHROPIC_API_KEY;
+                  return e;
+                })(),
               },
             );
             res.writeHead(200, { "Content-Type": "application/json" });
@@ -4343,20 +5818,28 @@ export function startWatchServer(opts: WatchOptions): void {
     // ── Scheduled Agents API ──
 
     if (url.pathname === "/api/scheduled-agents" && req.method === "GET") {
-      import("../db/repositories/scheduled-agents.js").then((module) => {
-        const ticket = url.searchParams.get("ticket");
-        const status = url.searchParams.get("status");
-        const agents = module.listScheduledAgents({ ticket: ticket || undefined, status: status || undefined });
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(agents));
-      }).catch((err) => {
-        res.writeHead(500);
-        res.end((err as Error).message);
-      });
+      import("../db/repositories/scheduled-agents.js")
+        .then((module) => {
+          const ticket = url.searchParams.get("ticket");
+          const status = url.searchParams.get("status");
+          const agents = module.listScheduledAgents({
+            ticket: ticket || undefined,
+            status: status || undefined,
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(agents));
+        })
+        .catch((err) => {
+          res.writeHead(500);
+          res.end((err as Error).message);
+        });
       return;
     }
 
-    if (url.pathname === "/api/scheduled-agents/create" && req.method === "POST") {
+    if (
+      url.pathname === "/api/scheduled-agents/create" &&
+      req.method === "POST"
+    ) {
       let body = "";
       req.on("data", (chunk: Buffer) => {
         body += chunk.toString();
@@ -4384,7 +5867,10 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
-    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+$/) && req.method === "GET") {
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+$/) &&
+      req.method === "GET"
+    ) {
       import("../db/repositories/scheduled-agents.js").then((module) => {
         const id = url.pathname.split("/").pop();
         if (!id) {
@@ -4404,7 +5890,52 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
-    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/pause$/) && req.method === "POST") {
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+$/) &&
+      req.method === "PUT"
+    ) {
+      let body = "";
+      req.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on("end", () => {
+        import("../db/repositories/scheduled-agents.js").then((module) => {
+          try {
+            const id = url.pathname.split("/").pop();
+            if (!id) {
+              res.writeHead(400);
+              res.end("Missing ID");
+              return;
+            }
+            const agent = module.getScheduledAgent(id);
+            if (!agent) {
+              res.writeHead(404);
+              res.end("Not found");
+              return;
+            }
+            const input = JSON.parse(body);
+            module.updateScheduledAgent(id, {
+              agent_path: input.agent_path,
+              ticket_id: input.ticket_id,
+              cron_expression: input.cron_expression,
+              parameters: input.parameters,
+              description: input.description,
+            });
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ updated: true, id }));
+          } catch (e) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: (e as Error).message }));
+          }
+        });
+      });
+      return;
+    }
+
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/pause$/) &&
+      req.method === "POST"
+    ) {
       import("../db/repositories/scheduled-agents.js").then((module) => {
         const parts = url.pathname.split("/");
         const id = parts[parts.length - 2];
@@ -4421,7 +5952,10 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
-    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/resume$/) && req.method === "POST") {
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/resume$/) &&
+      req.method === "POST"
+    ) {
       import("../db/repositories/scheduled-agents.js").then((module) => {
         const parts = url.pathname.split("/");
         const id = parts[parts.length - 2];
@@ -4438,7 +5972,10 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
-    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/delete$/) && req.method === "DELETE") {
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/delete$/) &&
+      req.method === "DELETE"
+    ) {
       import("../db/repositories/scheduled-agents.js").then((module) => {
         const parts = url.pathname.split("/");
         const id = parts[parts.length - 2];
@@ -4449,7 +5986,10 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
-    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/history$/) && req.method === "GET") {
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/history$/) &&
+      req.method === "GET"
+    ) {
       import("../db/repositories/scheduled-agents.js").then((module) => {
         const parts = url.pathname.split("/");
         const id = parts[parts.length - 2];
@@ -4461,7 +6001,133 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
-    if (url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/trigger$/) && req.method === "POST") {
+    // Preview — which tickets would fire if this scheduled agent ran right now
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/preview$/) &&
+      req.method === "GET"
+    ) {
+      import("../db/repositories/scheduled-agents.js").then((saModule) => {
+        const parts = url.pathname.split("/");
+        const id = parts[parts.length - 2];
+        const agent = saModule.getScheduledAgent(id);
+        if (!agent) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Agent not found" }));
+          return;
+        }
+        const params = (agent.parameters || {}) as Record<string, any>;
+        const agentPath = agent.agent_path || "";
+        const scheduleType = params.type || "polling";
+
+        if (scheduleType !== "workflow") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ type: "polling" }));
+          return;
+        }
+
+        // Apply the same filter chain as executeWorkflowAgent
+        const days = params.days || "today";
+        const requireRepo = !!params.requireRepo;
+        const requireMrPr = !!params.requireMrPr;
+        const requirePriorRun = !!params.requirePriorRun;
+        const priorRunSameDay = !!params.priorRunSameDay;
+        const requirePriorRunAgents: string[] = Array.isArray(
+          params.requirePriorRunAgents,
+        )
+          ? params.requirePriorRunAgents
+          : [];
+        const maxTickets = Math.min(
+          5,
+          Math.max(1, Number(params.maxTickets) || 5),
+        );
+
+        const allTickets = listTicketWorkflows();
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        // Collect filteredOut (didn't pass days/link/prior-run filters)
+        const filteredOut: typeof allTickets = [];
+
+        // Step 0: ready filter — on-hold tickets go into their own bucket
+        const onHold = allTickets.filter((t) => t.ready === 0);
+        const readyTickets = allTickets.filter((t) => t.ready !== 0);
+
+        // Step 1: days filter
+        let passed =
+          days === "today"
+            ? readyTickets.filter(
+                (t) => t.added_at && t.added_at.startsWith(todayStr),
+              )
+            : [...readyTickets];
+
+        const afterDays = new Set(passed.map((t) => t.ticket_id));
+        for (const t of readyTickets) {
+          if (!afterDays.has(t.ticket_id)) filteredOut.push(t);
+        }
+
+        // Step 2: link filter
+        if (requireRepo || requireMrPr) {
+          const before = passed;
+          passed = passed.filter((t) => {
+            const hasRepo = !!t.git_repo;
+            const hasMrPr = !!t.mr_pr_link;
+            if (requireRepo && requireMrPr) return hasRepo && hasMrPr;
+            if (requireRepo) return hasRepo;
+            return hasMrPr;
+          });
+          for (const t of before) {
+            if (!passed.find((p) => p.ticket_id === t.ticket_id))
+              filteredOut.push(t);
+          }
+        }
+
+        // Step 3: prior run filter
+        if (requirePriorRun) {
+          const agentFilter =
+            requirePriorRunAgents.length > 0
+              ? requirePriorRunAgents
+              : undefined;
+          const before = passed;
+          passed = passed.filter((t) =>
+            hasAgentRunForTicket(t.ticket_id, priorRunSameDay, agentFilter),
+          );
+          for (const t of before) {
+            if (!passed.find((p) => p.ticket_id === t.ticket_id))
+              filteredOut.push(t);
+          }
+        }
+
+        // Step 4: dedup — already ran today
+        const skippedDedup = passed.filter((t) =>
+          wasPolledToday(t.ticket_id, agentPath),
+        );
+        const notDeduped = passed.filter(
+          (t) => !wasPolledToday(t.ticket_id, agentPath),
+        );
+
+        // Step 5: maxTickets cap
+        const willRun = notDeduped.slice(0, maxTickets);
+        const overLimit = notDeduped.slice(maxTickets);
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "workflow",
+            maxTickets,
+            willRun,
+            overLimit,
+            skippedDedup,
+            filteredOut,
+            onHold,
+          }),
+        );
+      });
+      return;
+    }
+
+    if (
+      url.pathname.match(/^\/api\/scheduled-agents\/[a-f0-9-]+\/trigger$/) &&
+      req.method === "POST"
+    ) {
       import("../db/repositories/scheduled-agents.js").then((module) => {
         const parts = url.pathname.split("/");
         const id = parts[parts.length - 2];
@@ -4472,73 +6138,159 @@ export function startWatchServer(opts: WatchOptions): void {
           return;
         }
 
-        // Build invocation string
-        let invocation = "run agent " + agent.agent_path + " for ticket " + agent.ticket_id;
-        const params = agent.parameters || {};
-        for (const [key, value] of Object.entries(params)) {
-          if (value !== undefined && value !== null) {
-            if (typeof value === "string") {
-              invocation += " with " + key + " \"" + value + "\"";
-            } else if (typeof value === "number") {
-              invocation += " with " + key + " " + value;
-            } else if (typeof value === "boolean") {
-              invocation += " with " + key + " " + value;
-            } else if (Array.isArray(value)) {
-              invocation += " with " + key + " [" + value.join(", ") + "]";
+        const params = (agent.parameters || {}) as Record<string, any>;
+        const agentPath = agent.agent_path || "";
+        const agentName = agentPath.split("/").pop() || agentPath;
+        const scheduleType = params.type || "polling";
+
+        // Helper: spawn a single claude process and track it as an active run
+        const spawnOne = (fullPrompt: string, ticketId: string | null) => {
+          const displayCmd = `claude -p "${fullPrompt.slice(0, 200)}${fullPrompt.length > 200 ? "..." : ""}"`;
+          const run = createAgentRun({
+            page: "scheduler",
+            agent_name: agentName,
+            ticket_id: ticketId,
+            command: displayCmd,
+          });
+          const execId = module.recordExecution({
+            schedule_id: id,
+            run_id: run.id,
+            status: "running",
+          });
+          const active: ActiveRun = {
+            proc: null as any,
+            buf: [],
+            watchers: new Set(),
+          };
+          activeRuns.set(run.id, active);
+          const spawnEnv = { ...process.env, FORCE_COLOR: "0" };
+          delete spawnEnv.ANTHROPIC_API_KEY;
+          const agentProcess = spawn("claude", ["-p", fullPrompt], {
+            cwd: process.cwd(),
+            env: spawnEnv,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          active.proc = agentProcess;
+          const broadcast = (obj: object) => {
+            active.buf.push(obj as any);
+            if (active.buf.length > 2000) active.buf.shift();
+            active.watchers.forEach((fn) => fn(obj));
+          };
+          broadcast({ type: "cmd", text: displayCmd });
+          let logBuf = "";
+          let finished = false;
+          const finish = (code: number) => {
+            if (finished) return;
+            finished = true;
+            const status = code === 0 ? "success" : "failed";
+            finishAgentRun(run.id, code === 0 ? "done" : "failed", code);
+            module.completeExecution(execId, {
+              status,
+              exit_code: code,
+              logs: logBuf.slice(-4000),
+            });
+            module.updateLastRun(id);
+            broadcast({ type: "done", code });
+            activeRuns.delete(run.id);
+          };
+          agentProcess.stdout?.on("data", (d: Buffer) => {
+            logBuf += d.toString();
+            broadcast({ type: "stdout", text: d.toString() });
+          });
+          agentProcess.stderr?.on("data", (d: Buffer) => {
+            logBuf += d.toString();
+            broadcast({ type: "stderr", text: d.toString() });
+          });
+          agentProcess.on("close", (code: number | null) => finish(code ?? -1));
+          agentProcess.on("error", (err: Error) => {
+            broadcast({ type: "stderr", text: err.message + "\n" });
+            finish(1);
+          });
+          return run.id;
+        };
+
+        if (scheduleType === "workflow") {
+          import("../db/repositories/ticket-workflow.js").then((twModule) => {
+            const days = params.days || "today";
+            const requireRepo = !!params.requireRepo;
+            const requireMrPr = !!params.requireMrPr;
+            const requirePriorRun = !!params.requirePriorRun;
+            const priorRunSameDay = !!params.priorRunSameDay;
+            const requirePriorRunAgents: string[] = Array.isArray(
+              params.requirePriorRunAgents,
+            )
+              ? params.requirePriorRunAgents
+              : [];
+            const maxTickets = Math.min(
+              5,
+              Math.max(1, Number(params.maxTickets) || 5),
+            );
+            let tickets = twModule.listTicketWorkflows();
+            if (days === "today") {
+              const todayStr = new Date().toISOString().slice(0, 10);
+              tickets = tickets.filter(
+                (t: any) => t.added_at && t.added_at.startsWith(todayStr),
+              );
             }
-          }
+            if (requireRepo || requireMrPr) {
+              tickets = tickets.filter((t: any) => {
+                const hasRepo = !!t.git_repo;
+                const hasMrPr = !!t.mr_pr_link;
+                if (requireRepo && requireMrPr) return hasRepo && hasMrPr;
+                if (requireRepo) return hasRepo;
+                return hasMrPr;
+              });
+            }
+            if (requirePriorRun) {
+              const agentFilter =
+                requirePriorRunAgents.length > 0
+                  ? requirePriorRunAgents
+                  : undefined;
+              tickets = tickets.filter((t: any) =>
+                hasAgentRunForTicket(t.ticket_id, priorRunSameDay, agentFilter),
+              );
+            }
+            // Deduplicate: skip tickets already processed by this agent today
+            const skipped: string[] = [];
+            const pending = tickets.filter((t: any) => {
+              if (twModule.wasPolledToday(t.ticket_id, agentPath)) {
+                skipped.push(t.ticket_id);
+                return false;
+              }
+              return true;
+            });
+            const batch = pending.slice(0, maxTickets);
+            const runIds: string[] = [];
+            for (const ticket of batch) {
+              const repoPart = ticket.git_repo
+                ? ` and repo is ${ticket.git_repo}`
+                : "";
+              const mrPart = ticket.mr_pr_link
+                ? ` and mr/pr is ${ticket.mr_pr_link}`
+                : "";
+              const fullPrompt = `use agent @${agentPath} on ticket ${ticket.ticket_id}${repoPart}${mrPart}`;
+              twModule.recordWorkflowPollingRun(ticket.ticket_id, agentPath);
+              runIds.push(spawnOne(fullPrompt, ticket.ticket_id));
+            }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                triggered: true,
+                id,
+                workflow: true,
+                tickets: batch.length,
+                skipped: skipped.length,
+                runIds,
+              }),
+            );
+          });
+        } else {
+          const prompt = typeof params.prompt === "string" ? params.prompt : "";
+          const fullPrompt = `use agent @${agentPath} to run ticket polling on ${prompt}`;
+          const runId = spawnOne(fullPrompt, null);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ triggered: true, id, runId }));
         }
-
-        // Trigger the agent immediately by spawning a Claude process
-        const agentProcess = spawn("claude", ["-p", invocation], {
-          stdio: ["ignore", "pipe", "pipe"],
-          detached: false,
-        });
-
-        // Record execution start
-        const executionId = uuid();
-        module.recordExecution({
-          schedule_id: id,
-          status: "running",
-        });
-
-        let stdout = "";
-        let stderr = "";
-
-        if (agentProcess.stdout) {
-          agentProcess.stdout.on("data", (data: Buffer) => {
-            stdout += data.toString();
-          });
-        }
-
-        if (agentProcess.stderr) {
-          agentProcess.stderr.on("data", (data: Buffer) => {
-            stderr += data.toString();
-          });
-        }
-
-        agentProcess.on("close", (exitCode: number) => {
-          const success = exitCode === 0;
-          const status = success ? "success" : "failed";
-
-          module.completeExecution(executionId, {
-            status,
-            exit_code: exitCode || undefined,
-            logs: stdout || undefined,
-          });
-
-          module.updateScheduledAgent(id, {});
-        });
-
-        agentProcess.on("error", (err: Error) => {
-          module.completeExecution(executionId, {
-            status: "failed",
-            exit_code: -1,
-          });
-        });
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ triggered: true, id, executionId }));
       });
       return;
     }
@@ -4555,12 +6307,109 @@ export function startWatchServer(opts: WatchOptions): void {
       return;
     }
 
+    if (url.pathname === "/api/execute" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let parsed: { script?: string; cwd?: string };
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid JSON" }));
+          return;
+        }
+        const { script, cwd } = parsed;
+        if (!script || typeof script !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "script required" }));
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        const spawnEnv = { ...process.env, FORCE_COLOR: "0" };
+        delete spawnEnv.ANTHROPIC_API_KEY;
+        const [shell, shellFlag] =
+          process.platform === "win32"
+            ? ["cmd", "/c"]
+            : ["sh", "-c"];
+        const proc = spawn(shell, [shellFlag, script], {
+          cwd: cwd || process.cwd(),
+          env: spawnEnv,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let finished = false;
+        const send = (obj: object) => {
+          try {
+            res.write(`data: ${JSON.stringify(obj)}\n\n`);
+          } catch {
+            /* ignore write-after-end */
+          }
+        };
+        const finish = (code: number, signal?: string | null) => {
+          if (finished) return;
+          finished = true;
+          send({ type: "done", code, signal: signal ?? null });
+          res.end();
+        };
+        proc.stdout.on("data", (d: Buffer) =>
+          send({ type: "stdout", text: d.toString() }),
+        );
+        proc.stderr.on("data", (d: Buffer) =>
+          send({ type: "stderr", text: d.toString() }),
+        );
+        proc.on("close", (code: number | null, signal: string | null) => {
+          finish(code ?? (signal ? 128 : -1), signal);
+        });
+        proc.on("error", (err: Error) => {
+          send({ type: "stderr", text: err.message + "\n" });
+          finish(1);
+        });
+        res.on("close", () => {
+          if (!finished) proc.kill();
+        });
+      });
+      return;
+    }
+
     res.writeHead(404);
     res.end("Not found");
   });
 
   // Don't poll SSE clients - we send updates on initial connection and keep alive with heartbeats
   // Polling every 2 seconds was causing database lock contention, blocking other API requests
+
+  // On startup: mark any rows left "running" from a previous server session as failed.
+  // The processes are dead after a restart — their finish callbacks will never fire.
+  try {
+    const db = getDb();
+    const orphanedRuns = db
+      .prepare(
+        `UPDATE agent_runs
+         SET status = 'failed', exit_code = -1, ended_at = datetime('now')
+         WHERE status = 'running'`,
+      )
+      .run();
+    const orphanedExec = db
+      .prepare(
+        `UPDATE agent_execution_history
+         SET status = 'failed', completed_at = datetime('now'),
+             logs = COALESCE(logs || char(10), '') || '[server restarted — run interrupted]'
+         WHERE status = 'running' AND completed_at IS NULL`,
+      )
+      .run();
+    const total = orphanedRuns.changes + orphanedExec.changes;
+    if (total > 0) {
+      console.log(
+        `  Cleaned up ${total} orphaned "running" agent run(s) from previous session.`,
+      );
+    }
+  } catch {
+    // DB not yet ready — non-fatal
+  }
 
   // Mark stale sessions in the background every 60s — kept out of the request path so it never
   // blocks the event loop when the CLI tool holds a SQLite write lock simultaneously.
@@ -4574,7 +6423,16 @@ export function startWatchServer(opts: WatchOptions): void {
     } catch {
       // DB busy — will retry next cycle
     }
-  }, 60_000).unref(); // unref so the interval doesn't prevent process exit
+  }, 60_000).unref();
+
+  // Background Datadog poll — refresh every 5 minutes if credentials are configured
+  setInterval(async () => {
+    try {
+      await pollDatadog(false);
+    } catch {
+      /**/
+    }
+  }, DD_POLL_TTL_MS).unref();
 
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {

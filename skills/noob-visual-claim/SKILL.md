@@ -81,6 +81,48 @@ echo "Visual run created: $VISUAL_RUN_ID  ($TC_COUNT test cases queued)"
 
 ---
 
+## Mode C — Setup only (no claim)
+
+Create the visual run and populate all test case entries as pending, but do NOT claim any entry. Use this when you want to set up the run ahead of time and let a separate invocation (Mode B) do the claiming.
+
+```bash
+# Resolve target URL
+TARGET_URL=$(noob-tester secrets target list --json | jq -r '.[] | select(.name == "<target-name>") | .url')
+if [ -z "$TARGET_URL" ] || [ "$TARGET_URL" = "null" ]; then
+  echo "ERROR: Could not resolve URL for '<target-name>'. Available targets:"
+  noob-tester secrets target list --json | jq '.[].name'
+  exit 1
+fi
+
+# Create the visual run
+VISUAL_RUN_ID=$(noob-tester visual-run start \
+  --ticket <TICKET-ID> \
+  --mode <baseline|verification> \
+  --target-url "$TARGET_URL" \
+  --secret-target <target-name> \
+  --secret-role <role> | jq -r '.visualRunId')
+
+# Populate one pending entry per visual test case
+VISUAL_TCS=$(noob-tester visual-tc list --ticket <TICKET-ID> --json)
+TC_COUNT=$(echo "$VISUAL_TCS" | jq 'length')
+
+if [ "$TC_COUNT" -eq 0 ]; then
+  echo "ERROR: No active visual test cases found for ticket <TICKET-ID>"
+  exit 1
+fi
+
+echo "$VISUAL_TCS" | jq -r '.[].id' | while read -r TC_ID; do
+  noob-tester visual-run entry-create \
+    --run "$VISUAL_RUN_ID" --tc "$TC_ID" --ticket <TICKET-ID> > /dev/null
+done
+
+echo "Visual run ready: $VISUAL_RUN_ID  ($TC_COUNT test cases queued)"
+echo "Use Mode B with VISUAL_RUN_ID=$VISUAL_RUN_ID to claim and execute."
+# No claim — stop here.
+```
+
+---
+
 ## Mode B — Subsequent invocations (VISUAL_RUN_ID already known)
 
 Skip run creation — just claim the next pending entry.

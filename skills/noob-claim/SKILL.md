@@ -116,6 +116,72 @@ echo "$PENDING_COUNT test case entries queued in run pack $RUNPACK_ID."
 
 ---
 
+## Mode C — Setup only (no claim)
+
+Create the run pack and populate all test cases as pending, but do NOT claim any entry. Use this when you want to set up the run pack ahead of time and let a separate invocation (Mode B) do the claiming.
+
+```bash
+# Get the latest run pack for this ticket (if exists)
+LATEST_PACK=$(noob-tester runpack list --ticket <TICKET-ID> --json | jq -r '.[0].run_pack_id // empty')
+
+NEW_PACK_REQUESTED=false  # set to true if agent passes --new-runpack flag
+
+if [ -z "$LATEST_PACK" ] || [ "$NEW_PACK_REQUESTED" = "true" ]; then
+  INIT=$(noob-tester init --ticket <TICKET-ID> --task "Claim test case" --labels "claim")
+  SESSION_ID=$(echo "$INIT" | jq -r '.sessionId')
+  RUN_ID=$(echo "$INIT" | jq -r '.runId')
+  RUNPACK_ID=$(echo "$INIT" | jq -r '.runPackId')
+  echo "Created new run pack: $RUNPACK_ID"
+else
+  RUNPACK_ID="$LATEST_PACK"
+  echo "Using latest run pack: $RUNPACK_ID"
+fi
+
+TEST_CASES=$(noob-tester testcase list --ticket <TICKET-ID> --json)
+TC_COUNT=$(echo "$TEST_CASES" | jq 'length')
+
+if [ "$TC_COUNT" -eq 0 ]; then
+  echo "ERROR: No test cases found for ticket <TICKET-ID>"
+  exit 1
+fi
+
+CLAIMED_IDS="[]"
+PACK_ENTRIES=$(noob-tester runpack list --pack "$RUNPACK_ID" --json)
+PACK_ENTRY_COUNT=$(echo "$PACK_ENTRIES" | jq 'length')
+
+if [ "$PACK_ENTRY_COUNT" -gt 0 ]; then
+  CLAIMED_IDS=$(echo "$PACK_ENTRIES" | jq '
+    [.[] | select(
+      .status == "claimed" or
+      .status == "running" or
+      .status == "passed" or
+      .status == "failed" or
+      .status == "skipped" or
+      .status == "blocked"
+    ) | .tc_id]
+  ')
+  echo "Run pack $RUNPACK_ID — $(echo "$CLAIMED_IDS" | jq 'length') already claimed/done entries will be filtered."
+fi
+
+PENDING=$(echo "$TEST_CASES" | jq --argjson claimed "$CLAIMED_IDS" '
+  [.[] |
+    select(.id as $id | $claimed | index($id) | not)
+  ]
+')
+PENDING_COUNT=$(echo "$PENDING" | jq 'length')
+
+if [ "$PENDING_COUNT" -gt 0 ]; then
+  echo "Populating $PENDING_COUNT pending test cases into run pack..."
+  noob-tester runpack populate "$RUNPACK_ID" <TICKET-ID> --status pending
+fi
+
+echo "$PENDING_COUNT test case entries queued in run pack $RUNPACK_ID."
+echo "Run pack ready. Use Mode B with RUNPACK_ID=$RUNPACK_ID to claim and execute."
+# No claim — stop here.
+```
+
+---
+
 ## Mode B — Subsequent invocations (RUNPACK_ID already known)
 
 Use the latest run pack for the ticket and claim the next pending entry.

@@ -18,6 +18,7 @@ export function getDashboardHtml(
 <head>
 <meta charset="utf-8">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cronstrue@2.50.0/dist/cronstrue.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -64,6 +65,8 @@ export function getDashboardHtml(
   .sidebar-logo .version { font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: 0; margin-left: 6px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .ph-spin { animation: spin 0.8s linear infinite; display: inline-block; }
 
   /* ── Workspace Switcher ── */
   .ws-picker { padding: 0 10px 12px; }
@@ -123,6 +126,18 @@ export function getDashboardHtml(
   .session-status.crashed { background: var(--red-dim); color: var(--red); }
   .session-task { font-size: 13px; margin-top: 6px; color: var(--text); line-height: 1.4; }
   .session-meta { font-size: 11px; color: var(--muted); margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* ── Ticket card context menu ── */
+  .tw-ctx-wrap { position: relative; }
+  .tw-ctx-btn { padding: 3px 6px; font-size: 14px; background: transparent; border: 1px solid transparent; border-radius: var(--radius-xs); cursor: pointer; color: var(--dim); line-height: 1; letter-spacing: 1px; }
+  .tw-ctx-btn:hover { background: var(--surface-raised); border-color: var(--border); color: var(--text); }
+  .tw-ctx-menu { position: fixed; z-index: 9999; min-width: 160px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.18); padding: 4px 0; display: none; }
+  .tw-ctx-menu.open { display: block; }
+  .tw-ctx-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 13px; font-size: 12px; background: transparent; border: none; cursor: pointer; color: var(--text); text-align: left; box-sizing: border-box; white-space: nowrap; }
+  .tw-ctx-item:hover { background: var(--surface-raised); }
+  .tw-ctx-item.danger { color: var(--red); }
+  .tw-ctx-item.danger:hover { background: var(--red-dim); }
+  .tw-ctx-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
   /* ── Issue rows ── */
   .issue-row { padding: 10px 12px; margin-bottom: 2px; font-size: 13px; transition: background var(--transition); border-radius: var(--radius-xs); }
@@ -290,6 +305,20 @@ export function getDashboardHtml(
   .modal-close { cursor: pointer; color: var(--muted); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-xs); font-size: 18px; line-height: 1; transition: color var(--transition); }
   .modal-close:hover { color: var(--text); }
 
+  /* ── Scheduler Drawer ── */
+  .sched-drawer-backdrop { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.35); z-index: 200; }
+  .sched-drawer { position: fixed; top: 0; right: -520px; height: 100%; width: 500px; max-width: 90vw; z-index: 201; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; box-shadow: -8px 0 32px rgba(0,0,0,0.25); transition: right 0.2s ease; }
+  .sched-drawer.open { right: 0; }
+  .sched-drawer-header { border-bottom: 1px solid var(--border); padding: 14px 16px 0; flex-shrink: 0; }
+  .sched-drawer-tabs { display: flex; gap: 0; margin-top: 10px; }
+  .sched-drawer-tab { padding: 6px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; background: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all var(--transition); letter-spacing: 0.3px; }
+  .sched-drawer-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .sched-drawer-tab:hover:not(.active) { color: var(--text); }
+  .sched-drawer-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .sched-agent-row { transition: background var(--transition); cursor: pointer; }
+  .sched-agent-row:hover td { background: var(--surface-raised) !important; }
+  .sched-agent-row.selected td { background: rgba(99,102,241,0.08) !important; }
+
   /* ── Shared utility classes ── */
   .section-header { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
   .detail-section { margin-bottom: 18px; }
@@ -430,7 +459,7 @@ export function getDashboardHtml(
 <div class="layout">
   <div class="sidebar">
     <div class="sidebar-logo">
-      <h1>noob<span class="brand-accent">.</span>tester<span class="version">v0.1</span></h1>
+      <h1>noob<span class="brand-accent">-</span>tester<span class="version">v0.1</span></h1>
     </div>
     <div class="ws-picker">
       <div class="ws-label">Workspace</div>
@@ -442,6 +471,10 @@ export function getDashboardHtml(
     </div>
     <div class="sidebar-nav">
       <div class="nav-btn active" data-page="dashboard" onclick="switchPage('dashboard')"><i class="ph ph-squares-four nav-icon"></i>Dashboard</div>
+      <div class="nav-btn" data-page="home" onclick="switchPage('home')"><i class="ph ph-house nav-icon"></i>Home</div>
+      <div class="nav-btn" data-page="tickets" onclick="switchPage('tickets')"><i class="ph ph-ticket nav-icon"></i>Tickets</div>
+
+      <div class="nav-btn" data-page="agentbuilder" onclick="switchPage('agentbuilder')"><i class="ph ph-robot nav-icon"></i>Agents</div>
 
       <div class="nav-group-label">Testing</div>
       <div class="nav-btn" data-page="runs" onclick="switchPage('runs')"><i class="ph ph-compass nav-icon"></i>Explore</div>
@@ -464,8 +497,10 @@ export function getDashboardHtml(
       <div class="nav-btn" data-page="repos" onclick="switchPage('repos')"><i class="ph ph-git-branch nav-icon"></i>Repos</div>
       <div class="nav-btn" data-page="uimaps" onclick="switchPage('uimaps')"><i class="ph ph-browser nav-icon"></i>UI Maps</div>
       <div class="nav-btn" data-page="apimaps" onclick="switchPage('apimaps')"><i class="ph ph-plugs-connected nav-icon"></i>API Maps</div>
+      <div class="nav-btn" data-page="datadog" onclick="switchPage('datadog')"><i class="ph ph-activity nav-icon"></i>Datadog</div>
       <div class="nav-btn" data-page="secrets" onclick="switchPage('secrets')"><i class="ph ph-key nav-icon"></i>Secrets</div>
       <div class="nav-btn" data-page="files" onclick="switchPage('files')"><i class="ph ph-file-arrow-up nav-icon"></i>Files</div>
+      <div class="nav-btn" data-page="shell" onclick="switchPage('shell')"><i class="ph ph-terminal-window nav-icon"></i>Shell</div>
 
       <div class="nav-group-label">Reporting</div>
       <div class="nav-btn" data-page="reports" onclick="switchPage('reports')"><i class="ph ph-file-text nav-icon"></i>Reports</div>
@@ -492,6 +527,47 @@ export function getDashboardHtml(
   <div id="issue-modal" class="modal-box"></div>
 </div>
 
+<div id="tw-run-history-overlay" class="modal-overlay" onclick="if(event.target===this)twCloseRunHistory()" style="z-index:250">
+  <div class="modal-box" style="max-width:700px;width:90vw">
+    <div id="tw-run-history-content"></div>
+  </div>
+</div>
+
+<!-- Links modal -->
+<div id="tw-links-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);align-items:center;justify-content:center" onclick="if(event.target===this)twCloseLinksModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.45)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <i class="ph ph-link" style="font-size:15px;color:var(--accent)"></i>
+        <span style="font-weight:600;font-size:14px;color:var(--text)">Repo &amp; MR/PR Links</span>
+      </div>
+      <span id="tw-links-modal-ticket" style="font-size:11px;font-family:var(--font-mono);color:var(--dim)"></span>
+      <div onclick="twCloseLinksModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 6px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div>
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">
+          <i class="ph ph-git-branch" style="font-size:12px;color:var(--green)"></i>
+          <span style="font-size:11px;color:var(--dim);font-weight:500">Git Repo</span>
+        </div>
+        <input id="tw-links-modal-repo" type="text" placeholder="git@github.com:org/repo.git or https://github.com/org/repo" style="width:100%;box-sizing:border-box;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none" onkeydown="if(event.key==='Enter')document.getElementById('tw-links-modal-mr').focus()" />
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">
+          <i class="ph ph-git-pull-request" style="font-size:12px;color:var(--accent)"></i>
+          <span style="font-size:11px;color:var(--dim);font-weight:500">MR / PR Link</span>
+        </div>
+        <input id="tw-links-modal-mr" type="text" placeholder="https://gitlab.com/org/repo/-/merge_requests/123" style="width:100%;box-sizing:border-box;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none" onkeydown="if(event.key==='Enter')twSaveLinksModal()" />
+      </div>
+      <div id="tw-links-modal-err" style="font-size:11px;color:var(--red);display:none"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="twCloseLinksModal()" class="action-btn" style="font-size:12px;padding:6px 14px">Cancel</button>
+        <button onclick="twSaveLinksModal()" style="padding:6px 18px;font-size:12px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Lightbox -->
 <div id="lightbox-overlay" class="lightbox-overlay" onclick="if(event.target===this)closeLightbox()">
   <span class="lightbox-close" onclick="closeLightbox()"><i class="ph ph-x"></i></span>
@@ -504,6 +580,29 @@ export function getDashboardHtml(
   <div id="lightbox-caption" class="lightbox-caption"></div>
 </div>
 
+<!-- Scheduler Drawer -->
+<div id="sched-drawer-backdrop" class="sched-drawer-backdrop" onclick="closeSchedulerDrawer()"></div>
+<div id="sched-drawer" class="sched-drawer">
+  <div class="sched-drawer-header">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="min-width:0;flex:1">
+        <div id="sched-drawer-title" style="font-size:16px;font-weight:700;font-family:var(--font-mono);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        <div id="sched-drawer-subtitle" style="font-size:10px;color:var(--dim);margin-top:4px"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:10px">
+        <div id="sched-drawer-actions" style="display:flex;gap:6px"></div>
+        <button onclick="closeSchedulerDrawer()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:22px;padding:0 6px;line-height:1;border-radius:3px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&times;</button>
+      </div>
+    </div>
+    <div class="sched-drawer-tabs">
+      <button id="sched-tab-config" class="sched-drawer-tab active" onclick="switchSchedulerDrawerTab('config')">Config</button>
+      <button id="sched-tab-domino" class="sched-drawer-tab" onclick="switchSchedulerDrawerTab('domino')">Domino</button>
+      <button id="sched-tab-history" class="sched-drawer-tab" onclick="switchSchedulerDrawerTab('history')">History</button>
+    </div>
+  </div>
+  <div id="sched-drawer-body" class="sched-drawer-body"></div>
+</div>
+
 <script>
 ${helpersScript}
 ${canvasBaseScript}
@@ -512,18 +611,34 @@ ${canvasScript}
 ${apiCanvasScript}
 const API = "http://localhost:${port}";
 let state = null;
-let viewingSession = ${filterSessionId ? '"' + filterSessionId + '"' : 'null'};
+let viewingSession = ${filterSessionId ? '"' + filterSessionId + '"' : "null"};
 let activeTab = "issues";
 let currentPage = "dashboard";
 
 function savePageState() {
   const state = {
     page: currentPage,
-    activeTab: activeTab,
-    viewingSession: viewingSession,
-    schedulerSelectedAgentId: schedulerSelectedAgentId || "",
-    dashSelectedTicket: dashSelectedTicket || "",
-    qaPoolSelectedTicket: qaPoolSelectedTicket || "",
+    activeTab,
+    viewingSession,
+    settingsTab,
+    dashSelectedTicket,
+    issuesSelectedTicket,
+    rpSelectedTicket, rpSelectedPack, rpSelectedEntry,
+    analysisSelectedRun, analysisSelectedId,
+    plansSelectedTicket, plansSelectedPlan,
+    contextSelectedTicket,
+    apimapSelectedId, apimapSelectedEndpoint,
+    uimapSelectedId, uimapSelectedPageId,
+    metricsTab,
+    tcSelectedSuite, tcSelectedId, tcSelectedVisualId, tcActiveTab,
+    reportSelectedTicket, reportTab,
+    secretsSelectedTarget, secretsSelectedRole, secretsActiveTab,
+    qaPoolSelectedTicket,
+    covSelectedRepo, covSelectedFile,
+    a11ySelectedTicket, a11ySelectedPack, a11ySelectedPage, a11ySelectedRun,
+    vrSelectedTicket, vrSelectedRun, vrSelectedEntry,
+    schedulerSelectedAgentId,
+    auditTab,
   };
   sessionStorage.setItem('pageState', JSON.stringify(state));
 }
@@ -532,13 +647,47 @@ function restorePageState() {
   const saved = sessionStorage.getItem('pageState');
   if (!saved) return;
   try {
-    const state = JSON.parse(saved);
-    currentPage = state.page || "dashboard";
-    activeTab = state.activeTab || "issues";
-    viewingSession = state.viewingSession || null;
-    schedulerSelectedAgentId = state.schedulerSelectedAgentId || "";
-    dashSelectedTicket = state.dashSelectedTicket || "";
-    qaPoolSelectedTicket = state.qaPoolSelectedTicket || "";
+    const s = JSON.parse(saved);
+    currentPage = s.page || "dashboard";
+    activeTab = s.activeTab || "issues";
+    viewingSession = s.viewingSession || null;
+    settingsTab = s.settingsTab || "settings";
+    dashSelectedTicket = s.dashSelectedTicket || "";
+    issuesSelectedTicket = s.issuesSelectedTicket || "";
+    rpSelectedTicket = s.rpSelectedTicket || "";
+    rpSelectedPack = s.rpSelectedPack || "";
+    rpSelectedEntry = s.rpSelectedEntry || "";
+    analysisSelectedRun = s.analysisSelectedRun || "";
+    analysisSelectedId = s.analysisSelectedId || "";
+    plansSelectedTicket = s.plansSelectedTicket || "";
+    plansSelectedPlan = s.plansSelectedPlan || "";
+    contextSelectedTicket = s.contextSelectedTicket || "";
+    apimapSelectedId = s.apimapSelectedId || "";
+    apimapSelectedEndpoint = s.apimapSelectedEndpoint || "";
+    uimapSelectedId = s.uimapSelectedId || "";
+    uimapSelectedPageId = s.uimapSelectedPageId || "";
+    metricsTab = s.metricsTab || "metrics";
+    tcSelectedSuite = s.tcSelectedSuite || "";
+    tcSelectedId = s.tcSelectedId || "";
+    tcSelectedVisualId = s.tcSelectedVisualId || "";
+    tcActiveTab = s.tcActiveTab || "normal";
+    reportSelectedTicket = s.reportSelectedTicket || "";
+    reportTab = s.reportTab || "ai";
+    secretsSelectedTarget = s.secretsSelectedTarget || "";
+    secretsSelectedRole = s.secretsSelectedRole || "";
+    secretsActiveTab = s.secretsActiveTab || "targets";
+    qaPoolSelectedTicket = s.qaPoolSelectedTicket || "";
+    covSelectedRepo = s.covSelectedRepo || "";
+    covSelectedFile = s.covSelectedFile || "";
+    a11ySelectedTicket = s.a11ySelectedTicket || "";
+    a11ySelectedPack = s.a11ySelectedPack || "";
+    a11ySelectedPage = s.a11ySelectedPage || "";
+    a11ySelectedRun = s.a11ySelectedRun || "";
+    vrSelectedTicket = s.vrSelectedTicket || "";
+    vrSelectedRun = s.vrSelectedRun || "";
+    vrSelectedEntry = s.vrSelectedEntry || "";
+    schedulerSelectedAgentId = s.schedulerSelectedAgentId || "";
+    auditTab = s.auditTab || "overview";
   } catch (e) {
     console.error("Failed to restore page state:", e);
   }
@@ -642,9 +791,9 @@ function wsCopy() {
     body: JSON.stringify({ from, to: trimmed, switchAfter: false })
   })
     .then(r => r.json())
-    .then(data => {
+    .then(async data => {
       if (data.error) { alert("Error: " + data.error); return; }
-      const doSwitch = confirm(\`Workspace "\${from}" was copied to "\${trimmed}". Switch to "\${trimmed}" now?\`);
+      const doSwitch = await showConfirm(\`Workspace "\${from}" was copied to "\${trimmed}". Switch to "\${trimmed}" now?\`, "Switch");
       if (doSwitch) {
         switchWorkspace(trimmed);
       } else {
@@ -666,10 +815,10 @@ window.wsSettingsCreate = function() {
     body: JSON.stringify({ name })
   })
     .then(r => r.json())
-    .then(data => {
+    .then(async data => {
       if (data.error) { alert("Error: " + data.error); return; }
       loadWorkspaces();
-      const doSwitch = confirm('Workspace "' + name + '" created. Switch to it now?');
+      const doSwitch = await showConfirm('Workspace "' + name + '" created. Switch to it now?', "Switch");
       if (doSwitch) { switchWorkspace(name); } else { settingsTab = "workspaces"; renderSettingsPage(); }
     })
     .catch(() => alert("Failed to create workspace"));
@@ -688,10 +837,10 @@ window.wsSettingsCopy = function() {
     body: JSON.stringify({ from, to, switchAfter: false })
   })
     .then(r => r.json())
-    .then(data => {
+    .then(async data => {
       if (data.error) { alert("Error: " + data.error); return; }
       loadWorkspaces();
-      const doSwitch = confirm('Workspace "' + from + '" copied to "' + to + '". Switch to "' + to + '" now?');
+      const doSwitch = await showConfirm('Workspace "' + from + '" copied to "' + to + '". Switch to "' + to + '" now?', "Switch");
       if (doSwitch) { switchWorkspace(to); } else { settingsTab = "workspaces"; renderSettingsPage(); }
     })
     .catch(() => alert("Failed to copy workspace"));
@@ -714,8 +863,8 @@ window.wsSettingsRename = function(current) {
     .catch(() => alert("Failed to rename workspace"));
 };
 
-window.wsSettingsDelete = function(name) {
-  if (!confirm('Delete workspace "' + name + '" and ALL its data? This cannot be undone.')) return;
+window.wsSettingsDelete = async function(name) {
+  if (!await showConfirm('Delete workspace "' + name + '" and ALL its data? This cannot be undone.', "Delete")) return;
   fetch(API + "/api/workspaces/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -731,14 +880,14 @@ window.wsSettingsDelete = function(name) {
     .catch(() => alert("Failed to delete workspace"));
 };
 
-window.wsCleanup = function(type) {
+window.wsCleanup = async function(type) {
   const labels = {
     sessions: "Sessions & Runs", testcases: "Test Cases", issues: "Issues",
     analyses: "Analyses", runpacks: "Run Packs", "tech-issues": "Tech Issues",
     secrets: "Secrets", repos: "Repos & Index", all: "ALL data", nuke: "EVERYTHING (nuke)"
   };
   const label = labels[type] || type;
-  if (!confirm('Delete ' + label + ' from the active workspace? This cannot be undone.')) return;
+  if (!await showConfirm('Delete ' + label + ' from the active workspace? This cannot be undone.', "Delete")) return;
   const resultEl = document.getElementById("ws-cleanup-result");
   if (resultEl) resultEl.innerHTML = '<span style="color:var(--yellow);font-size:12px">Cleaning...</span>';
   fetch(API + "/api/workspaces/cleanup", {
@@ -870,6 +1019,27 @@ document.addEventListener('keydown', (e) => {
 
 function render() {
   if (!state) return;
+  savePageState();
+
+  if (currentPage === "home") {
+    renderHomePage();
+    return;
+  }
+
+  if (currentPage === "tickets") {
+    renderTicketsPage();
+    return;
+  }
+
+  if (currentPage === "datadog") {
+    renderDatadogPage();
+    return;
+  }
+
+  if (currentPage === "agentbuilder") {
+    renderAgentBuilderPage();
+    return;
+  }
 
   if (currentPage === "issues") {
     renderIssuesPage();
@@ -986,6 +1156,11 @@ function render() {
     return;
   }
 
+  if (currentPage === "shell") {
+    renderShellPage();
+    return;
+  }
+
   if (viewingSession) {
     renderSessionDetail(viewingSession);
   } else {
@@ -1014,8 +1189,8 @@ function renderDashboard() {
 
   // ── Level 1: Ticket list ──
   if (!dashSelectedTicket) {
-    let html = '<div class="panel" style="margin-bottom:8px">';
-    html += '<div class="panel-title">Sessions by Ticket</div>';
+    let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Dashboard</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Live test sessions and issues</div></div>';
+    html += '<div class="panel" style="margin-bottom:8px">';
     const active = state.sessions.filter(s => s.status === "active").length;
     if (state.sessions.length > 0) {
       html += '<div style="display:flex;gap:16px">';
@@ -1100,48 +1275,49 @@ async function renderDashboardTicketDetail() {
   const critical = issues.filter(i => i.severity === "critical").length;
   const high = issues.filter(i => i.severity === "high").length;
 
+  let fixedHtml = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Issues</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Bugs and issues found across test runs</div></div>';
   let html = '';
 
-  // Stats + breadcrumb
-  html += '<div class="panel" style="margin-bottom:8px">';
-  html += \`<div class="breadcrumb">
+  // Stats + breadcrumb (fixed)
+  fixedHtml += '<div class="panel" style="margin-bottom:8px">';
+  fixedHtml += \`<div class="breadcrumb">
     <span class="breadcrumb-item" onclick="dashSelectedTicket='';savePageState();renderDashboard()">Dashboard</span>
     <span class="breadcrumb-sep">|</span>
     <span class="breadcrumb-item current">\${esc(ticketLabel)}</span>
   </div>\`;
   if (sessions.length > 0 || issues.length > 0) {
-    html += '<div style="display:flex;gap:16px">';
-    html += \`<div class="stat"><div class="stat-value">\${sessions.length}</div><div class="stat-label">Sessions</div></div>\`;
-    html += \`<div class="stat"><div class="stat-value" style="color:var(--green)">\${active}</div><div class="stat-label">Active</div></div>\`;
-    html += \`<div class="stat"><div class="stat-value">\${issues.length}</div><div class="stat-label">Issues</div></div>\`;
+    fixedHtml += '<div style="display:flex;gap:16px">';
+    fixedHtml += \`<div class="stat"><div class="stat-value">\${sessions.length}</div><div class="stat-label">Sessions</div></div>\`;
+    fixedHtml += \`<div class="stat"><div class="stat-value" style="color:var(--green)">\${active}</div><div class="stat-label">Active</div></div>\`;
+    fixedHtml += \`<div class="stat"><div class="stat-value">\${issues.length}</div><div class="stat-label">Issues</div></div>\`;
     if (critical) html += \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${critical}</div><div class="stat-label">Critical</div></div>\`;
     if (high) html += \`<div class="stat"><div class="stat-value" style="color:var(--orange)">\${high}</div><div class="stat-label">High</div></div>\`;
-    html += '</div>';
+    fixedHtml += '</div>';
   }
-  html += '</div>';
+  fixedHtml += '</div>';
 
   // Split view: sessions left, issues right
-  html += '<div class="split-view">';
+  fixedHtml += '<div class="split-view">';
 
   // Left — sessions
-  html += '<div class="split-left">';
+  fixedHtml += '<div class="split-left">';
   if (sessions.length === 0) {
-    html += '<div class="empty">No sessions</div>';
+    fixedHtml += '<div class="empty">No sessions</div>';
   } else {
     for (const s of sessions) html += sessionCard(s);
   }
-  html += '</div>';
+  fixedHtml += '</div>';
 
   // Right — issues
-  html += '<div class="split-right panel">';
+  fixedHtml += '<div class="split-right panel">';
   if (issues.length === 0) {
-    html += '<div class="empty">No issues</div>';
+    fixedHtml += '<div class="empty">No issues</div>';
   } else {
     for (const i of issues) html += issueRow(i);
   }
-  html += '</div>';
+  fixedHtml += '</div>';
 
-  html += '</div>';
+  fixedHtml += '</div>';
   setPage(html);
 
   // Bind session clicks
@@ -1208,7 +1384,7 @@ function sessionCard(s) {
 }
 
 async function deleteSession(sessionId) {
-  if (!confirm("Delete session " + sessionId.slice(0,8) + " and all its linked data (runs, issues, actions)?")) return;
+  if (!await showConfirm("Delete session " + sessionId.slice(0,8) + " and all its linked data (runs, issues, actions)?", "Delete")) return;
   await postJson("/api/session/delete", { id: sessionId });
   // Force fresh state from server (SSE cache is stale)
   state = await fetchJson("/api/state");
@@ -1605,6 +1781,7 @@ async function renderSessionDetail(sessionId) {
 let settingsTab = "settings";
 
 async function renderSettingsPage() {
+  savePageState();
   const app = document.getElementById("app");
   app.style.display = "";
   app.style.flexDirection = "";
@@ -1612,7 +1789,7 @@ async function renderSettingsPage() {
 
   // Fixed header with title + tabs
   let header = '<div style="margin-bottom:16px">';
-  header += '<div style="font-size:16px;font-weight:600;margin-bottom:12px;letter-spacing:-0.3px">Settings</div>';
+  header += '<div style="font-size:16px;font-weight:600;letter-spacing:-0.3px;margin-bottom:10px">Settings</div>';
   header += '<div class="tabs" style="border-bottom:1px solid var(--border)">';
   header += '<div class="tab ' + (settingsTab === "settings" ? "active" : "") + '" onclick="settingsTab=\\'settings\\';renderSettingsPage()">General</div>';
   header += '<div class="tab ' + (settingsTab === "setup" ? "active" : "") + '" onclick="settingsTab=\\'setup\\';renderSettingsPage()">Setup</div>';
@@ -1725,74 +1902,192 @@ function renderClaudeContent(data) {
   // ── Noob-tester Skills ──
   html += '<div class="panel" style="margin-bottom:16px">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-  html += '<div style="font-weight:500;font-size:14px">Noob-tester Skills</div>';
-  var uninstalled = data.skills.filter(function(s) { return s.srcExists && (!s.installed || !s.upToDate); });
-  if (uninstalled.length > 0) {
-    html += '<div class="action-btn" style="color:var(--accent)" onclick="installAllSkills()">Install All (' + uninstalled.length + ')</div>';
+  html += '<div style="font-weight:500;font-size:14px">noob-tester Skills</div>';
+  var needsInstall = data.skills.filter(function(s) { return !s.installed || !s.upToDate; });
+  if (needsInstall.length > 0) {
+    var installAllParts = ['claude plugin marketplace add ganeshgaxy/noob-tester-skills', 'claude plugin marketplace update noob-tester-skills'];
+    for (var ni = 0; ni < needsInstall.length; ni++) {
+      installAllParts.push('claude plugin install ' + needsInstall[ni].id + '@noob-tester-skills');
+    }
+    var installAllCmd = installAllParts.join(' && ');
+    html += '<div style="display:flex;gap:8px">';
+    html += '<div class="action-btn" style="color:var(--accent)" onclick="runCmdInClaudeTab(' + JSON.stringify(installAllCmd).replace(/"/g, '&quot;') + ',this)">Install &amp; Link All (' + needsInstall.length + ')</div>';
+    var uninstalled = data.skills.filter(function(s) { return s.srcExists && (!s.installed || !s.upToDate); });
+    if (uninstalled.length > 0) {
+      html += '<div class="action-btn" style="color:var(--muted);font-size:11px" onclick="installAllSkills()">Link Cached (' + uninstalled.length + ')</div>';
+    }
+    html += '</div>';
   }
   html += '</div>';
   html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add ganeshgaxy/noob-tester-skills") + '</div>';
   for (var j = 0; j < data.skills.length; j++) {
     var skill = data.skills[j];
     var sIcon, sColor, sRight;
+    var sCheckCmd = JSON.stringify('ls -la ' + skill.dest + ' 2>&1').replace(/"/g, '&quot;');
+    var sUnlinkBtn = skill.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + skill.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var sUninstallBtn = skill.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + skill.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
     if (skill.installed && skill.upToDate) {
       sIcon = '&#10003;'; sColor = 'var(--green)';
-      sRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(skill.symlinkCmd || "linked") + '</span>';
+      sRight = '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(skill.symlinkCmd || "linked") + '</span>' + sUnlinkBtn + sUninstallBtn + '</div>';
     } else if (skill.installed) {
       sIcon = '&#8635;'; sColor = 'var(--yellow)';
-      sRight = copyBtn(skill.symlinkCmd || skill.installCmd);
+      sRight = '<div style="display:flex;align-items:center;gap:8px">' + cmdWithBtn(skill.symlinkCmd || skill.installCmd, 'Update', 'runCmdInClaudeTab(' + JSON.stringify('claude plugin marketplace add ganeshgaxy/noob-tester-skills && claude plugin marketplace update noob-tester-skills && claude plugin install ' + skill.id + '@noob-tester-skills').replace(/"/g, '&quot;') + ',this)') + sUnlinkBtn + '</div>';
     } else if (skill.pluginInstalled && skill.srcExists) {
-      // Plugin installed but not symlinked
       sIcon = '&#9675;'; sColor = 'var(--yellow)';
-      sRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(skill.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(skill.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.id).replace(/"/g, '&quot;') + ')">Link</div></div>';
+      sRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(skill.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(skill.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(skill.id).replace(/"/g, '&quot;') + ')">Link</div>' + sUninstallBtn + '</div>';
     } else {
-      // Plugin not installed
       sIcon = '&#10007;'; sColor = 'var(--red)';
-      sRight = copyBtn(skill.installCmd);
+      sRight = cmdWithBtn(skill.installCmd, 'Install', 'runCmdInClaudeTab(' + JSON.stringify('claude plugin marketplace add ganeshgaxy/noob-tester-skills && claude plugin marketplace update noob-tester-skills && claude plugin install ' + skill.id + '@noob-tester-skills').replace(/"/g, '&quot;') + ',this)');
     }
+    sRight = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' + sRight + '<div class="action-btn" style="color:var(--muted);font-size:11px" onclick="runCmdInClaudeTab(' + sCheckCmd + ',this)">Check</div></div>';
     html += setupRow(sIcon, sColor, skill.label, '', sRight);
   }
   html += '</div>';
 
-  // ── External Skills ──
+  // ── External Skills (plugin: bb, glab) ──
+  var pluginExternals = data.externalSkills.filter(function(s) { return s.category === 'plugin'; });
+  var npxExternals = data.externalSkills.filter(function(s) { return s.category === 'npx'; });
+
   html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="margin-bottom:4px;font-weight:500;font-size:14px">External Skills</div>';
-  html += '<div style="margin-bottom:12px">' + copyBtn("claude plugin marketplace add nikiforovall/claude-code-rules") + '</div>';
-  for (var k = 0; k < data.externalSkills.length; k++) {
-    var ext = data.externalSkills[k];
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  html += '<div style="font-weight:500;font-size:14px">External Skills</div>';
+  var extNeedsInstall = pluginExternals.filter(function(s) { return !s.installed; });
+  if (extNeedsInstall.length > 0) {
+    var extInstallAllParts = extNeedsInstall.map(function(s) { return s.fullInstallCmd || s.installCmd; });
+    var extInstallAllCmd = extInstallAllParts.join(' && ');
+    html += '<div class="action-btn" style="color:var(--accent)" onclick="runCmdInClaudeTab(' + JSON.stringify(extInstallAllCmd).replace(/"/g, '&quot;') + ',this)">Install &amp; Link All (' + extNeedsInstall.length + ')</div>';
+  }
+  html += '</div>';
+  for (var k = 0; k < pluginExternals.length; k++) {
+    var ext = pluginExternals[k];
     var eIcon, eColor, eRight;
+    var eCheckCmd = JSON.stringify('ls -la ' + ext.dest + ' 2>&1').replace(/"/g, '&quot;');
+    var eUnlinkBtn = ext.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + ext.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var eUninstallBtn = ext.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + ext.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
+    var eFullInstallCmd = JSON.stringify(ext.fullInstallCmd || ext.installCmd).replace(/"/g, '&quot;');
     if (ext.installed) {
       eIcon = '&#10003;'; eColor = 'var(--green)';
-      eRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(ext.symlinkCmd || ext.installCmd) + '</span>';
+      eRight = '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(ext.symlinkCmd || ext.installCmd) + '</span>' + eUnlinkBtn + eUninstallBtn + '</div>';
     } else if (ext.pluginInstalled && ext.src) {
       eIcon = '&#9675;'; eColor = 'var(--yellow)';
-      eRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(ext.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(ext.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.id).replace(/"/g, '&quot;') + ')">Link</div></div>';
+      eRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(ext.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(ext.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(ext.id).replace(/"/g, '&quot;') + ')">Link</div>' + eUninstallBtn + '</div>';
     } else {
-      eIcon = '&#9675;'; eColor = 'var(--muted)';
-      eRight = copyBtn(ext.installCmd);
+      eIcon = '&#10007;'; eColor = 'var(--red)';
+      eRight = cmdWithBtn(ext.installCmd, 'Install', 'runCmdInClaudeTab(' + eFullInstallCmd + ',this)');
     }
+    eRight = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' + eRight + '<div class="action-btn" style="color:var(--muted);font-size:11px" onclick="runCmdInClaudeTab(' + eCheckCmd + ',this)">Check</div></div>';
     html += setupRow(eIcon, eColor, ext.label, '', eRight);
+  }
+
+  // ── NPX Skills (agent-browser, dogfood) — Copy / Link / Unlink only ──
+  if (npxExternals.length > 0) {
+    html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">';
+    html += '<div style="font-size:12px;color:var(--dim);margin-bottom:8px">Install via npx — manage manually</div>';
+    for (var n = 0; n < npxExternals.length; n++) {
+      var npx = npxExternals[n];
+      var nIcon, nColor, nRight;
+      var nCheckCmd = JSON.stringify('ls -la ' + npx.dest + ' 2>&1').replace(/"/g, '&quot;');
+      var nUnlinkBtn = npx.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + npx.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(npx.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+      var nLinkBtn = '<div class="action-btn" style="color:var(--accent);font-size:11px" onclick="runCmdInClaudeTab(' + JSON.stringify(npx.installCmd).replace(/"/g, '&quot;') + ',this)">Link</div>';
+      if (npx.installed) {
+        nIcon = '&#10003;'; nColor = 'var(--green)';
+      } else {
+        nIcon = '&#9675;'; nColor = 'var(--muted)';
+      }
+      nRight = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' + copyBtn(npx.installCmd) + (npx.installed ? nUnlinkBtn : nLinkBtn) + '<div class="action-btn" style="color:var(--muted);font-size:11px" onclick="runCmdInClaudeTab(' + nCheckCmd + ',this)">Check</div></div>';
+      html += setupRow(nIcon, nColor, npx.label, '', nRight);
+    }
+    html += '</div>';
   }
   html += '</div>';
 
   // ── Hooks ──
   html += '<div class="panel" style="margin-bottom:16px">';
-  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">Hooks</div>';
+  html += '<div style="margin-bottom:12px;font-weight:500;font-size:14px">noob-tester Hooks</div>';
   for (var m = 0; m < data.hooks.length; m++) {
     var hook = data.hooks[m];
     var hIcon, hColor, hRight;
+    var hCheckCmd = JSON.stringify('ls -la ' + hook.dest + ' 2>&1').replace(/"/g, '&quot;');
+    var hUnlinkBtn = hook.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + hook.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var hUninstallBtn = hook.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + hook.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
     if (hook.installed) {
       hIcon = '&#10003;'; hColor = 'var(--green)';
-      hRight = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(hook.symlinkCmd || hook.installCmd) + '</span>';
+      hRight = '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(hook.symlinkCmd || hook.installCmd) + '</span>' + hUnlinkBtn + hUninstallBtn + '</div>';
     } else if (hook.pluginInstalled && hook.src) {
       hIcon = '&#9675;'; hColor = 'var(--yellow)';
-      hRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(hook.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(hook.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.id).replace(/"/g, '&quot;') + ')">Link</div></div>';
+      hRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(hook.symlinkCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installSkill(' + JSON.stringify(hook.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(hook.id).replace(/"/g, '&quot;') + ')">Link</div>' + hUninstallBtn + '</div>';
     } else {
       hIcon = '&#9675;'; hColor = 'var(--muted)';
-      hRight = copyBtn(hook.installCmd);
+      hRight = cmdWithBtn(hook.installCmd, 'Install', 'runCmdInClaudeTab(' + JSON.stringify('claude plugin marketplace add ganeshgaxy/noob-tester-skills && claude plugin marketplace update noob-tester-skills && claude plugin install ' + hook.id + '@noob-tester-skills').replace(/"/g, '&quot;') + ',this)');
     }
+    hRight = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' + hRight + '<div class="action-btn" style="color:var(--muted);font-size:11px" onclick="runCmdInClaudeTab(' + hCheckCmd + ',this)">Check</div></div>';
     html += setupRow(hIcon, hColor, hook.label, '', hRight);
   }
+  html += '</div>';
+
+  // ── Agents ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  html += '<div style="font-weight:500;font-size:14px">noob-tester Agents</div>';
+  var agentNeedsInstall = data.agents.filter(function(a) { return !a.installed || !a.upToDate; });
+  if (agentNeedsInstall.length > 0) {
+    var agentInstallAllParts = ['claude plugin marketplace add ganeshgaxy/noob-tester-skills', 'claude plugin marketplace update noob-tester-skills'];
+    for (var ai = 0; ai < agentNeedsInstall.length; ai++) {
+      agentInstallAllParts.push('claude plugin install ' + agentNeedsInstall[ai].id + '@noob-tester-skills');
+    }
+    var agentInstallAllCmd = agentInstallAllParts.join(' && ');
+    html += '<div style="display:flex;gap:8px">';
+    html += '<div class="action-btn" style="color:var(--accent)" onclick="runCmdInClaudeTab(' + JSON.stringify(agentInstallAllCmd).replace(/"/g, '&quot;') + ',this)">Install &amp; Link All (' + agentNeedsInstall.length + ')</div>';
+    var agentUnlinked = data.agents.filter(function(a) { return a.srcExists && (!a.installed || !a.upToDate); });
+    if (agentUnlinked.length > 0) {
+      html += '<div class="action-btn" style="color:var(--muted);font-size:11px" onclick="installAllAgents()">Copy Cached (' + agentUnlinked.length + ')</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  html += '<div style="margin-bottom:12px">' + copyBtn('claude plugin marketplace add ganeshgaxy/noob-tester-skills') + '</div>';
+  for (var p = 0; p < data.agents.length; p++) {
+    var agent = data.agents[p];
+    var aIcon, aColor, aRight;
+    var aCheckCmd = JSON.stringify('ls -la ' + agent.dest + ' 2>&1').replace(/"/g, '&quot;');
+    var aUnlinkBtn = agent.unlinkCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Unlink ' + agent.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.unlinkCmd).replace(/"/g, '&quot;') + ',this)">Unlink</div>' : '';
+    var aUninstallBtn = agent.uninstallCmd ? '<div class="action-btn" style="color:var(--red);font-size:11px" onclick="confirmAndRun(' + JSON.stringify('Uninstall ' + agent.id + '?').replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.uninstallCmd).replace(/"/g, '&quot;') + ',this)">Uninstall</div>' : '';
+    if (agent.installed && agent.upToDate) {
+      aIcon = '&#10003;'; aColor = 'var(--green)';
+      aRight = '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + esc(agent.copyCmd || "copied") + '</span>' + aUnlinkBtn + aUninstallBtn + '</div>';
+    } else if (agent.installed) {
+      aIcon = '&#8635;'; aColor = 'var(--yellow)';
+      aRight = '<div style="display:flex;align-items:center;gap:8px">' + cmdWithBtn(agent.copyCmd || agent.installCmd, 'Update', 'runCmdInClaudeTab(' + JSON.stringify('claude plugin marketplace add ganeshgaxy/noob-tester-skills && claude plugin marketplace update noob-tester-skills && claude plugin install ' + agent.id + '@noob-tester-skills').replace(/"/g, '&quot;') + ',this)') + aUnlinkBtn + '</div>';
+    } else if (agent.pluginInstalled && agent.srcExists) {
+      aIcon = '&#9675;'; aColor = 'var(--yellow)';
+      aRight = '<div style="display:flex;align-items:center;gap:8px">' + copyBtn(agent.copyCmd) + '<div class="action-btn" style="color:var(--accent)" onclick="installAgent(' + JSON.stringify(agent.src).replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.dest).replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.id).replace(/"/g, '&quot;') + ')">Copy</div>' + aUninstallBtn + '</div>';
+    } else {
+      aIcon = '&#10007;'; aColor = 'var(--red)';
+      aRight = cmdWithBtn(agent.installCmd, 'Install', 'runCmdInClaudeTab(' + JSON.stringify('claude plugin marketplace add ganeshgaxy/noob-tester-skills && claude plugin marketplace update noob-tester-skills && claude plugin install ' + agent.id + '@noob-tester-skills').replace(/"/g, '&quot;') + ',this)');
+    }
+    aRight = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' + aRight + '<div class="action-btn" style="color:var(--muted);font-size:11px" onclick="runCmdInClaudeTab(' + aCheckCmd + ',this)">Check</div></div>';
+    html += setupRow(aIcon, aColor, agent.label, '', aRight);
+  }
+  html += '</div>';
+
+  // ── Update noob-tester-skills marketplace ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+  html += '<div>';
+  html += '<div style="font-weight:500;font-size:14px">noob-tester-skills Marketplace</div>';
+  html += '<div style="font-size:12px;color:var(--dim);margin-top:2px">Pull latest plugin definitions from ganeshgaxy/noob-tester-skills</div>';
+  html += '</div>';
+  html += '<div class="action-btn" style="color:var(--accent);white-space:nowrap" onclick="runCmdInClaudeTab(' + JSON.stringify('claude plugin marketplace update noob-tester-skills').replace(/"/g, '&quot;') + ',this)">Update Marketplace</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // ── Global Claude Settings ──
+  html += '<div class="panel" style="margin-bottom:16px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  html += '<div style="font-weight:500;font-size:14px">Global Claude Settings</div>';
+  html += '<div class="action-btn" style="font-size:11px" onclick="openClaudeSettingsModal()"><i class="ph ph-file-text" style="margin-right:4px"></i>Open / Edit</div>';
+  html += '</div>';
+  html += '<div style="font-size:12px;color:var(--dim)">~/.claude/settings.json — permissions, env vars, hooks</div>';
   html += '</div>';
 
   return html;
@@ -1901,6 +2196,10 @@ function copyBtn(cmd) {
   return '<code style="font-size:11px;color:var(--dim);background:var(--surface-raised);padding:4px 10px;border-radius:var(--radius-xs);cursor:pointer;font-family:var(--font-mono);white-space:nowrap" onclick="navigator.clipboard.writeText(\\'' + esc(cmd) + '\\');this.textContent=\\'Copied!\\';setTimeout(()=>this.textContent=\\'' + esc(cmd) + '\\',1500)">' + esc(cmd) + '</code>';
 }
 
+function cmdWithBtn(cmd, btnLabel, btnAction) {
+  return '<div style="display:flex;align-items:center;gap:8px"><code style="font-size:11px;color:var(--dim);background:var(--surface-raised);padding:4px 10px;border-radius:var(--radius-xs);cursor:pointer;font-family:var(--font-mono);white-space:nowrap;flex:1;overflow:auto" onclick="navigator.clipboard.writeText(\\'' + esc(cmd) + '\\');this.textContent=\\'Copied!\\';setTimeout(()=>this.textContent=\\'' + esc(cmd) + '\\',1500)">' + esc(cmd) + '</code><button style="padding:4px 12px;font-size:11px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;font-weight:500" onclick="' + btnAction + '">' + btnLabel + '</button></div>';
+}
+
 function renderSetupContent(data) {
   var html = '';
 
@@ -1962,12 +2261,2427 @@ window.installAllSkills = async function() {
   }
 };
 
+window.installAllAgents = async function() {
+  try {
+    const data = await fetchJson("/api/setup/check");
+    var pending = data.agents.filter(function(a) { return a.srcExists && (!a.installed || !a.upToDate); });
+    for (var i = 0; i < pending.length; i++) {
+      await postJson("/api/setup/install-agent", { src: pending[i].src, dest: pending[i].dest });
+    }
+    settingsTab = "claude";
+    renderSettingsPage();
+  } catch (err) {
+    alert("Failed: " + String(err));
+  }
+};
+
+window.installAgent = async function(src, dest, id) {
+  try {
+    await postJson("/api/setup/install-agent", { src, dest });
+    settingsTab = "claude";
+    renderSettingsPage();
+  } catch (err) {
+    alert("Failed to copy agent " + id + ": " + String(err));
+  }
+};
+
+window.runClaudeCmd = async function(cmd) {
+  await runCmdInClaudeTab(cmd, event.target);
+};
+
+window.confirmAndRun = async function(msg, cmd, btn) {
+  if (await showConfirm(msg)) runCmdInClaudeTab(cmd, btn);
+};
+
+async function runCmdInClaudeTab(script, btn) {
+  const output = document.getElementById("output-modal-content");
+  if (!output) {
+    // Fallback: open shell page
+    switchPage("shell");
+    setTimeout(function() {
+      const s = document.getElementById("shell-script");
+      if (s) { s.value = script; runShellScript(); }
+    }, 60);
+    return;
+  }
+
+  // Clear previous output
+  output.innerHTML = "";
+
+  // Remove any previous View Output button next to this btn
+  if (btn) {
+    var existing = btn.parentNode && btn.parentNode.querySelector("[data-view-output]");
+    if (existing) existing.remove();
+  }
+
+  // Inject View Output button immediately so user can watch while running
+  var viewBtn = null;
+  if (btn) {
+    viewBtn = document.createElement("div");
+    viewBtn.setAttribute("data-view-output", "1");
+    viewBtn.className = "action-btn";
+    viewBtn.style.cssText = "font-size:11px;color:var(--accent)";
+    viewBtn.textContent = "View Output";
+    viewBtn.onclick = function() {
+      var modal = document.getElementById("output-modal");
+      if (!modal) return;
+      var showing = modal.style.display !== "none";
+      if (showing) {
+        closeOutputModal();
+        viewBtn.textContent = "View Output";
+      } else {
+        openOutputModal(script.length > 60 ? script.slice(0, 57) + "…" : script);
+        viewBtn.textContent = "Hide Output";
+        output.scrollTop = output.scrollHeight;
+      }
+    };
+    btn.insertAdjacentElement("afterend", viewBtn);
+  }
+
+  const origText = btn ? btn.textContent : "";
+  if (btn) { btn.textContent = "Running…"; btn.style.pointerEvents = "none"; }
+
+  const appendText = function(text, color) {
+    if (color) {
+      const span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      output.appendChild(span);
+    } else {
+      output.appendChild(document.createTextNode(text));
+    }
+    const modal = document.getElementById("output-modal");
+    if (modal && modal.style.display !== "none") output.scrollTop = output.scrollHeight;
+  };
+
+  try {
+    const resp = await fetch(API + "/api/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script: script }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(function() { return { error: resp.statusText }; });
+      appendText("Error: " + (err.error || resp.statusText) + "\\n", "var(--red)");
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        if (ev.type === "stdout") appendText(ev.text, null);
+        else if (ev.type === "stderr") appendText(ev.text, "var(--yellow)");
+        else if (ev.type === "error") appendText("Error: " + ev.text + "\\n", "var(--red)");
+        else if (ev.type === "done") appendText("\\n[exit " + ev.code + (ev.signal ? " (" + ev.signal + ")" : "") + "]", ev.code === 0 ? "var(--muted)" : "var(--red)");
+      }
+    }
+  } catch (err) {
+    appendText("Failed: " + String(err) + "\\n", "var(--red)");
+  } finally {
+    if (btn) {
+      btn.style.pointerEvents = "";
+      btn.textContent = origText;
+    }
+    if (viewBtn) {
+      const modal = document.getElementById("output-modal");
+      viewBtn.textContent = (modal && modal.style.display !== "none") ? "Hide Output" : "View Output";
+    }
+  }
+}
+
 window.saveRepoProvider = async function(provider) {
   await postJson("/api/settings", { key: "repo_provider", value: provider });
   renderSettingsPage();
 };
 
 
+
+// ── Agent Builder ──
+
+const COMMON_TOOLS = [
+  "Read","Write","Edit","Bash","Grep","Glob","ToolSearch","WebSearch","WebFetch","Agent","TodoWrite","NotebookEdit",
+  "mcp__claude_ai_Atlassian__getAccessibleAtlassianResources",
+  "mcp__claude_ai_Atlassian__getJiraIssue",
+  "mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks",
+  "mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql",
+  "mcp__claude_ai_Atlassian__addCommentToJiraIssue",
+  "mcp__claude_ai_Atlassian__editJiraIssue",
+  "mcp__claude_ai_Atlassian__searchAtlassian",
+  "mcp__claude_ai_Atlassian__fetchAtlassian",
+];
+const COMMON_MODELS = [
+  { value: "", label: "Default" },
+  { value: "opus", label: "Opus" },
+  { value: "sonnet", label: "Sonnet" },
+  { value: "haiku", label: "Haiku" },
+];
+
+var agentEditing = null;
+var agentsTab = "claude";
+var abInstalledSkills = [];
+
+function renderHomePage() {
+  const app = document.getElementById("app");
+  if (!app) return;
+  const header = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Home</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Your workspace at a glance</div></div>';
+  app.innerHTML = '<div class="page-fixed">' + header + '</div><div class="page-content"></div>';
+}
+
+// ── Tickets Page ──
+
+function filterAnalysesRunList(q) {
+  var term = (q || '').trim().toLowerCase();
+  var list = document.getElementById('analyses-run-list');
+  if (!list) return;
+  list.querySelectorAll('[data-run-ref]').forEach(function(el) {
+    var ref = (el.dataset.runRef || '').toLowerCase();
+    el.style.display = (!term || ref.indexOf(term) !== -1) ? '' : 'none';
+  });
+  list.querySelectorAll('[data-analyses-group]').forEach(function(sec) {
+    var next = sec.nextElementSibling;
+    if (!next) return;
+    var anyVisible = Array.from(next.querySelectorAll('[data-run-ref]')).some(function(p) { return p.style.display !== 'none'; });
+    sec.style.display = anyVisible ? '' : 'none';
+    next.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function filterRunsList(q) {
+  var term = (q || '').trim().toLowerCase();
+  var list = document.getElementById('runs-ticket-list');
+  if (!list) return;
+  list.querySelectorAll('[data-ticket-id]').forEach(function(el) {
+    var tid = (el.dataset.ticketId || '').toLowerCase();
+    el.style.display = (!term || tid.indexOf(term) !== -1) ? '' : 'none';
+  });
+  list.querySelectorAll('[data-runs-group]').forEach(function(sec) {
+    var next = sec.nextElementSibling;
+    if (!next) return;
+    var anyVisible = Array.from(next.querySelectorAll('[data-ticket-id]')).some(function(p) { return p.style.display !== 'none'; });
+    sec.style.display = anyVisible ? '' : 'none';
+    next.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function filterPlansList(q) {
+  var term = (q || '').trim().toLowerCase();
+  var list = document.getElementById('plans-ticket-list');
+  if (!list) return;
+  list.querySelectorAll('[data-ticket-id]').forEach(function(el) {
+    var tid = (el.dataset.ticketId || '').toLowerCase();
+    el.style.display = (!term || tid.indexOf(term) !== -1) ? '' : 'none';
+  });
+  list.querySelectorAll('[data-plans-group]').forEach(function(sec) {
+    var next = sec.nextElementSibling;
+    if (!next) return;
+    var anyVisible = Array.from(next.querySelectorAll('[data-ticket-id]')).some(function(p) { return p.style.display !== 'none'; });
+    sec.style.display = anyVisible ? '' : 'none';
+    next.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function filterTwList(q) {
+  var term = (q || "").trim().toLowerCase();
+  var list = document.getElementById("tw-list");
+  if (!list) return;
+  var panels = list.querySelectorAll("[data-ticket-id]");
+  var sections = list.querySelectorAll("[data-tw-group]");
+  panels.forEach(function(el) {
+    var tid = (el.dataset.ticketId || "").toLowerCase();
+    el.style.display = (!term || tid.indexOf(term) !== -1) ? "" : "none";
+  });
+  // Hide group headers when all their tickets are hidden
+  sections.forEach(function(sec) {
+    var group = sec.dataset.twGroup;
+    var groupPanels = list.querySelectorAll("[data-ticket-group='" + group + "']");
+    var anyVisible = Array.from(groupPanels).some(function(p) { return p.style.display !== "none"; });
+    sec.style.display = anyVisible ? "" : "none";
+  });
+}
+
+const TW_STATUS_COLORS = {
+  new:       'var(--dim)',
+  queued:    'var(--accent)',
+  running:   'var(--green)',
+  paused:    'var(--yellow)',
+  completed: 'var(--muted)',
+  failed:    'var(--red)',
+  cancelled: 'var(--dim)',
+};
+
+async function renderTicketsPage() {
+  savePageState();
+  const [tickets, pageCfg, agents] = await Promise.all([
+    fetchJson("/api/tickets"),
+    fetchJson("/api/page-config/tickets").catch(() => ({})),
+    fetchJson("/api/agents").catch(() => []),
+  ]);
+
+  const assignedAgent = pageCfg?.agent_name || null;
+  window.__pageConfigData = { page: 'tickets', label: 'Tickets', agents: agents || [], currentAgent: assignedAgent };
+  if (assignedAgent) {
+    const agentObj = (agents || []).find(function(a) { return a.name === assignedAgent; });
+    window.__agentRunData = { agentName: assignedAgent, agentPath: agentObj ? agentObj.path : null, contextLabel: 'Tickets' };
+  }
+
+  let fixedHtml = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">';
+  fixedHtml += '<div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Tickets</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Track ticket workflow status</div></div>';
+  fixedHtml += '<div style="display:flex;align-items:center;gap:8px">';
+  if (assignedAgent) {
+    fixedHtml += \`<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openAgentRunModal()" title="Run \${esc(assignedAgent)}"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>\${esc(assignedAgent)}</button>\`;
+  }
+  fixedHtml += '<button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;tickets&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button>';
+  fixedHtml += '<button class="action-btn" style="font-size:11px" onclick="openAddTicketModal()"><i class="ph ph-plus" style="margin-right:4px"></i>Add Ticket</button>';
+  fixedHtml += '<button class="action-btn" style="font-size:11px" onclick="openPageConfigModal()"><i class="ph ph-gear" style="margin-right:4px"></i>Configure</button>';
+  fixedHtml += '</div></div>';
+
+  // Stats
+  if (tickets?.length) {
+    const counts = { new:0, queued:0, running:0, paused:0, completed:0, failed:0, cancelled:0 };
+    for (const t of tickets) counts[t.status] = (counts[t.status] || 0) + 1;
+    fixedHtml += '<div style="display:flex;gap:16px;margin-bottom:16px">';
+    for (const [s, n] of Object.entries(counts)) {
+      if (!n) continue;
+      fixedHtml += \`<div class="stat"><div class="stat-value" style="color:\${TW_STATUS_COLORS[s]}">\${n}</div><div class="stat-label">\${s}</div></div>\`;
+    }
+    fixedHtml += '</div>';
+  }
+
+  // Filter bar
+  fixedHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+  fixedHtml += '<div style="flex:1;display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">';
+  fixedHtml += '<i class="ph ph-magnifying-glass" style="font-size:13px;color:var(--dim);flex-shrink:0"></i>';
+  fixedHtml += '<input id="tw-filter-input" type="text" placeholder="Filter tickets..." oninput="filterTwList(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />';
+  fixedHtml += '</div></div>';
+
+  let html = '<div id="tw-list">' + twRenderList(tickets) + '</div>';
+
+  const twApp = document.getElementById('app');
+  if (twApp) {
+    twApp.innerHTML = '<div class="page-fixed">' + fixedHtml + '</div><div class="page-content">' + html + '</div>';
+  }
+  setTimeout(function() {
+    var cards = document.querySelectorAll('#tw-list [data-ticket-id]');
+    if (!cards.length) return;
+    var max = 0;
+    cards.forEach(function(c) { c.style.height = ''; });
+    cards.forEach(function(c) { max = Math.max(max, c.offsetHeight); });
+    cards.forEach(function(c) { c.style.height = max + 'px'; });
+  }, 0);
+}
+
+function twPhasePipeline(currentPhase, status) {
+  const phases = ['analyze', 'plan', 'test', 'review', 'done'];
+  const currentIdx = phases.indexOf(currentPhase);
+  const isTerminal = status === 'completed' || status === 'cancelled';
+  const isFailed = status === 'failed';
+  let html = '<div style="display:flex;align-items:center;gap:0;margin:7px 0 5px">';
+  for (let i = 0; i < phases.length; i++) {
+    const ph = phases[i];
+    const isPast = isTerminal || (currentIdx >= 0 && i < currentIdx);
+    const isCurrent = !isTerminal && i === currentIdx;
+    const isFuture = !isTerminal && i > currentIdx;
+    let dotColor = 'var(--border)';
+    let labelColor = 'var(--dim)';
+    let fontWeight = '400';
+    if (isPast) { dotColor = 'var(--accent)'; labelColor = 'var(--muted)'; }
+    if (isCurrent && isFailed) { dotColor = 'var(--red)'; labelColor = 'var(--red)'; fontWeight = '600'; }
+    else if (isCurrent) { dotColor = TW_STATUS_COLORS[status] || 'var(--accent)'; labelColor = dotColor; fontWeight = '600'; }
+    html += \`<div style="display:flex;align-items:center;gap:0">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <div style="width:7px;height:7px;border-radius:50%;background:\${dotColor};flex-shrink:0"></div>
+        <span style="font-size:9px;color:\${labelColor};font-weight:\${fontWeight};white-space:nowrap">\${ph}</span>
+      </div>
+      \${i < phases.length - 1 ? \`<div style="width:24px;height:1px;background:\${isPast ? 'var(--accent)' : 'var(--border)'};margin-bottom:11px;flex-shrink:0"></div>\` : ''}
+    </div>\`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function twArtifactBadges(t) {
+  const badges = [
+    { label: 'analyses', count: t.analysis_count, icon: 'ph-magnifying-glass' },
+    { label: 'plan', count: t.plan_count, icon: 'ph-list-checks' },
+    { label: 'tests', count: t.test_case_count, icon: 'ph-test-tube' },
+    { label: 'visual', count: t.visual_test_case_count, icon: 'ph-eye' },
+    { label: 'issues', count: t.issue_count, icon: 'ph-bug', warn: true },
+    { label: 'blockers', count: t.blocker_count, icon: 'ph-warning', warn: true },
+  ];
+  const parts = badges.filter(b => b.count > 0).map(b => {
+    const color = b.warn ? 'var(--red)' : 'var(--muted)';
+    const bg = b.warn ? 'rgba(220,53,69,0.08)' : 'rgba(128,128,128,0.08)';
+    return \`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:\${color};background:\${bg};padding:1px 6px;border-radius:8px"><i class="ph \${b.icon}" style="font-size:10px"></i>\${b.count} \${b.label}</span>\`;
+  });
+  return parts.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">' + parts.join('') + '</div>' : '';
+}
+
+function twTimeContext(t) {
+  const parts = [];
+  if (t.status === 'running' && t.started_at) parts.push('running for ' + timeAgo(t.started_at).replace(' ago', ''));
+  else if (t.started_at && !t.completed_at) parts.push('started ' + timeAgo(t.started_at));
+  if (t.completed_at) parts.push('completed ' + timeAgo(t.completed_at));
+  else if (t.updated_at) parts.push('updated ' + timeAgo(t.updated_at));
+  return parts.length ? \`<span style="font-size:10px;color:var(--dim)">\${parts.join(' · ')}</span>\` : '';
+}
+
+function twLinkIndicators(t) {
+  const hasRepo = !!(t.git_repo && t.git_repo.trim());
+  const hasMrPr = !!(t.mr_pr_link && t.mr_pr_link.trim());
+  const repoTitle = hasRepo ? esc(t.git_repo) : 'No git repo set — click to add';
+  const mrTitle  = hasMrPr ? esc(t.mr_pr_link) : 'No MR/PR link set — click to add';
+  const repoColor  = hasRepo ? 'var(--green)'  : 'var(--border)';
+  const mrColor    = hasMrPr ? 'var(--accent)' : 'var(--border)';
+  const repoText   = hasRepo ? 'var(--green)'  : 'var(--dim)';
+  const mrText     = hasMrPr ? 'var(--accent)' : 'var(--dim)';
+  const repoBg     = hasRepo ? 'rgba(34,197,94,0.1)'   : 'transparent';
+  const mrBg       = hasMrPr ? 'rgba(88,166,255,0.1)'  : 'transparent';
+  const repoBorder = hasRepo ? 'rgba(34,197,94,0.3)'   : 'var(--border)';
+  const mrBorder   = hasMrPr ? 'rgba(88,166,255,0.3)'  : 'var(--border)';
+  let html = '';
+  html += \`<span title="\${repoTitle}" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;padding:2px 6px;border-radius:8px;border:1px solid \${repoBorder};background:\${repoBg};color:\${repoText}"><i class="ph ph-git-branch" style="font-size:10px;color:\${repoColor}"></i>Repo</span>\`;
+  html += \`<span title="\${mrTitle}"   style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;padding:2px 6px;border-radius:8px;border:1px solid \${mrBorder};background:\${mrBg};color:\${mrText}"><i class="ph ph-git-pull-request" style="font-size:10px;color:\${mrColor}"></i>MR/PR</span>\`;
+  return html;
+}
+
+function twRenderTicket(t, isOld, groupKey) {
+  const color = TW_STATUS_COLORS[t.status] || 'var(--dim)';
+  const safeId = t.ticket_id.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const gk = groupKey || 'ungrouped';
+
+  // Notes: show first 80 chars with expand toggle if longer
+  let notesHtml = '';
+  if (t.notes) {
+    const short = t.notes.length > 80;
+    notesHtml = \`<div style="font-size:11px;color:var(--dim);line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+      <span id="tw-notes-short-\${safeId}">\${esc(short ? t.notes.slice(0, 80) + '…' : t.notes)}</span>
+      \${short ? \`<span id="tw-notes-full-\${safeId}" style="display:none">\${esc(t.notes)}</span><span onclick="(function(){var s=document.getElementById('tw-notes-short-\${safeId}');var f=document.getElementById('tw-notes-full-\${safeId}');var b=document.getElementById('tw-notes-btn-\${safeId}');if(f.style.display==='none'){f.style.display='inline';s.style.display='none';b.textContent='less';}else{f.style.display='none';s.style.display='inline';b.textContent='more';}})()" id="tw-notes-btn-\${safeId}" style="color:var(--accent);cursor:pointer;font-size:10px;margin-left:4px;user-select:none">more</span>\` : ''}
+    </div>\`;
+  }
+
+  // Artifact counts as compact icon+number pairs
+  const artifactItems = [
+    { icon: 'ph-magnifying-glass', count: t.analysis_count, label: 'analyses' },
+    { icon: 'ph-list-checks',      count: t.plan_count,        label: 'plans' },
+    { icon: 'ph-test-tube',        count: t.test_case_count,   label: 'tests' },
+    { icon: 'ph-eye',              count: t.visual_test_case_count, label: 'visual' },
+    { icon: 'ph-bug',              count: t.issue_count,       label: 'issues',   warn: true },
+    { icon: 'ph-warning',          count: t.blocker_count,     label: 'blockers', warn: true },
+  ].filter(a => a.count > 0);
+
+  const artifactsHtml = artifactItems.length
+    ? \`<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">\${artifactItems.map(a =>
+        \`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:\${a.warn ? 'var(--red)' : 'var(--muted)'}">
+          <i class="ph \${a.icon}" style="font-size:12px"></i>\${a.count} \${a.label}
+        </span>\`).join('')}</div>\`
+    : '';
+
+  const timeCtx = twTimeContext(t);
+
+  return \`<div class="panel" data-ticket-id="\${esc(t.ticket_id)}" data-ticket-group="\${gk}" style="padding:0;display:flex;flex-direction:column;border:1px solid var(--border);height:100%">
+
+    <!-- ── Card header ── -->
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:14px 14px 10px">
+      <!-- Ticket icon -->
+      <div style="flex-shrink:0;width:34px;height:34px;border-radius:8px;background:rgba(128,128,128,0.08);border:1px solid var(--border);display:flex;align-items:center;justify-content:center">
+        <i class="ph ph-ticket" style="font-size:17px;color:\${color}"></i>
+      </div>
+      <!-- Title block -->
+      <div style="flex:1;min-width:0;padding-top:1px">
+        <div style="font-size:13px;font-weight:700;font-family:var(--font-mono);letter-spacing:0.2px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\${esc(t.ticket_id)}</div>
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:4px">
+          \${t.status !== 'new' ? \`<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:rgba(128,128,128,0.1);color:\${color};font-weight:500">\${t.status}\${t.current_phase ? ' · ' + t.current_phase : ''}</span>\` : ''}
+          \${t.ready !== 0
+            ? \`<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:rgba(34,197,94,0.08);color:var(--green);border:1px solid rgba(34,197,94,0.2);font-weight:500">ready</span>\`
+            : \`<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:rgba(234,179,8,0.08);color:var(--yellow);border:1px solid rgba(234,179,8,0.2);font-weight:500">on hold</span>\`}
+          \${t.active ? \`<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:rgba(34,197,94,0.12);color:var(--green);font-weight:500">● active</span>\` : ''}
+          \${t.progress > 0 && t.status !== 'completed' ? \`<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">\${t.progress}%</span>\` : ''}
+        </div>
+      </div>
+      <!-- Context menu -->
+      <div class="tw-ctx-wrap" style="flex-shrink:0">
+        <button class="tw-ctx-btn" onclick="twCtxToggle('\${safeId}',event)" title="Actions">⋮</button>
+        <div class="tw-ctx-menu" id="tw-ctx-\${safeId}">
+          \${t.ready !== 0
+            ? \`<button class="tw-ctx-item" onclick="twCtxClose('\${safeId}');twToggleReady('\${esc(t.ticket_id)}',false)"><i class="ph ph-toggle-right" style="font-size:13px;color:var(--green)"></i>Mark as On Hold</button>\`
+            : \`<button class="tw-ctx-item" onclick="twCtxClose('\${safeId}');twToggleReady('\${esc(t.ticket_id)}',true)"><i class="ph ph-toggle-left" style="font-size:13px;color:var(--yellow)"></i>Mark as Ready</button>\`}
+          <div class="tw-ctx-divider"></div>
+          \${isOld ? \`<button class="tw-ctx-item" onclick="twCtxClose('\${safeId}');twMakeToday('\${esc(t.ticket_id)}')"><i class="ph ph-calendar-plus" style="font-size:13px;color:var(--dim)"></i>Make Today's</button>\` : ''}
+          \${t.last_session_id ? \`<button class="tw-ctx-item" onclick="twCtxClose('\${safeId}');switchPage('sessions');setTimeout(()=>selectSession&&selectSession('\${esc(t.last_session_id)}'),300)"><i class="ph ph-arrow-square-out" style="font-size:13px;color:var(--dim)"></i>Open Session</button>\` : ''}
+          <button class="tw-ctx-item" onclick="twCtxClose('\${safeId}');twOpenRunHistory('\${esc(t.ticket_id)}')"><i class="ph ph-clock-counter-clockwise" style="font-size:13px;color:var(--dim)"></i>Run History</button>
+          <button class="tw-ctx-item" onclick="twCtxClose('\${safeId}');twOpenLinksModal('\${esc(t.ticket_id)}')"><i class="ph ph-link" style="font-size:13px;color:var(--dim)"></i>Update Repo / MR-PR</button>
+          <div class="tw-ctx-divider"></div>
+          <button class="tw-ctx-item danger" onclick="twCtxClose('\${safeId}');twDeleteTicket('\${esc(t.ticket_id)}')"><i class="ph ph-trash" style="font-size:13px"></i>Remove</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Card body ── -->
+    <div style="padding:0 14px 12px;flex:1">
+      \${t.current_phase || t.status === 'completed' ? twPhasePipeline(t.current_phase, t.status) : ''}
+      \${artifactsHtml}
+      \${t.error_message ? \`<div style="font-size:11px;color:var(--red);margin-top:8px;padding:5px 8px;background:rgba(220,53,69,0.08);border-radius:5px;word-break:break-word"><i class="ph ph-warning" style="margin-right:4px"></i>\${esc(t.error_message)}</div>\` : ''}
+      \${notesHtml}
+    </div>
+
+    <!-- ── Card footer ── -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;border-top:1px solid var(--border);background:var(--surface-raised);border-radius:0 0 var(--radius) var(--radius)">
+      <div style="display:flex;align-items:center;gap:6px">\${twLinkIndicators(t)}</div>
+      \${timeCtx ? \`<span style="font-size:10px;color:var(--dim)">\${timeCtx.replace(/<[^>]+>/g,'')}</span>\` : ''}
+    </div>
+
+  </div>\`;
+}
+
+function twRenderList(tickets) {
+  if (!tickets?.length) {
+    return '<div class="panel"><div class="empty">No tickets yet. Add a ticket ID above to start tracking.</div></div>';
+  }
+
+  const statusOrder = { running:0, paused:1, queued:2, new:3, failed:4, completed:5, cancelled:6 };
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+
+  // Partition: today / this week (last 7d excl. today) / older
+  const todayTickets = tickets.filter(t => t.added_at && t.added_at.startsWith(todayStr));
+  const weekTickets  = tickets.filter(t => t.added_at && !t.added_at.startsWith(todayStr) && t.added_at >= weekAgoStr);
+  const oldTickets   = tickets.filter(t => !t.added_at || t.added_at < weekAgoStr);
+
+  const sortFn = (a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9);
+  todayTickets.sort(sortFn);
+  weekTickets.sort(sortFn);
+  oldTickets.sort(sortFn);
+
+  const renderGroup = (label, color, items, isOld) => {
+    if (!items.length) return '';
+    const groupKey = label.replace(/\s/g, '-').toLowerCase();
+    let h = \`<div data-tw-group="\${groupKey}" style="font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:\${color};margin:4px 2px 8px">\${label} (\${items.length})</div>\`;
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;margin-bottom:18px">';
+    for (const t of items) h += twRenderTicket(t, isOld, groupKey);
+    h += '</div>';
+    return h;
+  };
+
+  let html = '<div>';
+  html += renderGroup('Today', 'var(--accent)', todayTickets, false);
+  html += renderGroup('This Week', 'var(--muted)', weekTickets, true);
+  html += renderGroup('Older', 'var(--dim)', oldTickets, true);
+  html += '</div>';
+  return html;
+}
+
+function openAddTicketModal() {
+  var modal = document.getElementById("add-ticket-modal");
+  var idEl = document.getElementById("tw-ticket-id");
+  var notesEl = document.getElementById("tw-notes");
+  var readyEl = document.getElementById("tw-add-ready");
+  var errEl = document.getElementById("tw-add-error");
+  if (!modal) return;
+  if (idEl) idEl.value = "";
+  if (notesEl) notesEl.value = "";
+  if (readyEl) readyEl.checked = false; // default: On Hold
+  if (errEl) errEl.style.display = "none";
+  modal.style.display = "flex";
+  setTimeout(function() { if (idEl) idEl.focus(); }, 50);
+}
+
+function closeAddTicketModal() {
+  var modal = document.getElementById("add-ticket-modal");
+  if (modal) modal.style.display = "none";
+}
+
+async function twAddTicket() {
+  const idEl = document.getElementById("tw-ticket-id");
+  const notesEl = document.getElementById("tw-notes");
+  const readyEl = document.getElementById("tw-add-ready");
+  const errEl = document.getElementById("tw-add-error");
+  const ticketId = idEl?.value?.trim();
+  if (!ticketId) {
+    if (errEl) { errEl.textContent = "Ticket ID is required"; errEl.style.display = "block"; }
+    return;
+  }
+  if (errEl) errEl.style.display = "none";
+  const ready = readyEl?.checked ? 1 : 0;
+  const res = await postJson("/api/tickets", { ticket_id: ticketId, notes: notesEl?.value?.trim() || undefined, ready });
+  if (res.ok) {
+    closeAddTicketModal();
+    renderTicketsPage();
+  } else {
+    if (errEl) { errEl.textContent = res.error || "Failed to add ticket"; errEl.style.display = "block"; }
+  }
+}
+
+function twCtxToggle(safeId, event) {
+  event.stopPropagation();
+  var menu = document.getElementById('tw-ctx-' + safeId);
+  if (!menu) return;
+  var isOpen = menu.classList.contains('open');
+  document.querySelectorAll('.tw-ctx-menu.open').forEach(function(m) { m.classList.remove('open'); });
+  if (!isOpen) {
+    var btn = event.currentTarget;
+    var rect = btn.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 4) + 'px';
+    menu.style.left = 'auto';
+    menu.style.right = (window.innerWidth - rect.right) + 'px';
+    menu.classList.add('open');
+    setTimeout(function() {
+      document.addEventListener('click', function __closeCtx() {
+        menu.classList.remove('open');
+        document.removeEventListener('click', __closeCtx);
+      });
+    }, 0);
+  }
+}
+
+function twCtxClose(safeId) {
+  var menu = document.getElementById('tw-ctx-' + safeId);
+  if (menu) menu.classList.remove('open');
+}
+
+function schedCtxToggle(safeId, event) {
+  event.stopPropagation();
+  var menu = document.getElementById('sched-ctx-' + safeId);
+  if (!menu) return;
+  var isOpen = menu.classList.contains('open');
+  document.querySelectorAll('.tw-ctx-menu.open').forEach(function(m) { m.classList.remove('open'); });
+  if (!isOpen) {
+    var btn = event.currentTarget;
+    var rect = btn.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 4) + 'px';
+    menu.style.left = 'auto';
+    menu.style.right = (window.innerWidth - rect.right) + 'px';
+    menu.classList.add('open');
+    setTimeout(function() {
+      document.addEventListener('click', function __closeSchedCtx() {
+        menu.classList.remove('open');
+        document.removeEventListener('click', __closeSchedCtx);
+      });
+    }, 0);
+  }
+}
+
+function schedCtxClose(safeId) {
+  var menu = document.getElementById('sched-ctx-' + safeId);
+  if (menu) menu.classList.remove('open');
+}
+
+async function twDeleteTicket(ticketId) {
+  if (!await showConfirm("Remove " + ticketId + " from tracking?", "Remove")) return;
+  await fetch("/api/tickets/" + encodeURIComponent(ticketId), { method: "DELETE" });
+  renderTicketsPage();
+}
+
+async function twMakeToday(ticketId) {
+  await fetch("/api/tickets/" + encodeURIComponent(ticketId) + "/touch", { method: "POST" });
+  renderTicketsPage();
+}
+
+async function twToggleReady(ticketId, ready) {
+  await postJson("/api/tickets/" + encodeURIComponent(ticketId) + "/ready", { ready });
+  renderTicketsPage();
+}
+
+// ── Run History Modal ──
+
+var _twRunHistoryTicket = null;
+
+function twCloseRunHistory() {
+  var overlay = document.getElementById("tw-run-history-overlay");
+  if (overlay) overlay.style.display = "none";
+  _twRunHistoryTicket = null;
+}
+
+async function twOpenRunHistory(ticketId) {
+  _twRunHistoryTicket = ticketId;
+  var overlay = document.getElementById("tw-run-history-overlay");
+  var content = document.getElementById("tw-run-history-content");
+  if (!overlay || !content) return;
+  content.innerHTML = '<div style="padding:32px;text-align:center;color:var(--dim)"><i class="ph ph-spinner" style="font-size:20px"></i> Loading…</div>';
+  overlay.style.display = "flex";
+  try {
+    var data = await fetchJson("/api/tickets/" + encodeURIComponent(ticketId) + "/run-history");
+    content.innerHTML = twRenderRunHistoryModal(ticketId, data);
+  } catch (e) {
+    content.innerHTML = '<div style="padding:24px;color:var(--red)">Failed to load history: ' + esc(String(e)) + '</div>';
+  }
+}
+
+function twRenderRunHistoryModal(ticketId, data) {
+  var agentRuns = data.agentRuns || [];
+  var polling = data.pollingHistory || [];
+  var h = '';
+  // Header
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0">';
+  h += '<div>';
+  h += '<div style="font-size:15px;font-weight:700;color:#fff">' + esc(ticketId) + '</div>';
+  h += '<div style="font-size:11px;color:var(--dim);margin-top:2px">Run History</div>';
+  h += '</div>';
+  h += '<span style="cursor:pointer;color:var(--muted);width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-xs);font-size:18px" onclick="twCloseRunHistory()">&times;</span>';
+  h += '</div>';
+  // Body
+  h += '<div style="padding:20px;overflow-y:auto;max-height:calc(80vh - 80px);display:flex;flex-direction:column;gap:20px">';
+
+  // ── Agent Runs section ──
+  h += '<div>';
+  h += '<div style="font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Agent Runs (' + agentRuns.length + ')</div>';
+  if (agentRuns.length === 0) {
+    h += '<div style="font-size:12px;color:var(--muted);font-style:italic">No agent runs recorded.</div>';
+  } else {
+    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for (var i = 0; i < agentRuns.length; i++) {
+      var r = agentRuns[i];
+      var statusColor = r.status === 'done' ? 'var(--green)' : r.status === 'failed' ? 'var(--red)' : r.status === 'running' ? 'var(--accent)' : 'var(--muted)';
+      var duration = '';
+      if (r.started_at && r.ended_at) {
+        var ms = new Date(r.ended_at + 'Z').getTime() - new Date(r.started_at + 'Z').getTime();
+        duration = ms < 60000 ? Math.round(ms / 1000) + 's' : Math.round(ms / 60000) + 'm';
+      }
+      h += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised)">';
+      h += '<div style="width:8px;height:8px;border-radius:50%;background:' + statusColor + ';flex-shrink:0"></div>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:12px;color:var(--text);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.agent_name || r.page || '-') + '</div>';
+      h += '<div style="font-size:10px;color:var(--dim);margin-top:2px">' + esc(r.started_at ? timeAgo(r.started_at) : '-') + (duration ? ' · ' + duration : '') + '</div>';
+      h += '</div>';
+      h += '<span style="font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600;background:rgba(0,0,0,0.2);color:' + statusColor + '">' + esc(r.status) + '</span>';
+      var delRunOnclick = "twDeleteRunHistoryEntry('" + r.id + "','agent','" + ticketId + "')";
+      h += '<button onclick="' + delRunOnclick + '" style="padding:2px 8px;font-size:10px;border:1px solid rgba(220,53,69,0.3);border-radius:var(--radius-xs);background:transparent;color:var(--red);cursor:pointer;flex-shrink:0" title="Delete this run">Delete</button>';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // ── Scheduler Polling History section ──
+  h += '<div>';
+  h += '<div style="font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Scheduler Polling History (' + polling.length + ')</div>';
+  if (polling.length === 0) {
+    h += '<div style="font-size:12px;color:var(--muted);font-style:italic">No scheduler polling recorded.</div>';
+  } else {
+    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for (var j = 0; j < polling.length; j++) {
+      var p = polling[j];
+      h += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised)">';
+      h += '<i class="ph ph-clock" style="font-size:12px;color:var(--accent);flex-shrink:0"></i>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:12px;color:var(--text);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(shortenPath(p.agent_path)) + '</div>';
+      h += '<div style="font-size:10px;color:var(--dim);margin-top:2px">' + esc(p.run_date) + '</div>';
+      h += '</div>';
+      var delPollOnclick = "twDeleteRunHistoryEntry('" + p.id + "','polling','" + ticketId + "')";
+      h += '<button onclick="' + delPollOnclick + '" style="padding:2px 8px;font-size:10px;border:1px solid rgba(220,53,69,0.3);border-radius:var(--radius-xs);background:transparent;color:var(--red);cursor:pointer;flex-shrink:0" title="Delete this record">Delete</button>';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  h += '</div>';
+  return h;
+}
+
+async function twDeleteRunHistoryEntry(id, type, ticketId) {
+  var label = type === 'agent' ? 'this agent run' : 'this scheduler record';
+  if (!await showConfirm("Delete " + label + "? This cannot be undone.", "Delete")) return;
+  var endpoint = type === 'agent'
+    ? "/api/agent-runs/" + encodeURIComponent(id) + "/delete"
+    : "/api/polling-history/" + encodeURIComponent(id) + "/delete";
+  await fetch(endpoint, { method: "POST" });
+  await twOpenRunHistory(ticketId);
+}
+
+// ── Links Modal ──
+
+var _twLinksModalTicket = null;
+
+function twOpenLinksModal(ticketId) {
+  _twLinksModalTicket = ticketId;
+  var modal   = document.getElementById("tw-links-modal");
+  var label   = document.getElementById("tw-links-modal-ticket");
+  var repoEl  = document.getElementById("tw-links-modal-repo");
+  var mrEl    = document.getElementById("tw-links-modal-mr");
+  var errEl   = document.getElementById("tw-links-modal-err");
+  if (!modal) return;
+  // Pre-fill current values from the rendered card indicators (read from ticket data via API)
+  fetch("/api/tickets/" + encodeURIComponent(ticketId))
+    .then(function(r) { return r.json(); })
+    .then(function(ticket) {
+      if (repoEl) repoEl.value = ticket.git_repo || "";
+      if (mrEl)   mrEl.value   = ticket.mr_pr_link || "";
+    }).catch(function() {});
+  if (label) label.textContent = ticketId;
+  if (errEl) errEl.style.display = "none";
+  modal.style.display = "flex";
+  setTimeout(function() { if (repoEl) repoEl.focus(); }, 50);
+}
+
+function twCloseLinksModal() {
+  var modal = document.getElementById("tw-links-modal");
+  if (modal) modal.style.display = "none";
+  _twLinksModalTicket = null;
+}
+
+async function twSaveLinksModal() {
+  var ticketId = _twLinksModalTicket;
+  if (!ticketId) return;
+  var repoEl = document.getElementById("tw-links-modal-repo");
+  var mrEl   = document.getElementById("tw-links-modal-mr");
+  var errEl  = document.getElementById("tw-links-modal-err");
+  var gitRepo  = repoEl ? repoEl.value.trim() : "";
+  var mrPrLink = mrEl   ? mrEl.value.trim()   : "";
+  if (errEl) errEl.style.display = "none";
+  try {
+    const resp = await fetch("/api/tickets/" + encodeURIComponent(ticketId), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ git_repo: gitRepo || null, mr_pr_link: mrPrLink || null }),
+    });
+    if (!resp.ok) throw new Error("Save failed");
+    twCloseLinksModal();
+    renderTicketsPage();
+  } catch (e) {
+    if (errEl) { errEl.textContent = "Failed to save. Please try again."; errEl.style.display = "block"; }
+  }
+}
+
+var CS_KNOWN_TOOLS = COMMON_TOOLS.filter(function(t) { return t.startsWith("mcp__"); });
+
+function csGetSettings() {
+  var editor = document.getElementById("claude-settings-editor");
+  try { return JSON.parse(editor ? editor.value : "{}"); } catch { return {}; }
+}
+
+function csSetSettings(obj) {
+  var editor = document.getElementById("claude-settings-editor");
+  if (editor) editor.value = JSON.stringify(obj, null, 2);
+}
+
+function csGetList(list) {
+  var s = csGetSettings();
+  return (s.permissions && s.permissions[list]) ? s.permissions[list] : [];
+}
+
+function csSetList(list, arr) {
+  var s = csGetSettings();
+  if (!s.permissions) s.permissions = {};
+  s.permissions[list] = arr;
+  csSetSettings(s);
+  csRenderPermissions();
+}
+
+function csRenderPermissions() {
+  var allow = csGetList("allow");
+  var deny  = csGetList("deny");
+
+  function renderPills(containerId, list, listName, color) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = "";
+    if (!list.length) {
+      el.innerHTML = '<span style="font-size:11px;color:var(--dim);font-style:italic">none</span>';
+      return;
+    }
+    list.forEach(function(item) {
+      var pill = document.createElement("span");
+      pill.style.cssText = "display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(128,128,128,0.1);color:var(--text);font-family:var(--font-mono)";
+      var label = document.createTextNode(item);
+      var x = document.createElement("span");
+      x.textContent = "×";
+      x.style.cssText = "cursor:pointer;color:var(--muted);font-size:13px;line-height:1";
+      x.onmouseover = function() { x.style.color = "var(--red)"; };
+      x.onmouseout  = function() { x.style.color = "var(--muted)"; };
+      x.onclick = function() { csSetList(listName, list.filter(function(i) { return i !== item; })); };
+      pill.appendChild(label);
+      pill.appendChild(x);
+      el.appendChild(pill);
+    });
+  }
+
+  function renderSuggestions(containerId, list, otherList, listName, color) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = "";
+    CS_KNOWN_TOOLS.forEach(function(tool) {
+      if (list.indexOf(tool) !== -1 || otherList.indexOf(tool) !== -1) return;
+      var chip = document.createElement("span");
+      var short = tool.replace("mcp__claude_ai_","").replace("mcp__","");
+      chip.title = tool;
+      chip.style.cssText = "display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:10px;border:1px dashed var(--border);color:var(--dim);cursor:pointer;white-space:nowrap";
+      chip.innerHTML = '<i class="ph ph-plus" style="font-size:9px"></i>' + esc(short);
+      chip.onmouseover = function() { chip.style.borderColor = color; chip.style.color = color; };
+      chip.onmouseout  = function() { chip.style.borderColor = "var(--border)"; chip.style.color = "var(--dim)"; };
+      chip.onclick = function() { csSetList(listName, list.concat([tool])); };
+      el.appendChild(chip);
+    });
+  }
+
+  renderPills("cs-allow-pills", allow, "allow", "var(--green)");
+  renderPills("cs-deny-pills",  deny,  "deny",  "var(--red)");
+  renderSuggestions("cs-allow-suggestions", allow, deny, "allow", "var(--green)");
+  renderSuggestions("cs-deny-suggestions",  deny, allow, "deny",  "var(--red)");
+}
+
+function csSyncFromEditor() {
+  try { csGetSettings(); csRenderPermissions(); } catch {}
+}
+
+function csAddCustom(listName) {
+  var inp = document.getElementById("cs-" + listName + "-custom");
+  if (!inp || !inp.value.trim()) return;
+  var val = inp.value.trim();
+  var list = csGetList(listName);
+  if (list.indexOf(val) === -1) csSetList(listName, list.concat([val]));
+  inp.value = "";
+}
+
+async function openClaudeSettingsModal() {
+  var modal = document.getElementById("claude-settings-modal");
+  var editor = document.getElementById("claude-settings-editor");
+  var errEl = document.getElementById("claude-settings-error");
+  var savedEl = document.getElementById("claude-settings-saved");
+  if (!modal || !editor) return;
+  if (errEl) errEl.style.display = "none";
+  if (savedEl) savedEl.style.display = "none";
+  editor.value = "{}";
+  modal.style.display = "flex";
+  try {
+    const data = await fetchJson("/api/claude-settings");
+    editor.value = data.content || "{}";
+  } catch(e) {}
+  csRenderPermissions();
+}
+
+function closeClaudeSettingsModal() {
+  var modal = document.getElementById("claude-settings-modal");
+  if (modal) modal.style.display = "none";
+}
+
+async function saveClaudeSettings() {
+  var editor = document.getElementById("claude-settings-editor");
+  var errEl = document.getElementById("claude-settings-error");
+  var savedEl = document.getElementById("claude-settings-saved");
+  if (!editor) return;
+  try { JSON.parse(editor.value); } catch(e) {
+    if (errEl) { errEl.textContent = "Invalid JSON: " + e.message; errEl.style.display = "block"; }
+    return;
+  }
+  if (errEl) errEl.style.display = "none";
+  const res = await fetch("/api/claude-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: editor.value }),
+  });
+  if (res.ok) {
+    if (savedEl) { savedEl.style.display = "inline"; setTimeout(function() { if (savedEl) savedEl.style.display = "none"; }, 2000); }
+  } else {
+    const err = await res.json().catch(function() { return {}; });
+    if (errEl) { errEl.textContent = err.error || "Save failed"; errEl.style.display = "block"; }
+  }
+}
+
+var _pageConfigPage = null;
+var _pageConfigRefresh = null;
+
+function openPageConfigModal() {
+  var cfg = window.__pageConfigData || {};
+  var page = cfg.page || '';
+  var label = cfg.label || page;
+  var agents = cfg.agents || [];
+  var currentAgent = cfg.currentAgent || null;
+  _pageConfigPage = page;
+  var modal = document.getElementById("page-config-modal");
+  var title = document.getElementById("page-config-modal-title");
+  var sel = document.getElementById("page-config-agent-select");
+  var clearBtn = document.getElementById("page-config-clear-btn");
+  var noAgents = document.getElementById("page-config-no-agents");
+  if (!modal || !sel) return;
+  if (title) title.textContent = "Configure — " + label;
+  sel.innerHTML = '<option value="">— None —</option>';
+  agents.forEach(function(a) {
+    var opt = document.createElement("option");
+    opt.value = a.name;
+    opt.textContent = a.name;
+    if (a.name === currentAgent) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (noAgents) noAgents.style.display = agents.length === 0 ? "block" : "none";
+  if (clearBtn) clearBtn.style.display = currentAgent ? "inline-flex" : "none";
+  modal.style.display = "flex";
+}
+
+function closePageConfigModal() {
+  var modal = document.getElementById("page-config-modal");
+  if (modal) modal.style.display = "none";
+  _pageConfigPage = null;
+}
+
+async function savePageConfigModal() {
+  if (!_pageConfigPage) return;
+  var sel = document.getElementById("page-config-agent-select");
+  const agentName = sel ? sel.value || null : null;
+  await fetch("/api/page-config/" + encodeURIComponent(_pageConfigPage), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agent_name: agentName }),
+  });
+  closePageConfigModal();
+  if (currentPage === "tickets") renderTicketsPage();
+  else if (currentPage === "analyses") renderAnalysesPage();
+  else if (currentPage === "plans") renderPlansPage();
+  else if (currentPage === "testcases") renderTestCasesPage();
+}
+
+async function clearPageConfigModal() {
+  if (!_pageConfigPage) return;
+  await fetch("/api/page-config/" + encodeURIComponent(_pageConfigPage), { method: "DELETE" });
+  closePageConfigModal();
+  if (currentPage === "tickets") renderTicketsPage();
+  else if (currentPage === "analyses") renderAnalysesPage();
+  else if (currentPage === "plans") renderPlansPage();
+  else if (currentPage === "testcases") renderTestCasesPage();
+}
+
+var _agentRunSource = null;
+
+function openAgentRunModal() {
+  var cfg = window.__agentRunData || {};
+  var modal = document.getElementById("agent-run-modal");
+  var title = document.getElementById("agent-run-modal-title");
+  var sub = document.getElementById("agent-run-modal-sub");
+  var prompt = document.getElementById("agent-run-prompt");
+  var readyEl = document.getElementById("agent-run-default-ready");
+  var outputWrap = document.getElementById("agent-run-output-wrap");
+  var output = document.getElementById("agent-run-output");
+  var status = document.getElementById("agent-run-status");
+  var btn = document.getElementById("agent-run-btn");
+  if (!modal) return;
+  if (title) title.textContent = "Run — " + (cfg.agentName || "Agent");
+  if (sub) sub.textContent = cfg.agentPath || "";
+  if (prompt) prompt.value = "";
+  if (readyEl) readyEl.checked = false; // default: On Hold
+  if (outputWrap) outputWrap.style.display = "none";
+  if (output) output.textContent = "";
+  if (status) status.textContent = "";
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  modal.style.display = "flex";
+  if (prompt) setTimeout(function() { prompt.focus(); }, 50);
+}
+
+function closeAgentRunModal() {
+  var modal = document.getElementById("agent-run-modal");
+  if (modal) modal.style.display = "none";
+  if (_agentRunSource) { _agentRunSource.close(); _agentRunSource = null; }
+}
+
+async function startAgentRun() {
+  var cfg = window.__agentRunData || {};
+  var promptEl = document.getElementById("agent-run-prompt");
+  var readyEl = document.getElementById("agent-run-default-ready");
+  var outputWrap = document.getElementById("agent-run-output-wrap");
+  var output = document.getElementById("agent-run-output");
+  var status = document.getElementById("agent-run-status");
+  var btn = document.getElementById("agent-run-btn");
+  if (!promptEl || !promptEl.value.trim()) return;
+
+  var defaultReady = !!(readyEl && readyEl.checked);
+  var promptText = promptEl.value.trim();
+  // Append ready-state instruction so the agent knows how to create tickets
+  var readyInstruction = defaultReady
+    ? " When adding new tickets via the API, set ready=1 (mark as Ready)."
+    : " When adding new tickets via the API, set ready=0 (mark as On Hold).";
+  var fullPromptText = promptText + readyInstruction;
+  if (output) output.textContent = "";
+  if (outputWrap) outputWrap.style.display = "block";
+  if (status) status.textContent = "Running...";
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-circle-notch ph-spin" style="margin-right:5px"></i>Running'; }
+
+  const resetBtn = function() {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  };
+
+  const appendOutput = function(text, color) {
+    if (!output) return;
+    if (color) {
+      var span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      output.appendChild(span);
+    } else {
+      output.appendChild(document.createTextNode(text));
+    }
+    output.scrollTop = output.scrollHeight;
+  };
+
+  try {
+    const resp = await fetch("/api/agent-run/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentName: cfg.agentName, agentPath: cfg.agentPath, prompt: fullPromptText, page: "tickets" }),
+    });
+    if (!resp.ok || !resp.body) {
+      if (status) status.textContent = "Failed to start";
+      resetBtn();
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    var buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line.startsWith("data:")) continue;
+        try {
+          var msg = JSON.parse(line.slice(5).trim());
+          if (msg.type === "cmd") {
+            appendOutput("$ " + msg.text + "\\n", "var(--dim)");
+          } else if (msg.type === "stdout") {
+            appendOutput(msg.text);
+          } else if (msg.type === "stderr") {
+            appendOutput(msg.text, "var(--yellow)");
+          } else if (msg.type === "done") {
+            if (status) status.textContent = msg.code === 0 ? "Done" : "Exited (" + msg.code + ")";
+            resetBtn();
+          }
+        } catch {}
+      }
+    }
+  } catch(err) {
+    if (status) status.textContent = "Error: " + err.message;
+  }
+  resetBtn();
+}
+
+var _analysesRunSelectedTicket = null;
+var _plansRunSelectedTicket = null;
+
+function filterPlansTickets(q) {
+  var list = document.getElementById("plans-run-ticket-list");
+  var noMatch = document.getElementById("plans-run-no-match");
+  if (!list) return;
+  var term = q.trim().toLowerCase();
+  var rows = list.querySelectorAll("[data-ticket]");
+  var visible = 0;
+  rows.forEach(function(row) {
+    var tid = (row.dataset.ticket || "").toLowerCase();
+    var show = !term || tid.indexOf(term) !== -1;
+    row.style.display = show ? "flex" : "none";
+    if (show) visible++;
+  });
+  if (noMatch) noMatch.style.display = (rows.length > 0 && visible === 0) ? "block" : "none";
+}
+
+function togglePlansTicketDropdown() {
+  var dd = document.getElementById("plans-run-ticket-dropdown");
+  var caret = document.getElementById("plans-run-ticket-caret");
+  var trigger = document.getElementById("plans-run-ticket-trigger");
+  var search = document.getElementById("plans-run-ticket-search");
+  if (!dd) return;
+  var isOpen = dd.style.display !== "none";
+  if (isOpen) {
+    dd.style.display = "none";
+  } else {
+    var rect = trigger.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 4) + "px";
+    dd.style.left = rect.left + "px";
+    dd.style.width = rect.width + "px";
+    dd.style.display = "block";
+  }
+  if (caret) caret.style.transform = isOpen ? "" : "rotate(180deg)";
+  if (trigger) trigger.style.borderColor = isOpen ? "var(--border)" : "var(--accent)";
+  if (!isOpen) {
+    if (search) { search.value = ""; filterPlansTickets(""); }
+    setTimeout(function() { if (search) search.focus(); }, 30);
+  }
+}
+
+function closePlansTicketDropdown() {
+  var dd = document.getElementById("plans-run-ticket-dropdown");
+  var caret = document.getElementById("plans-run-ticket-caret");
+  var trigger = document.getElementById("plans-run-ticket-trigger");
+  var search = document.getElementById("plans-run-ticket-search");
+  if (dd) dd.style.display = "none";
+  if (caret) caret.style.transform = "";
+  if (trigger) trigger.style.borderColor = "var(--border)";
+  if (search) { search.value = ""; filterPlansTickets(""); }
+}
+
+async function openPlansRunModal() {
+  var cfg = window.__agentRunData || {};
+  var modal = document.getElementById("plans-run-modal");
+  var titleEl = document.getElementById("plans-run-modal-title");
+  var subEl = document.getElementById("plans-run-modal-sub");
+  var promptEl = document.getElementById("plans-run-prompt");
+  var outputWrap = document.getElementById("plans-run-output-wrap");
+  var outputEl = document.getElementById("plans-run-output");
+  var statusEl = document.getElementById("plans-run-status");
+  var btn = document.getElementById("plans-run-btn");
+  var ticketList = document.getElementById("plans-run-ticket-list");
+  var noTickets = document.getElementById("plans-run-no-tickets");
+  var label = document.getElementById("plans-run-ticket-label");
+  if (!modal) return;
+  if (titleEl) titleEl.textContent = "Run Plan — " + (cfg.agentName || "Agent");
+  if (subEl) { var _p = cfg.agentPath || ""; var _home = "/Users/" + (_p.split("/")[2] || ""); subEl.textContent = _p.indexOf(_home) === 0 ? "~" + _p.slice(_home.length) : _p; }
+  if (promptEl) promptEl.value = "";
+  if (outputWrap) outputWrap.style.display = "none";
+  if (outputEl) outputEl.textContent = "";
+  if (statusEl) statusEl.textContent = "";
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  if (label) { label.textContent = "— Select a ticket —"; label.style.color = "var(--muted)"; }
+  _plansRunSelectedTicket = null;
+  closePlansTicketDropdown();
+  modal.style.display = "flex";
+
+  if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 12px">Loading...</div>';
+  try {
+    var results = await Promise.all([
+      fetchJson("/api/tickets"),
+      fetchJson("/api/plans/tickets").catch(function() { return []; }),
+    ]);
+    var tickets = results[0] || [];
+    var planTickets = results[1] || [];
+    var plannedMap = {};
+    for (var i = 0; i < planTickets.length; i++) plannedMap[planTickets[i].ticket_id.toUpperCase()] = planTickets[i].plan_count;
+    if (tickets.length === 0) {
+      if (ticketList) { ticketList.innerHTML = ""; ticketList.style.display = "none"; }
+      if (noTickets) noTickets.style.display = "block";
+    } else {
+      if (ticketList) ticketList.style.display = "flex";
+      if (noTickets) noTickets.style.display = "none";
+      if (ticketList) {
+        ticketList.innerHTML = "";
+        tickets.forEach(function(t) {
+          var count = plannedMap[t.ticket_id.toUpperCase()] || 0;
+          var row = document.createElement("div");
+          row.dataset.ticket = t.ticket_id;
+          row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;transition:background 0.1s";
+          row.innerHTML = '<i class="ph ph-ticket" style="font-size:13px;color:var(--muted);flex-shrink:0"></i>'
+            + '<span style="font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.ticket_id) + '</span>'
+            + '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:' + (t.status === 'running' ? 'var(--green)' : t.status === 'completed' ? 'var(--muted)' : 'var(--surface-raised)') + ';color:' + (t.status === 'running' ? '#fff' : t.status === 'completed' ? '#fff' : 'var(--dim)') + '">' + esc(t.status) + '</span>'
+            + (count > 0 ? '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--accent-dim);color:var(--accent)">' + count + ' ' + (count === 1 ? 'plan' : 'plans') + '</span>' : '<span style="font-size:10px;color:var(--dim)">no plans</span>');
+          row.onmouseenter = function() { this.style.background = "var(--surface-raised)"; };
+          row.onmouseleave = function() { this.style.background = _plansRunSelectedTicket === this.dataset.ticket ? "rgba(99,102,241,0.08)" : "transparent"; };
+          row.onclick = function() {
+            var tid = this.dataset.ticket;
+            _plansRunSelectedTicket = tid;
+            if (label) { label.textContent = tid; label.style.color = "var(--text)"; }
+            closePlansTicketDropdown();
+            updatePlansRunCmd();
+          };
+          ticketList.appendChild(row);
+        });
+      }
+    }
+  } catch(e) {
+    if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px 12px">Failed to load tickets</div>';
+  }
+
+  updatePlansRunCmd();
+  if (promptEl) setTimeout(function() { promptEl.focus(); }, 50);
+}
+
+function updatePlansRunCmd() {
+  var cfg = window.__agentRunData || {};
+  var agentPath = cfg.agentPath || "";
+  var promptEl = document.getElementById("plans-run-prompt");
+  var previewEl = document.getElementById("plans-run-cmd-preview");
+  if (!previewEl) return;
+  var promptText = promptEl ? promptEl.value.trim() : "";
+  var ticketPart = _plansRunSelectedTicket ? \`on ticket \${_plansRunSelectedTicket}\` : "on ticket <select ticket>";
+  var agentPart = agentPath ? \`use agent @\${agentPath} \` : "";
+  var extra = promptText ? \` and \${promptText}\` : "";
+  previewEl.textContent = \`claude -p "\${agentPart}\${ticketPart}\${extra}"\`;
+}
+
+function closePlansRunModal() {
+  var modal = document.getElementById("plans-run-modal");
+  if (modal) modal.style.display = "none";
+  closePlansTicketDropdown();
+  _plansRunSelectedTicket = null;
+}
+
+async function startPlansRun() {
+  var cfg = window.__agentRunData || {};
+  if (!_plansRunSelectedTicket) {
+    var statusEl = document.getElementById("plans-run-status");
+    if (statusEl) { statusEl.style.color = "var(--red)"; statusEl.textContent = "Select a ticket first"; setTimeout(function() { if (statusEl) { statusEl.style.color = "var(--muted)"; statusEl.textContent = ""; } }, 2000); }
+    return;
+  }
+  var promptEl = document.getElementById("plans-run-prompt");
+  var outputWrap = document.getElementById("plans-run-output-wrap");
+  var outputEl = document.getElementById("plans-run-output");
+  var statusEl = document.getElementById("plans-run-status");
+  var btn = document.getElementById("plans-run-btn");
+
+  var promptText = promptEl ? promptEl.value.trim() : "";
+  if (outputEl) outputEl.textContent = "";
+  if (outputWrap) outputWrap.style.display = "block";
+  if (statusEl) { statusEl.style.color = "var(--muted)"; statusEl.textContent = "Running..."; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-circle-notch ph-spin" style="margin-right:5px"></i>Running'; }
+
+  const resetBtn = function() {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  };
+  const appendOutput = function(text, color) {
+    if (!outputEl) return;
+    if (color) {
+      var span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      outputEl.appendChild(span);
+    } else {
+      outputEl.appendChild(document.createTextNode(text));
+    }
+    outputEl.scrollTop = outputEl.scrollHeight;
+  };
+
+  try {
+    const resp = await fetch("/api/agent-run/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentName: cfg.agentName, agentPath: cfg.agentPath, ticketId: _plansRunSelectedTicket, prompt: promptText, page: "plans" }),
+    });
+    if (!resp.ok || !resp.body) { if (statusEl) statusEl.textContent = "Failed to start"; resetBtn(); return; }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    var buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line.startsWith("data:")) continue;
+        try {
+          var msg = JSON.parse(line.slice(5).trim());
+          if (msg.type === "cmd") appendOutput("$ " + msg.text + "\\n", "var(--dim)");
+          else if (msg.type === "stdout") appendOutput(msg.text);
+          else if (msg.type === "stderr") appendOutput(msg.text, "var(--yellow)");
+          else if (msg.type === "done") { if (statusEl) statusEl.textContent = msg.code === 0 ? "Done" : "Exited (" + msg.code + ")"; resetBtn(); }
+        } catch {}
+      }
+    }
+  } catch(err) {
+    if (statusEl) statusEl.textContent = "Error: " + err.message;
+  }
+  resetBtn();
+}
+
+// ── Test Cases run modal ──
+
+var _testcasesRunSelectedTicket = null;
+
+function filterTestcasesTickets(q) {
+  var list = document.getElementById("testcases-run-ticket-list");
+  var noMatch = document.getElementById("testcases-run-no-match");
+  if (!list) return;
+  var term = q.trim().toLowerCase();
+  var rows = list.querySelectorAll("[data-ticket]");
+  var visible = 0;
+  rows.forEach(function(row) {
+    var tid = (row.dataset.ticket || "").toLowerCase();
+    var show = !term || tid.indexOf(term) !== -1;
+    row.style.display = show ? "flex" : "none";
+    if (show) visible++;
+  });
+  if (noMatch) noMatch.style.display = (rows.length > 0 && visible === 0) ? "block" : "none";
+}
+
+function toggleTestcasesTicketDropdown() {
+  var dd = document.getElementById("testcases-run-ticket-dropdown");
+  var caret = document.getElementById("testcases-run-ticket-caret");
+  var trigger = document.getElementById("testcases-run-ticket-trigger");
+  var search = document.getElementById("testcases-run-ticket-search");
+  if (!dd) return;
+  var isOpen = dd.style.display !== "none";
+  if (isOpen) {
+    dd.style.display = "none";
+  } else {
+    var rect = trigger.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 4) + "px";
+    dd.style.left = rect.left + "px";
+    dd.style.width = rect.width + "px";
+    dd.style.display = "block";
+  }
+  if (caret) caret.style.transform = isOpen ? "" : "rotate(180deg)";
+  if (trigger) trigger.style.borderColor = isOpen ? "var(--border)" : "var(--accent)";
+  if (!isOpen) {
+    if (search) { search.value = ""; filterTestcasesTickets(""); }
+    setTimeout(function() { if (search) search.focus(); }, 30);
+  }
+}
+
+function closeTestcasesTicketDropdown() {
+  var dd = document.getElementById("testcases-run-ticket-dropdown");
+  var caret = document.getElementById("testcases-run-ticket-caret");
+  var trigger = document.getElementById("testcases-run-ticket-trigger");
+  var search = document.getElementById("testcases-run-ticket-search");
+  if (dd) dd.style.display = "none";
+  if (caret) caret.style.transform = "";
+  if (trigger) trigger.style.borderColor = "var(--border)";
+  if (search) { search.value = ""; filterTestcasesTickets(""); }
+}
+
+async function openTestcasesRunModal() {
+  var cfg = window.__agentRunData || {};
+  var modal = document.getElementById("testcases-run-modal");
+  var titleEl = document.getElementById("testcases-run-modal-title");
+  var subEl = document.getElementById("testcases-run-modal-sub");
+  var promptEl = document.getElementById("testcases-run-prompt");
+  var outputWrap = document.getElementById("testcases-run-output-wrap");
+  var outputEl = document.getElementById("testcases-run-output");
+  var statusEl = document.getElementById("testcases-run-status");
+  var btn = document.getElementById("testcases-run-btn");
+  var ticketList = document.getElementById("testcases-run-ticket-list");
+  var noTickets = document.getElementById("testcases-run-no-tickets");
+  var label = document.getElementById("testcases-run-ticket-label");
+  if (!modal) return;
+  if (titleEl) titleEl.textContent = "Run Test Cases — " + (cfg.agentName || "Agent");
+  if (subEl) { var _p = cfg.agentPath || ""; var _home = "/Users/" + (_p.split("/")[2] || ""); subEl.textContent = _p.indexOf(_home) === 0 ? "~" + _p.slice(_home.length) : _p; }
+  if (promptEl) promptEl.value = "";
+  if (outputWrap) outputWrap.style.display = "none";
+  if (outputEl) outputEl.textContent = "";
+  if (statusEl) statusEl.textContent = "";
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  if (label) { label.textContent = "— Select a ticket —"; label.style.color = "var(--muted)"; }
+  _testcasesRunSelectedTicket = null;
+  closeTestcasesTicketDropdown();
+  modal.style.display = "flex";
+
+  if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 12px">Loading...</div>';
+  try {
+    var results = await Promise.all([
+      fetchJson("/api/tickets"),
+      fetchJson("/api/testcases").catch(function() { return []; }),
+    ]);
+    var tickets = results[0] || [];
+    var allTc = results[1] || [];
+    var tcMap = {};
+    for (var i = 0; i < allTc.length; i++) { var ref = (allTc[i].ticket_ref || "").toUpperCase(); tcMap[ref] = (tcMap[ref] || 0) + 1; }
+    if (tickets.length === 0) {
+      if (ticketList) { ticketList.innerHTML = ""; ticketList.style.display = "none"; }
+      if (noTickets) noTickets.style.display = "block";
+    } else {
+      if (ticketList) ticketList.style.display = "flex";
+      if (noTickets) noTickets.style.display = "none";
+      if (ticketList) {
+        ticketList.innerHTML = "";
+        tickets.forEach(function(t) {
+          var count = tcMap[t.ticket_id.toUpperCase()] || 0;
+          var row = document.createElement("div");
+          row.dataset.ticket = t.ticket_id;
+          row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;transition:background 0.1s";
+          row.innerHTML = '<i class="ph ph-ticket" style="font-size:13px;color:var(--muted);flex-shrink:0"></i>'
+            + '<span style="font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.ticket_id) + '</span>'
+            + '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:' + (t.status === 'running' ? 'var(--green)' : t.status === 'completed' ? 'var(--muted)' : 'var(--surface-raised)') + ';color:' + (t.status === 'running' ? '#fff' : t.status === 'completed' ? '#fff' : 'var(--dim)') + '">' + esc(t.status) + '</span>'
+            + (count > 0 ? '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--accent-dim);color:var(--accent)">' + count + ' ' + (count === 1 ? 'test' : 'tests') + '</span>' : '<span style="font-size:10px;color:var(--dim)">no tests</span>');
+          row.onmouseenter = function() { this.style.background = "var(--surface-raised)"; };
+          row.onmouseleave = function() { this.style.background = _testcasesRunSelectedTicket === this.dataset.ticket ? "rgba(99,102,241,0.08)" : "transparent"; };
+          row.onclick = function() {
+            var tid = this.dataset.ticket;
+            _testcasesRunSelectedTicket = tid;
+            if (label) { label.textContent = tid; label.style.color = "var(--text)"; }
+            closeTestcasesTicketDropdown();
+            updateTestcasesRunCmd();
+          };
+          ticketList.appendChild(row);
+        });
+      }
+    }
+  } catch(e) {
+    if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px 12px">Failed to load tickets</div>';
+  }
+
+  updateTestcasesRunCmd();
+  if (promptEl) setTimeout(function() { promptEl.focus(); }, 50);
+}
+
+function updateTestcasesRunCmd() {
+  var cfg = window.__agentRunData || {};
+  var agentPath = cfg.agentPath || "";
+  var promptEl = document.getElementById("testcases-run-prompt");
+  var previewEl = document.getElementById("testcases-run-cmd-preview");
+  if (!previewEl) return;
+  var promptText = promptEl ? promptEl.value.trim() : "";
+  var ticketPart = _testcasesRunSelectedTicket ? \`on ticket \${_testcasesRunSelectedTicket}\` : "on ticket <select ticket>";
+  var agentPart = agentPath ? \`use agent @\${agentPath} \` : "";
+  var extra = promptText ? \` and \${promptText}\` : "";
+  previewEl.textContent = \`claude -p "\${agentPart}\${ticketPart}\${extra}"\`;
+}
+
+function closeTestcasesRunModal() {
+  var modal = document.getElementById("testcases-run-modal");
+  if (modal) modal.style.display = "none";
+  closeTestcasesTicketDropdown();
+  _testcasesRunSelectedTicket = null;
+}
+
+async function startTestcasesRun() {
+  var cfg = window.__agentRunData || {};
+  if (!_testcasesRunSelectedTicket) {
+    var statusEl = document.getElementById("testcases-run-status");
+    if (statusEl) { statusEl.style.color = "var(--red)"; statusEl.textContent = "Select a ticket first"; setTimeout(function() { if (statusEl) { statusEl.style.color = "var(--muted)"; statusEl.textContent = ""; } }, 2000); }
+    return;
+  }
+  var promptEl = document.getElementById("testcases-run-prompt");
+  var outputWrap = document.getElementById("testcases-run-output-wrap");
+  var outputEl = document.getElementById("testcases-run-output");
+  var statusEl = document.getElementById("testcases-run-status");
+  var btn = document.getElementById("testcases-run-btn");
+
+  var promptText = promptEl ? promptEl.value.trim() : "";
+  if (outputEl) outputEl.textContent = "";
+  if (outputWrap) outputWrap.style.display = "block";
+  if (statusEl) { statusEl.style.color = "var(--muted)"; statusEl.textContent = "Running..."; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-circle-notch ph-spin" style="margin-right:5px"></i>Running'; }
+
+  const resetBtn = function() {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  };
+  const appendOutput = function(text, color) {
+    if (!outputEl) return;
+    if (color) {
+      var span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      outputEl.appendChild(span);
+    } else {
+      outputEl.appendChild(document.createTextNode(text));
+    }
+    outputEl.scrollTop = outputEl.scrollHeight;
+  };
+
+  try {
+    const resp = await fetch("/api/agent-run/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentName: cfg.agentName, agentPath: cfg.agentPath, ticketId: _testcasesRunSelectedTicket, prompt: promptText, page: "testcases" }),
+    });
+    if (!resp.ok || !resp.body) { if (statusEl) statusEl.textContent = "Failed to start"; resetBtn(); return; }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    var buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line.startsWith("data:")) continue;
+        try {
+          var msg = JSON.parse(line.slice(5).trim());
+          if (msg.type === "cmd") appendOutput("$ " + msg.text + "\\n", "var(--dim)");
+          else if (msg.type === "stdout") appendOutput(msg.text);
+          else if (msg.type === "stderr") appendOutput(msg.text, "var(--yellow)");
+          else if (msg.type === "done") { if (statusEl) statusEl.textContent = msg.code === 0 ? "Done" : "Exited (" + msg.code + ")"; resetBtn(); }
+        } catch {}
+      }
+    }
+  } catch(err) {
+    if (statusEl) statusEl.textContent = "Error: " + err.message;
+  }
+  resetBtn();
+}
+
+function filterAnalysesTickets(q) {
+  var list = document.getElementById("analyses-run-ticket-list");
+  var noMatch = document.getElementById("analyses-run-no-match");
+  if (!list) return;
+  var term = q.trim().toLowerCase();
+  var rows = list.querySelectorAll("[data-ticket]");
+  var visible = 0;
+  rows.forEach(function(row) {
+    var tid = (row.dataset.ticket || "").toLowerCase();
+    var show = !term || tid.indexOf(term) !== -1;
+    row.style.display = show ? "flex" : "none";
+    if (show) visible++;
+  });
+  if (noMatch) noMatch.style.display = (rows.length > 0 && visible === 0) ? "block" : "none";
+}
+
+function toggleAnalysesTicketDropdown() {
+  var dd = document.getElementById("analyses-run-ticket-dropdown");
+  var caret = document.getElementById("analyses-run-ticket-caret");
+  var trigger = document.getElementById("analyses-run-ticket-trigger");
+  var search = document.getElementById("analyses-run-ticket-search");
+  if (!dd) return;
+  var isOpen = dd.style.display !== "none";
+  if (isOpen) {
+    dd.style.display = "none";
+  } else {
+    var rect = trigger.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 4) + "px";
+    dd.style.left = rect.left + "px";
+    dd.style.width = rect.width + "px";
+    dd.style.display = "block";
+  }
+  if (caret) caret.style.transform = isOpen ? "" : "rotate(180deg)";
+  if (trigger) trigger.style.borderColor = isOpen ? "var(--border)" : "var(--accent)";
+  if (!isOpen) {
+    if (search) { search.value = ""; filterAnalysesTickets(""); }
+    setTimeout(function() { if (search) search.focus(); }, 30);
+  }
+}
+
+function closeAnalysesTicketDropdown() {
+  var dd = document.getElementById("analyses-run-ticket-dropdown");
+  var caret = document.getElementById("analyses-run-ticket-caret");
+  var trigger = document.getElementById("analyses-run-ticket-trigger");
+  var search = document.getElementById("analyses-run-ticket-search");
+  if (dd) dd.style.display = "none";
+  if (caret) caret.style.transform = "";
+  if (trigger) trigger.style.borderColor = "var(--border)";
+  if (search) { search.value = ""; filterAnalysesTickets(""); }
+}
+
+async function openAnalysesRunModal() {
+  var cfg = window.__agentRunData || {};
+  var modal = document.getElementById("analyses-run-modal");
+  var titleEl = document.getElementById("analyses-run-modal-title");
+  var subEl = document.getElementById("analyses-run-modal-sub");
+  var promptEl = document.getElementById("analyses-run-prompt");
+  var outputWrap = document.getElementById("analyses-run-output-wrap");
+  var outputEl = document.getElementById("analyses-run-output");
+  var statusEl = document.getElementById("analyses-run-status");
+  var btn = document.getElementById("analyses-run-btn");
+  var ticketList = document.getElementById("analyses-run-ticket-list");
+  var noTickets = document.getElementById("analyses-run-no-tickets");
+  var label = document.getElementById("analyses-run-ticket-label");
+  if (!modal) return;
+  if (titleEl) titleEl.textContent = "Run Analysis — " + (cfg.agentName || "Agent");
+  if (subEl) { var _p = cfg.agentPath || ""; var _home = "/Users/" + (_p.split("/")[2] || ""); subEl.textContent = _p.indexOf(_home) === 0 ? "~" + _p.slice(_home.length) : _p; }
+  if (promptEl) promptEl.value = "";
+  if (outputWrap) outputWrap.style.display = "none";
+  if (outputEl) outputEl.textContent = "";
+  if (statusEl) statusEl.textContent = "";
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  if (label) { label.textContent = "— Select a ticket —"; label.style.color = "var(--muted)"; }
+  _analysesRunSelectedTicket = null;
+  closeAnalysesTicketDropdown();
+  modal.style.display = "flex";
+
+  // Load tickets + analyses
+  if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 12px">Loading...</div>';
+  try {
+    var results = await Promise.all([
+      fetchJson("/api/tickets"),
+      fetchJson("/api/analyses").catch(function() { return []; }),
+    ]);
+    var tickets = results[0] || [];
+    var analyses = results[1] || [];
+    var analysedTickets = {};
+    for (var i = 0; i < analyses.length; i++) {
+      var ref = analyses[i].input_ref;
+      if (ref) analysedTickets[ref.toUpperCase()] = (analysedTickets[ref.toUpperCase()] || 0) + 1;
+    }
+    if (tickets.length === 0) {
+      if (ticketList) { ticketList.innerHTML = ""; ticketList.style.display = "none"; }
+      if (noTickets) noTickets.style.display = "block";
+    } else {
+      if (ticketList) ticketList.style.display = "flex";
+      if (noTickets) noTickets.style.display = "none";
+      if (ticketList) {
+        ticketList.innerHTML = "";
+        tickets.forEach(function(t) {
+          var count = analysedTickets[t.ticket_id.toUpperCase()] || 0;
+          var row = document.createElement("div");
+          row.dataset.ticket = t.ticket_id;
+          row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;transition:background 0.1s";
+          row.innerHTML = '<i class="ph ph-ticket" style="font-size:13px;color:var(--muted);flex-shrink:0"></i>'
+            + '<span style="font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.ticket_id) + '</span>'
+            + '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:' + (t.status === 'running' ? 'var(--green)' : t.status === 'completed' ? 'var(--muted)' : 'var(--surface-raised)') + ';color:' + (t.status === 'running' ? '#fff' : t.status === 'completed' ? '#fff' : 'var(--dim)') + '">' + esc(t.status) + '</span>'
+            + (count > 0 ? '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--purple);color:#fff">' + count + ' ' + (count === 1 ? 'analysis' : 'analyses') + '</span>' : '<span style="font-size:10px;color:var(--dim)">no analyses</span>');
+          row.onmouseenter = function() { this.style.background = "var(--surface-raised)"; };
+          row.onmouseleave = function() { this.style.background = _analysesRunSelectedTicket === this.dataset.ticket ? "rgba(99,102,241,0.08)" : "transparent"; };
+          row.onclick = function() {
+            var tid = this.dataset.ticket;
+            _analysesRunSelectedTicket = tid;
+            if (label) { label.textContent = tid; label.style.color = "var(--text)"; }
+            closeAnalysesTicketDropdown();
+          };
+          ticketList.appendChild(row);
+        });
+      }
+    }
+  } catch(e) {
+    if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px 12px">Failed to load tickets</div>';
+  }
+
+  if (promptEl) setTimeout(function() { promptEl.focus(); }, 50);
+}
+
+function closeAnalysesRunModal() {
+  var modal = document.getElementById("analyses-run-modal");
+  if (modal) modal.style.display = "none";
+  closeAnalysesTicketDropdown();
+  _analysesRunSelectedTicket = null;
+}
+
+async function startAnalysesRun() {
+  var cfg = window.__agentRunData || {};
+  if (!_analysesRunSelectedTicket) {
+    var statusEl = document.getElementById("analyses-run-status");
+    if (statusEl) { statusEl.style.color = "var(--red)"; statusEl.textContent = "Select a ticket first"; setTimeout(function() { if (statusEl) { statusEl.style.color = "var(--muted)"; statusEl.textContent = ""; } }, 2000); }
+    return;
+  }
+  var promptEl = document.getElementById("analyses-run-prompt");
+  var outputWrap = document.getElementById("analyses-run-output-wrap");
+  var outputEl = document.getElementById("analyses-run-output");
+  var statusEl = document.getElementById("analyses-run-status");
+  var btn = document.getElementById("analyses-run-btn");
+
+  var promptText = promptEl ? promptEl.value.trim() : "";
+  if (outputEl) outputEl.textContent = "";
+  if (outputWrap) outputWrap.style.display = "block";
+  if (statusEl) { statusEl.style.color = "var(--muted)"; statusEl.textContent = "Running..."; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-circle-notch ph-spin" style="margin-right:5px"></i>Running'; }
+
+  const resetBtn = function() {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  };
+
+  const appendOutput = function(text, color) {
+    if (!outputEl) return;
+    if (color) {
+      var span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      outputEl.appendChild(span);
+    } else {
+      outputEl.appendChild(document.createTextNode(text));
+    }
+    outputEl.scrollTop = outputEl.scrollHeight;
+  };
+
+  try {
+    const resp = await fetch("/api/agent-run/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentName: cfg.agentName, agentPath: cfg.agentPath, ticketId: _analysesRunSelectedTicket, prompt: promptText, page: "analyses" }),
+    });
+    if (!resp.ok || !resp.body) {
+      if (statusEl) statusEl.textContent = "Failed to start";
+      resetBtn();
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    var buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line.startsWith("data:")) continue;
+        try {
+          var msg = JSON.parse(line.slice(5).trim());
+          if (msg.type === "cmd") {
+            appendOutput("$ " + msg.text + "\\n", "var(--dim)");
+          } else if (msg.type === "stdout") {
+            appendOutput(msg.text);
+          } else if (msg.type === "stderr") {
+            appendOutput(msg.text, "var(--yellow)");
+          } else if (msg.type === "done") {
+            if (statusEl) statusEl.textContent = msg.code === 0 ? "Done" : "Exited (" + msg.code + ")";
+            resetBtn();
+          }
+        } catch {}
+      }
+    }
+  } catch(err) {
+    if (statusEl) statusEl.textContent = "Error: " + err.message;
+  }
+  resetBtn();
+}
+
+// ── Agent Runs Modal ──
+
+var _agentRunsPage = null;
+var _agentRunsSelectedId = null;
+var _agentRunsSource = null;
+var _agentRunsAllRuns = [];
+var _agentRunsRefreshTimer = null;
+
+async function openAgentRunsModal(page) {
+  _agentRunsPage = page;
+  _agentRunsSelectedId = null;
+  var modal = document.getElementById("agent-runs-modal");
+  var titleEl = document.getElementById("agent-runs-modal-title");
+  var searchEl = document.getElementById("agent-runs-search");
+  if (!modal) return;
+  var label = page === "analyses" ? "Analyses" : page === "tickets" ? "Tickets" : page === "testcases" ? "Test Cases" : page === "plans" ? "Plans" : page;
+  if (titleEl) titleEl.textContent = "Agent Runs — " + label;
+  if (searchEl) searchEl.value = "";
+  showAgentRunsDetail(null);
+  modal.style.display = "flex";
+  await refreshAgentRunsList();
+  _agentRunsRefreshTimer = setInterval(refreshAgentRunsList, 4000);
+}
+
+function closeAgentRunsModal() {
+  var modal = document.getElementById("agent-runs-modal");
+  if (modal) modal.style.display = "none";
+  if (_agentRunsSource) { _agentRunsSource.close ? _agentRunsSource.close() : null; _agentRunsSource = null; }
+  if (_agentRunsRefreshTimer) { clearInterval(_agentRunsRefreshTimer); _agentRunsRefreshTimer = null; }
+  _agentRunsSelectedId = null;
+  _agentRunsAllRuns = [];
+}
+
+async function refreshAgentRunsList() {
+  try {
+    var qs = _agentRunsPage ? "?page=" + encodeURIComponent(_agentRunsPage) : "";
+    _agentRunsAllRuns = await fetchJson("/api/agent-runs" + qs);
+    var search = document.getElementById("agent-runs-search");
+    filterAgentRunsList(search ? search.value : "");
+  } catch(e) {}
+}
+
+function filterAgentRunsList(q) {
+  var list = document.getElementById("agent-runs-list");
+  var empty = document.getElementById("agent-runs-empty");
+  if (!list) return;
+  var term = (q || "").trim().toLowerCase();
+  var runs = _agentRunsAllRuns.filter(function(r) {
+    if (!term) return true;
+    return (r.ticket_id || "").toLowerCase().indexOf(term) !== -1
+      || (r.agent_name || "").toLowerCase().indexOf(term) !== -1
+      || (r.command || "").toLowerCase().indexOf(term) !== -1;
+  });
+  if (runs.length === 0) {
+    list.innerHTML = "";
+    if (empty) empty.style.display = "block";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  list.innerHTML = "";
+  runs.forEach(function(r) {
+    var isSelected = r.id === _agentRunsSelectedId;
+    var row = document.createElement("div");
+    row.dataset.runId = r.id;
+    row.style.cssText = "padding:8px 10px;border-radius:var(--radius-xs);cursor:pointer;border:1px solid " + (isSelected ? "var(--accent)" : "transparent") + ";background:" + (isSelected ? "rgba(99,102,241,0.08)" : "transparent") + ";margin-bottom:2px";
+    var statusColor = r.status === "running" ? "var(--green)" : r.status === "done" ? "var(--muted)" : r.status === "killed" ? "var(--yellow)" : "var(--red)";
+    var statusIcon = r.status === "running"
+      ? '<i class="ph ph-circle-notch ph-spin" style="font-size:11px;color:var(--green)"></i>'
+      : r.status === "done" ? '<i class="ph ph-check-circle" style="font-size:11px;color:var(--muted)"></i>'
+      : r.status === "killed" ? '<i class="ph ph-x-circle" style="font-size:11px;color:var(--yellow)"></i>'
+      : '<i class="ph ph-warning-circle" style="font-size:11px;color:var(--red)"></i>';
+    var headline = r.ticket_id ? esc(r.ticket_id) : (r.agent_name ? esc(r.agent_name) : "Run");
+    var sub = r.started_at ? r.started_at.replace("T", " ").slice(0, 16) : "";
+    row.innerHTML = '<div style="display:flex;align-items:center;gap:7px">'
+      + statusIcon
+      + '<span style="font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + headline + '</span>'
+      + '<span style="font-size:10px;color:' + statusColor + '">' + esc(r.status) + '</span>'
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--dim);margin-top:2px;padding-left:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(sub) + '</div>';
+    row.onmouseenter = function() { if (this.dataset.runId !== _agentRunsSelectedId) this.style.background = "var(--surface-raised)"; };
+    row.onmouseleave = function() { if (this.dataset.runId !== _agentRunsSelectedId) this.style.background = "transparent"; };
+    row.onclick = function() { selectAgentRun(this.dataset.runId); };
+    list.appendChild(row);
+  });
+}
+
+function showAgentRunsDetail(run) {
+  var detailEmpty = document.getElementById("agent-runs-detail-empty");
+  var detail = document.getElementById("agent-runs-detail");
+  var cmdEl = document.getElementById("agent-runs-detail-cmd");
+  var metaEl = document.getElementById("agent-runs-detail-meta");
+  var killBtn = document.getElementById("agent-runs-kill-btn");
+  var outputEl = document.getElementById("agent-runs-output");
+  if (!run) {
+    if (detailEmpty) detailEmpty.style.display = "flex";
+    if (detail) detail.style.display = "none";
+    return;
+  }
+  if (detailEmpty) detailEmpty.style.display = "none";
+  if (detail) detail.style.display = "flex";
+  if (cmdEl) cmdEl.textContent = run.command || "";
+  var meta = [];
+  if (run.ticket_id) meta.push("Ticket: " + run.ticket_id);
+  if (run.agent_name) meta.push("Agent: " + run.agent_name);
+  if (run.started_at) meta.push("Started: " + run.started_at.replace("T", " ").slice(0, 16));
+  if (metaEl) metaEl.textContent = meta.join("  ·  ");
+  if (killBtn) killBtn.style.display = run.status === "running" ? "inline-flex" : "none";
+  if (outputEl) outputEl.textContent = "";
+}
+
+function selectAgentRun(runId) {
+  _agentRunsSelectedId = runId;
+  // update selection highlight
+  var list = document.getElementById("agent-runs-list");
+  if (list) {
+    list.querySelectorAll("[data-run-id]").forEach(function(el) {
+      var isMe = el.dataset.runId === runId;
+      el.style.background = isMe ? "rgba(99,102,241,0.08)" : "transparent";
+      el.style.borderColor = isMe ? "var(--accent)" : "transparent";
+    });
+  }
+  var run = _agentRunsAllRuns.find(function(r) { return r.id === runId; });
+  if (!run) return;
+  showAgentRunsDetail(run);
+
+  // close any existing stream
+  if (_agentRunsSource) { try { _agentRunsSource.close(); } catch(e) {} _agentRunsSource = null; }
+
+  var outputEl = document.getElementById("agent-runs-output");
+  var killBtn = document.getElementById("agent-runs-kill-btn");
+
+  const appendOutput = function(text, color) {
+    if (!outputEl) return;
+    if (color) {
+      var span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      outputEl.appendChild(span);
+    } else {
+      outputEl.appendChild(document.createTextNode(text));
+    }
+    outputEl.scrollTop = outputEl.scrollHeight;
+  };
+
+  // SSE stream
+  var src = new EventSource("/api/agent-runs/" + encodeURIComponent(runId) + "/stream");
+  _agentRunsSource = src;
+  src.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (msg.type === "cmd") {
+        appendOutput("$ " + msg.text + "\\n", "var(--dim)");
+      } else if (msg.type === "stdout") {
+        appendOutput(msg.text);
+      } else if (msg.type === "stderr") {
+        appendOutput(msg.text, "var(--yellow)");
+      } else if (msg.type === "info") {
+        appendOutput(msg.text, "var(--muted)");
+      } else if (msg.type === "done" || msg.type === "killed") {
+        if (killBtn) killBtn.style.display = "none";
+        // Update in-memory list immediately so the status badge flips without waiting for a round-trip
+        var newStatus = msg.type === "killed" ? "killed" : (msg.code === 0 ? "done" : "failed");
+        var idx = _agentRunsAllRuns.findIndex(function(r) { return r.id === runId; });
+        if (idx !== -1) {
+          _agentRunsAllRuns[idx] = Object.assign({}, _agentRunsAllRuns[idx], { status: newStatus, active: false });
+          var searchEl = document.getElementById("agent-runs-search");
+          filterAgentRunsList(searchEl ? searchEl.value : "");
+        }
+        src.close();
+        _agentRunsSource = null;
+        refreshAgentRunsList();
+      }
+    } catch(err) {}
+  };
+  src.onerror = function() { src.close(); _agentRunsSource = null; };
+}
+
+async function killSelectedRun() {
+  if (!_agentRunsSelectedId) return;
+  var killBtn = document.getElementById("agent-runs-kill-btn");
+  if (killBtn) killBtn.disabled = true;
+  try {
+    await fetch("/api/agent-runs/" + encodeURIComponent(_agentRunsSelectedId), { method: "DELETE" });
+    // Flip status immediately before the async refresh
+    var killedIdx = _agentRunsAllRuns.findIndex(function(r) { return r.id === _agentRunsSelectedId; });
+    if (killedIdx !== -1) {
+      _agentRunsAllRuns[killedIdx] = Object.assign({}, _agentRunsAllRuns[killedIdx], { status: "killed", active: false });
+      var searchEl = document.getElementById("agent-runs-search");
+      filterAgentRunsList(searchEl ? searchEl.value : "");
+    }
+    if (killBtn) { killBtn.style.display = "none"; killBtn.disabled = false; }
+    refreshAgentRunsList();
+  } catch(e) {
+    if (killBtn) killBtn.disabled = false;
+  }
+}
+
+async function renderAgentBuilderPage() {
+  savePageState();
+  const app = document.getElementById("app");
+  if (!app) return;
+
+  const [agents, setupData] = await Promise.all([
+    fetchJson("/api/agents"),
+    fetchJson("/api/setup/check"),
+  ]);
+
+  abInstalledSkills = (setupData.skills || [])
+    .filter(function(s) { return s.installed; })
+    .map(function(s) { return s.id; })
+    .concat(
+      (setupData.externalSkills || []).filter(function(s) { return s.installed; }).map(function(s) { return s.id; })
+    );
+
+  // ── Title block (Plans-style) ──
+  let header = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">';
+  header += '<div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Agents</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Manage Claude subagents with skills and tools</div></div>';
+  header += '<div style="display:flex;align-items:center;gap:8px">';
+  header += '<button onclick="abOpenModal(null)" style="padding:6px 14px;font-size:12px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500"><i class="ph ph-plus" style="margin-right:4px"></i>Add Agent</button>';
+  header += '</div></div>';
+  header += '<div class="tabs" style="border-bottom:1px solid var(--border)">';
+  header += '<div class="tab ' + (agentsTab === "claude" ? "active" : "") + '" onclick="agentsTab=\\'claude\\';renderAgentBuilderPage()">Claude</div>';
+  header += '</div>';
+
+  // ── Claude tab content ──
+  function buildClaudeTab() {
+    let html = '';
+
+    if (!agents || agents.length === 0) {
+      html += '<div class="panel"><div class="empty">No agents yet. Click "+ Add New Agent" to create one.</div></div>';
+      return html;
+    }
+
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">';
+    for (const a of agents) {
+      const skills = a.skills || [];
+      const tools = a.tools || [];
+      const nameJ = JSON.stringify(a.name).replace(/"/g,'&quot;');
+      const scopeJ = JSON.stringify(a.scope).replace(/"/g,'&quot;');
+      const pathJ = JSON.stringify(a.path).replace(/"/g,'&quot;');
+      const scopeColor = a.scope === 'global' ? 'var(--accent)' : 'var(--yellow)';
+      html += \`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;transition:border-color var(--transition)" onmouseover="this.style.borderColor='var(--border-light)'" onmouseout="this.style.borderColor='var(--border)'">\`;
+
+      html += \`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:13px;color:var(--text);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\${esc(a.name)}</div>
+          \${a.model ? \`<div style="font-size:10px;color:var(--muted);margin-top:2px">\${esc(a.model)}</div>\` : ''}
+        </div>
+        <span style="font-size:9px;padding:2px 7px;border-radius:8px;border:1px solid \${scopeColor};color:\${scopeColor};white-space:nowrap;flex-shrink:0">\${esc(a.scope)}</span>
+      </div>\`;
+
+      if (a.description) {
+        html += \`<div style="font-size:11px;color:var(--dim);line-height:1.5">\${esc(a.description)}</div>\`;
+      }
+
+      if (skills.length || tools.length) {
+        html += '<div style="display:flex;flex-direction:column;gap:4px">';
+        if (skills.length) {
+          html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+          for (const s of skills) {
+            html += \`<span style="font-size:10px;padding:1px 7px;border-radius:10px;background:var(--accent-dim);color:var(--accent)">\${esc(s)}</span>\`;
+          }
+          html += '</div>';
+        }
+        if (tools.length) {
+          html += \`<div style="font-size:10px;color:var(--muted)">\${tools.length} tool\${tools.length>1?'s':''}: \${tools.slice(0,4).map(function(t){return esc(t);}).join(', ')}\${tools.length>4?' +' + (tools.length-4) + ' more':''}</div>\`;
+        }
+        html += '</div>';
+      }
+
+      html += \`<div style="display:flex;gap:6px;align-items:center;padding-top:6px;border-top:1px solid var(--border);margin-top:auto">
+        <div class="action-btn" style="font-size:11px;flex:1;text-align:center" onclick="abOpenModal(\${nameJ})"><i class="ph ph-pencil-simple" style="margin-right:3px"></i>Edit</div>
+        <div class="action-btn" style="font-size:11px;color:var(--dim)" title="\${esc(a.path)}" onclick="abRevealFile(\${pathJ})"><i class="ph ph-arrow-square-out"></i></div>
+        <div class="action-btn" style="font-size:11px;color:var(--red)" onclick="abDeleteAgent(\${nameJ},\${scopeJ})"><i class="ph ph-trash"></i></div>
+      </div>\`;
+
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  const content = buildClaudeTab();
+  app.innerHTML = '<div class="page-fixed">' + header + '</div><div class="page-content">' + content + '</div>';
+}
+
+function abBuildModalHtml() {
+  let html = '<div style="display:flex;flex-direction:column;min-height:100%">';
+  html += '<div style="flex:1">';
+  html += '<div style="display:flex;gap:12px;margin-bottom:12px">';
+  html += '<div style="flex:1"><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Name</div>';
+  html += '<input id="ab-name" type="text" placeholder="my-agent" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none"></div>';
+  html += '<div style="width:160px"><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Model</div>';
+  html += '<select id="ab-model" style="width:100%;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);outline:none">';
+  for (const m of COMMON_MODELS) {
+    html += '<option value="' + m.value + '">' + m.label + '</option>';
+  }
+  html += '</select></div></div>';
+
+  html += '<div style="display:flex;gap:12px;margin-bottom:12px">';
+  html += '<div style="flex:1"><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Description</div>';
+  html += '<input id="ab-description" type="text" placeholder="What this agent does (shown to the orchestrator)" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);outline:none"></div>';
+  html += '<div style="width:140px"><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Scope</div>';
+  html += '<select id="ab-scope" style="width:100%;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);outline:none">';
+  html += '<option value="global">Global (~/.claude)</option>';
+  html += '<option value="project">Project (./.claude)</option>';
+  html += '</select></div></div>';
+
+  html += '<div style="margin-bottom:12px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  html += '<div style="font-size:11px;color:var(--dim)">Instructions (system prompt)</div>';
+  html += '<div style="display:flex;gap:8px;align-items:center">';
+  html += '<div id="ab-gen-view-btn" style="display:none"></div>';
+  html += '<div class="action-btn" id="ab-gen-btn" style="font-size:11px;color:var(--accent)" onclick="abGenerateInstructions(this)"><i class="ph ph-magic-wand" style="margin-right:4px"></i>Generate</div>';
+  html += '</div></div>';
+  html += '<textarea id="ab-instructions" rows="8" style="width:100%;box-sizing:border-box;font-size:12px;padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);line-height:1.5;outline:none;resize:vertical"></textarea>';
+  html += '</div>';
+  html += '</div>'; // end flex:1
+
+  html += '<div style="margin-top:auto;padding-top:16px">';
+  html += '<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--dim);margin-bottom:6px">Skills</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px" id="ab-skills">';
+  for (const s of abInstalledSkills) {
+    html += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;cursor:pointer;user-select:none">';
+    html += '<input type="checkbox" data-skill="' + esc(s) + '" style="accent-color:var(--accent)" onchange="abRefreshPills(this)">' + esc(s) + '</label>';
+  }
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;margin-top:6px"><input id="ab-skill-custom" type="text" placeholder="custom-skill-name" style="font-size:12px;padding:4px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none;width:180px">';
+  html += '<div class="action-btn" style="font-size:11px" onclick="abAddCustomSkill()">+ Add</div></div></div>';
+
+  html += '<div><div style="font-size:11px;color:var(--dim);margin-bottom:6px">Tools</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px" id="ab-tools">';
+  for (const t of COMMON_TOOLS) {
+    html += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;cursor:pointer;user-select:none">';
+    html += '<input type="checkbox" data-tool="' + esc(t) + '" style="accent-color:var(--accent)" onchange="abRefreshPills(this)">' + esc(t) + '</label>';
+  }
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;margin-top:6px"><input id="ab-tool-custom" type="text" placeholder="mcp__server__toolName" style="font-size:12px;padding:4px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none;width:220px">';
+  html += '<div class="action-btn" style="font-size:11px" onclick="abAddCustomTool()">+ Add</div></div></div>';
+  html += '</div>'; // end margin-top:auto wrapper
+  html += '</div>'; // end outer flex column
+
+  return html;
+}
+
+window.abOpenModal = async function(agentName) {
+  agentEditing = agentName;
+  var modal = document.getElementById("agent-modal");
+  var title = document.getElementById("agent-modal-title");
+  var body = document.getElementById("agent-modal-body");
+  if (!modal || !body) return;
+  if (title) title.textContent = agentName ? "Edit Agent" : "New Agent";
+  body.innerHTML = abBuildModalHtml();
+  modal.style.display = "flex";
+  if (agentName) {
+    try {
+      const agents = await fetchJson("/api/agents");
+      const a = agents.find(function(x) { return x.name === agentName; });
+      if (a) abPopulateModal(a);
+    } catch(e) {}
+  }
+};
+
+function abPopulateModal(a) {
+  var nameEl = document.getElementById("ab-name");
+  var modelEl = document.getElementById("ab-model");
+  var descEl = document.getElementById("ab-description");
+  var scopeEl = document.getElementById("ab-scope");
+  var instrEl = document.getElementById("ab-instructions");
+  if (nameEl) nameEl.value = a.name || "";
+  if (descEl) descEl.value = a.description || "";
+  if (instrEl) instrEl.value = a.body || "";
+  if (modelEl && a.model) modelEl.value = a.model;
+  if (scopeEl && a.scope) scopeEl.value = a.scope;
+
+  const skillList = a.skills || [];
+  const toolList = a.tools || [];
+
+  // Check existing pills
+  document.querySelectorAll("#ab-skills input[type=checkbox]").forEach(function(cb) {
+    if (skillList.indexOf(cb.dataset.skill) !== -1) { cb.checked = true; abRefreshPills(cb); }
+  });
+  document.querySelectorAll("#ab-tools input[type=checkbox]").forEach(function(cb) {
+    if (toolList.indexOf(cb.dataset.tool) !== -1) { cb.checked = true; abRefreshPills(cb); }
+  });
+
+  // Add extra skills/tools not in defaults
+  skillList.forEach(function(s) {
+    var container = document.getElementById("ab-skills");
+    if (!container || container.querySelector('[data-skill="' + s + '"]')) return;
+    var label = document.createElement("label");
+    label.style.cssText = "display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent-dim);cursor:pointer;user-select:none";
+    label.innerHTML = '<input type="checkbox" data-skill="' + esc(s) + '" checked style="accent-color:var(--accent)" onchange="abRefreshPills(this)">' + esc(s);
+    container.appendChild(label);
+  });
+  toolList.forEach(function(t) {
+    var container = document.getElementById("ab-tools");
+    if (!container || container.querySelector('[data-tool="' + t + '"]')) return;
+    var label = document.createElement("label");
+    label.style.cssText = "display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent-dim);cursor:pointer;user-select:none";
+    label.innerHTML = '<input type="checkbox" data-tool="' + esc(t) + '" checked style="accent-color:var(--accent)" onchange="abRefreshPills(this)">' + esc(t);
+    container.appendChild(label);
+  });
+}
+
+window.abCloseModal = function() {
+  var modal = document.getElementById("agent-modal");
+  if (modal) modal.style.display = "none";
+  agentEditing = null;
+};
+
+window.abRefreshPills = function(cb) {
+  const label = cb.parentElement;
+  if (!label) return;
+  label.style.borderColor = cb.checked ? 'var(--accent)' : 'var(--border)';
+  label.style.background = cb.checked ? 'var(--accent-dim)' : 'transparent';
+};
+
+window.abAddCustomSkill = function() {
+  const inp = document.getElementById("ab-skill-custom");
+  if (!inp || !inp.value.trim()) return;
+  const name = inp.value.trim();
+  const container = document.getElementById("ab-skills");
+  if (!container) return;
+  if (container.querySelector(\`[data-skill="\${name}"]\`)) { inp.value = ""; return; }
+  const label = document.createElement("label");
+  label.style.cssText = "display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent-dim);cursor:pointer;user-select:none";
+  label.innerHTML = \`<input type="checkbox" data-skill="\${name}" checked style="accent-color:var(--accent)" onchange="abRefreshPills(this,'skill')">\${name}\`;
+  container.appendChild(label);
+  inp.value = "";
+};
+
+window.abAddCustomTool = function() {
+  const inp = document.getElementById("ab-tool-custom");
+  if (!inp || !inp.value.trim()) return;
+  const name = inp.value.trim();
+  const container = document.getElementById("ab-tools");
+  if (!container) return;
+  if (container.querySelector(\`[data-tool="\${name}"]\`)) { inp.value = ""; return; }
+  const label = document.createElement("label");
+  label.style.cssText = "display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent-dim);cursor:pointer;user-select:none";
+  label.innerHTML = \`<input type="checkbox" data-tool="\${name}" checked style="accent-color:var(--accent)" onchange="abRefreshPills(this,'tool')">\${name}\`;
+  container.appendChild(label);
+  inp.value = "";
+};
+
+function abCollect() {
+  const name = document.getElementById("ab-name")?.value.trim();
+  const model = document.getElementById("ab-model")?.value;
+  const description = document.getElementById("ab-description")?.value.trim();
+  const scope = document.getElementById("ab-scope")?.value;
+  const instructions = document.getElementById("ab-instructions")?.value;
+  const skills = Array.from(document.querySelectorAll("#ab-skills input[type=checkbox]:checked")).map(function(c) { return c.dataset.skill; });
+  const tools = Array.from(document.querySelectorAll("#ab-tools input[type=checkbox]:checked")).map(function(c) { return c.dataset.tool; });
+  return { name, model, description, scope, instructions, skills, tools };
+}
+
+window.abSave = async function() {
+  const data = abCollect();
+  if (!data.name) { alert("Agent name is required"); return; }
+  try {
+    const res = await postJson("/api/agents", data);
+    if (res.error) { alert("Error: " + res.error); return; }
+    abCloseModal();
+    renderAgentBuilderPage();
+  } catch (err) {
+    alert("Failed: " + String(err));
+  }
+};
+
+window.abPreview = function() {
+  const data = abCollect();
+  const skillLines = (data.skills || []).map(function(s) { return "  - " + s; }).join("\\n");
+  const toolLines = (data.tools || []).map(function(t) { return "  - " + t; }).join("\\n");
+  const parts = ["---", \`name: \${data.name||'(unnamed)'}\`];
+  if (data.model) parts.push(\`model: \${data.model}\`);
+  if (data.description) parts.push(\`description: \${data.description}\`);
+  if (skillLines) parts.push(\`skills:\\n\${skillLines}\`);
+  if (toolLines) parts.push(\`tools:\\n\${toolLines}\`);
+  parts.push("---");
+  const content = parts.join("\\n") + "\\n\\n" + (data.instructions || "");
+
+  const output = document.getElementById("output-modal-content");
+  if (output) { output.textContent = content; }
+  openOutputModal("Agent Preview: " + (data.name || "untitled"));
+};
+
+window.abRevealFile = async function(path) {
+  try {
+    await fetch(API + "/api/agents/reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: path }),
+    });
+  } catch (err) {
+    alert("Could not open location: " + String(err));
+  }
+};
+
+window.abValidate = async function(btn) {
+  const data = abCollect();
+  if (!data.name) { alert("Agent name is required before validating"); return; }
+
+  const skillLines = (data.skills || []).map(function(s) { return "  - " + s; }).join("\\n");
+  const toolLines = (data.tools || []).map(function(t) { return "  - " + t; }).join("\\n");
+  const parts = ["---", "name: " + (data.name || "")];
+  if (data.model) parts.push("model: " + data.model);
+  if (data.description) parts.push("description: " + data.description);
+  if (skillLines) parts.push("skills:\\n" + skillLines);
+  if (toolLines) parts.push("tools:\\n" + toolLines);
+  parts.push("---");
+  const fullContent = parts.join("\\n") + "\\n\\n" + (data.instructions || "");
+
+  const output = document.getElementById("output-modal-content");
+  if (output) output.innerHTML = "";
+
+  const origText = btn ? btn.textContent : "";
+  if (btn) { btn.textContent = "Validating…"; btn.style.pointerEvents = "none"; }
+  openOutputModal("Validating Agent: " + data.name);
+
+  const appendText = function(text, color) {
+    if (!output) return;
+    if (color) {
+      const span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      output.appendChild(span);
+    } else {
+      output.appendChild(document.createTextNode(text));
+    }
+    output.scrollTop = output.scrollHeight;
+  };
+
+  let fullText = "";
+  try {
+    const resp = await fetch(API + "/api/agents/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: fullContent }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(function() { return { error: resp.statusText }; });
+      appendText("Error: " + (err.error || resp.statusText) + "\\n", "var(--red)");
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buf += decoder.decode(chunk.value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        if (ev.type === "stdout") { appendText(ev.text, null); fullText += ev.text; }
+        else if (ev.type === "stderr") appendText(ev.text, "var(--yellow)");
+        else if (ev.type === "error") appendText("Error: " + ev.text + "\\n", "var(--red)");
+        else if (ev.type === "done") appendText("\\n[exit " + ev.code + "]", ev.code === 0 ? "var(--muted)" : "var(--red)");
+      }
+    }
+    if (fullText.trim()) {
+      const instrEl = document.getElementById("ab-instructions");
+      if (instrEl) instrEl.value = fullText.trim();
+      if (btn) { btn.innerHTML = '<i class="ph ph-seal-check" style="margin-right:4px"></i>Validated'; btn.style.color = "var(--green)"; }
+    }
+  } catch (err) {
+    appendText("Failed: " + String(err) + "\\n", "var(--red)");
+  } finally {
+    if (btn) { btn.style.pointerEvents = ""; if (btn.textContent === "Validating…") btn.textContent = origText; }
+  }
+};
+
+window.abGenerateInstructions = async function(btn) {
+  const name = document.getElementById("ab-name")?.value.trim() || "agent";
+  const description = document.getElementById("ab-description")?.value.trim() || "";
+  const skills = Array.from(document.querySelectorAll("#ab-skills input[type=checkbox]:checked")).map(function(c) { return c.dataset.skill; });
+  const tools = Array.from(document.querySelectorAll("#ab-tools input[type=checkbox]:checked")).map(function(c) { return c.dataset.tool; });
+
+  const output = document.getElementById("output-modal-content");
+  if (output) output.innerHTML = "";
+
+  // Show View Output button immediately
+  const viewContainer = document.getElementById("ab-gen-view-btn");
+  if (viewContainer) {
+    viewContainer.style.display = "";
+    viewContainer.innerHTML = '<div class="action-btn" style="font-size:11px;color:var(--accent)" onclick="toggleOutputModal(\\'Generating Instructions\\')">View Output</div>';
+  }
+
+  const origText = btn ? btn.textContent : "";
+  if (btn) { btn.textContent = "Generating…"; btn.style.pointerEvents = "none"; }
+
+  openOutputModal("Generating Instructions for: " + name);
+
+  const appendText = function(text, color) {
+    if (!output) return;
+    if (color) {
+      const span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      output.appendChild(span);
+    } else {
+      output.appendChild(document.createTextNode(text));
+    }
+    output.scrollTop = output.scrollHeight;
+  };
+
+  let fullText = "";
+  try {
+    const resp = await fetch(API + "/api/agents/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name, description: description, skills: skills, tools: tools }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(function() { return { error: resp.statusText }; });
+      appendText("Error: " + (err.error || resp.statusText) + "\\n", "var(--red)");
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        if (ev.type === "stdout") { appendText(ev.text, null); fullText += ev.text; }
+        else if (ev.type === "stderr") appendText(ev.text, "var(--yellow)");
+        else if (ev.type === "error") appendText("Error: " + ev.text + "\\n", "var(--red)");
+        else if (ev.type === "done") appendText("\\n[exit " + ev.code + "]", ev.code === 0 ? "var(--muted)" : "var(--red)");
+      }
+    }
+    // Populate textarea with generated text
+    if (fullText.trim()) {
+      const instrEl = document.getElementById("ab-instructions");
+      if (instrEl) instrEl.value = fullText.trim();
+    }
+  } catch (err) {
+    appendText("Failed: " + String(err) + "\\n", "var(--red)");
+  } finally {
+    if (btn) { btn.style.pointerEvents = ""; btn.textContent = origText; }
+    if (viewContainer) {
+      const modal = document.getElementById("output-modal");
+      const isOpen = modal && modal.style.display !== "none";
+      viewContainer.innerHTML = '<div class="action-btn" style="font-size:11px;color:var(--accent)" onclick="toggleOutputModal(\\'Instructions Output\\')">' + (isOpen ? "Hide Output" : "View Output") + '</div>';
+    }
+  }
+};
+
+window.abDeleteAgent = async function(name, scope) {
+  if (!await showConfirm(\`Delete agent "\${name}"?\`, "Delete")) return;
+  try {
+    await fetch(API + \`/api/agents/\${encodeURIComponent(name)}?scope=\${scope}\`, { method: "DELETE" });
+    agentEditing = null;
+    renderAgentBuilderPage();
+  } catch (err) {
+    alert("Failed: " + String(err));
+  }
+};
 
 async function renderDocsPage() {
   const res = await fetchApi("/api/docs");
@@ -1990,12 +4704,18 @@ let issuesSortDir = 1; // 1 = asc, -1 = desc
 let issuesData = [];
 
 async function renderIssuesPage() {
+  savePageState();
   const app = document.getElementById("app");
 
   const tickets = await fetchJson("/api/issues/tickets");
 
+  const issuesPageHeader = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Issues</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Bugs and issues found across test runs</div></div>';
+
   if (tickets.length === 0 && !issuesSelectedTicket) {
-    app.innerHTML = '<div class="panel"><div class="empty">No issues found yet. Run /noob-explore (UI tests) or /noob-api-explore (API tests) to find issues.</div></div>';
+    app.style.display = "";
+    app.style.flexDirection = "";
+    app.style.overflow = "";
+    app.innerHTML = '<div class="page-fixed">' + issuesPageHeader + '</div><div class="page-content"><div class="panel"><div class="empty">No issues found yet. Run /noob-explore (UI tests) or /noob-api-explore (API tests) to find issues.</div></div></div>';
     return;
   }
 
@@ -2007,18 +4727,18 @@ async function renderIssuesPage() {
     const totalCritical = tickets.reduce((s, t) => s + t.critical, 0);
     const totalHigh = tickets.reduce((s, t) => s + t.high, 0);
 
-    html += '<div class="panel" style="margin-bottom:8px">';
-    html += '<div class="panel-title">Issues by Ticket</div>';
-    html += '<div style="display:flex;gap:16px;margin-bottom:4px">';
-    html += \`<div class="stat"><div class="stat-value">\${tickets.length}</div><div class="stat-label">Tickets</div></div>\`;
-    html += \`<div class="stat"><div class="stat-value">\${totalIssues}</div><div class="stat-label">Issues</div></div>\`;
-    html += \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${totalCritical}</div><div class="stat-label">Critical</div></div>\`;
-    html += \`<div class="stat"><div class="stat-value" style="color:var(--orange)">\${totalHigh}</div><div class="stat-label">High</div></div>\`;
-    html += '</div></div>';
+    let fixedHtml = issuesPageHeader;
+    fixedHtml += '<div class="panel" style="margin-bottom:8px">';
+    fixedHtml += '<div style="display:flex;gap:16px;margin-bottom:4px">';
+    fixedHtml += \`<div class="stat"><div class="stat-value">\${tickets.length}</div><div class="stat-label">Tickets</div></div>\`;
+    fixedHtml += \`<div class="stat"><div class="stat-value">\${totalIssues}</div><div class="stat-label">Issues</div></div>\`;
+    fixedHtml += \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${totalCritical}</div><div class="stat-label">Critical</div></div>\`;
+    fixedHtml += \`<div class="stat"><div class="stat-value" style="color:var(--orange)">\${totalHigh}</div><div class="stat-label">High</div></div>\`;
+    fixedHtml += '</div></div>';
 
-    html += '<div class="panel">';
+    fixedHtml += '<div class="panel">';
     for (const t of tickets) {
-      html += \`<div class="session-card" onclick="issuesSelectedTicket='\${esc(t.ticket)}';renderIssuesPage()">
+      fixedHtml += \`<div class="session-card" onclick="issuesSelectedTicket='\${esc(t.ticket)}';renderIssuesPage()">
         <div class="session-header">
           <span class="session-id" style="font-size:14px">\${esc(t.ticket)}</span>
           <span style="font-size:12px;color:var(--dim)">\${t.total} issues</span>
@@ -2033,8 +4753,11 @@ async function renderIssuesPage() {
         <div class="session-meta"><span>\${t.last_issue || ""}</span></div>
       </div>\`;
     }
-    html += '</div>';
-    setPage(html);
+    fixedHtml += '</div>';
+    app.style.display = "";
+    app.style.flexDirection = "";
+    app.style.overflow = "";
+    app.innerHTML = '<div class="page-fixed">' + fixedHtml + '</div><div class="page-content">' + html + '</div>';
     return;
   }
 
@@ -2080,21 +4803,22 @@ function renderIssuesTable() {
   const sevColor = severityColor;
   const arrow = (col) => issuesSortCol === col ? (issuesSortDir === 1 ? " ▲" : " ▼") : "";
 
+  let fixedHtml = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Issues</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Bugs and issues found across test runs</div></div>';
   let html = '';
 
   // Stats + breadcrumb
-  html += '<div class="panel" style="margin-bottom:8px">';
-  html += \`<div class="breadcrumb">
+  fixedHtml += '<div class="panel" style="margin-bottom:8px">';
+  fixedHtml += \`<div class="breadcrumb">
     <span class="breadcrumb-item" onclick="issuesSelectedTicket='';renderIssuesPage()">Issues</span>
     <span class="breadcrumb-sep">|</span>
     <span class="breadcrumb-item current">\${esc(issuesSelectedTicket)}</span>
   </div>\`;
-  html += '<div style="display:flex;gap:16px">';
-  html += \`<div class="stat"><div class="stat-value">\${total}</div><div class="stat-label">Total</div></div>\`;
-  html += \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${critical}</div><div class="stat-label">Critical</div></div>\`;
-  html += \`<div class="stat"><div class="stat-value" style="color:var(--orange)">\${high}</div><div class="stat-label">High</div></div>\`;
-  html += \`<div class="stat"><div class="stat-value" style="color:var(--yellow)">\${medium}</div><div class="stat-label">Medium</div></div>\`;
-  html += '</div></div>';
+  fixedHtml += '<div style="display:flex;gap:16px">';
+  fixedHtml += \`<div class="stat"><div class="stat-value">\${total}</div><div class="stat-label">Total</div></div>\`;
+  fixedHtml += \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${critical}</div><div class="stat-label">Critical</div></div>\`;
+  fixedHtml += \`<div class="stat"><div class="stat-value" style="color:var(--orange)">\${high}</div><div class="stat-label">High</div></div>\`;
+  fixedHtml += \`<div class="stat"><div class="stat-value" style="color:var(--yellow)">\${medium}</div><div class="stat-label">Medium</div></div>\`;
+  fixedHtml += '</div></div>';
 
   // Table — sticky header, scrollable body
   html += '<div class="panel" style="padding:0;overflow-y:auto;flex:1;min-height:0">';
@@ -2123,7 +4847,11 @@ function renderIssuesTable() {
   }
 
   html += '</tbody></table></div>';
-  setPage(html);
+  const issuesTblApp = document.getElementById("app");
+  issuesTblApp.style.display = "";
+  issuesTblApp.style.flexDirection = "";
+  issuesTblApp.style.overflow = "";
+  issuesTblApp.innerHTML = '<div class="page-fixed">' + fixedHtml + '</div><div class="page-content" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">' + html + '</div>';
 }
 
 function sortIssues(col) {
@@ -2136,8 +4864,8 @@ function sortIssues(col) {
   renderIssuesTable();
 }
 
-function deleteIssue(issueId) {
-  if (!confirm("Delete this issue? This cannot be undone.")) return;
+async function deleteIssue(issueId) {
+  if (!await showConfirm("Delete this issue? This cannot be undone.", "Delete")) return;
   fetchApi("/api/issues/delete?id=" + encodeURIComponent(issueId), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
@@ -2154,8 +4882,20 @@ let analysisSelectedRun = "";
 let analysisSelectedId = "";
 
 async function renderAnalysesPage() {
-  const allAnalyses = await fetchJson("/api/analyses");
+  savePageState();
+  const [allAnalyses, pageCfg, agents] = await Promise.all([
+    fetchJson("/api/analyses"),
+    fetchJson("/api/page-config/analyses").catch(() => ({})),
+    fetchJson("/api/agents").catch(() => []),
+  ]);
   const app = document.getElementById("app");
+
+  const assignedAgent = pageCfg?.agent_name || null;
+  window.__pageConfigData = { page: 'analyses', label: 'Analyses', agents: agents || [], currentAgent: assignedAgent };
+  if (assignedAgent) {
+    const agentObj = (agents || []).find(function(a) { return a.name === assignedAgent; });
+    window.__agentRunData = { agentName: assignedAgent, agentPath: agentObj ? agentObj.path : null, contextLabel: 'Analyses' };
+  }
 
   // Group by run
   const byRun = {};
@@ -2175,13 +4915,18 @@ async function renderAnalysesPage() {
   const byType = {};
   for (const a of statsItems) byType[a.analysis_type] = (byType[a.analysis_type] || 0) + 1;
 
+  const agentPlayBtn = assignedAgent
+    ? '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openAnalysesRunModal()" title="Run ' + esc(assignedAgent) + '"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(assignedAgent) + '</button>'
+    : '';
+  const analysesTitleHtml = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px"><div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Analyses</div><div style="font-size:12px;color:var(--muted);margin-top:3px">AI-generated test analyses by ticket</div></div><div style="display:flex;align-items:center;gap:8px">' + agentPlayBtn + '<button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;analyses&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button><button class="action-btn" style="font-size:11px" onclick="openPageConfigModal()"><i class="ph ph-gear" style="margin-right:4px"></i>Configure</button></div></div>';
+
   if (allAnalyses.length === 0) {
-    setPage('<div class="panel"><div class="panel-title">Analyses</div><div class="empty">No analyses yet. Use /noob-analyze to generate them.</div></div>');
+    setPage(analysesTitleHtml + '<div class="panel"><div class="empty">No analyses yet. Use /noob-analyze to generate them.</div></div>');
     return;
   }
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
-  html += \`<div class="panel-title">\${esc(statsLabel)}</div>\`;
+  let html = analysesTitleHtml;
+  html += '<div class="panel" style="margin-bottom:16px">';
   html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
   html += \`<div class="stat"><div class="stat-value">\${statsItems.length}</div><div class="stat-label">Total</div></div>\`;
   for (const [type, count] of Object.entries(byType)) {
@@ -2191,34 +4936,62 @@ async function renderAnalysesPage() {
   }
   html += '</div></div>';
 
-  // No run selected — show run cards
+  // No run selected — show run cards grouped by date
   if (!analysisSelectedRun) {
-    html += '<div class="panel">';
-    for (const [runId, group] of Object.entries(byRun)) {
-      const g = group;
-      const hasGap = g.items.some(a => a.analysis_type === "gap");
-      const hasReq = g.items.some(a => a.analysis_type === "requirements");
-      const hasFeas = g.items.some(a => a.analysis_type === "feasibility");
-      const hasImpact = g.items.some(a => a.analysis_type === "impact");
+    // Filter input
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
+    html += '<div style="flex:1;display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">';
+    html += '<i class="ph ph-magnifying-glass" style="font-size:13px;color:var(--dim);flex-shrink:0"></i>';
+    html += '<input id="analyses-filter-input" type="text" placeholder="Filter by ticket ID..." oninput="filterAnalysesRunList(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />';
+    html += '</div></div>';
 
-      html += \`<div class="session-card" onclick="analysisSelectedRun='\${runId}';analysisSelectedId='';renderAnalysesPage()">
-        <div class="session-header">
-          <span class="session-id" style="font-size:14px">\${esc(g.ref)}</span>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:var(--dim)">\${g.items.length} analyses</span>
-            <button onclick="event.stopPropagation();deleteAnalysesForRun('\${runId}','\${esc(g.ref)}')" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;cursor:pointer" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">Delete</button>
-          </div>
-        </div>
-        \${g.targetUrl ? \`<div style="font-size:12px;color:var(--dim);margin-top:2px">\${esc(g.targetUrl)}</div>\` : ""}
-        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-          \${hasGap ? \`<span class="suite-badge" style="background:rgba(210,153,34,0.15);color:var(--yellow)">Gap</span>\` : ""}
-          \${hasReq ? \`<span class="suite-badge" style="background:rgba(88,166,255,0.15);color:var(--accent)">Requirements</span>\` : ""}
-          \${hasFeas ? \`<span class="suite-badge" style="background:rgba(63,185,80,0.15);color:var(--green)">Feasibility</span>\` : ""}
-          \${hasImpact ? \`<span class="suite-badge" style="background:rgba(248,81,73,0.15);color:var(--red)">Impact</span>\` : ""}
-        </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:4px">Run: \${runId.slice(0,8)}</div>
-      </div>\`;
-    }
+    // Date grouping
+    const anNow = new Date();
+    const anTodayStr = anNow.toISOString().slice(0, 10);
+    const anWeekAgo = new Date(anNow); anWeekAgo.setDate(anWeekAgo.getDate() - 7);
+    const anWeekAgoStr = anWeekAgo.toISOString().slice(0, 10);
+    const anLatestDate = function(g) { return g.items.reduce(function(m, a) { return a.created_at > m ? a.created_at : m; }, ''); };
+    const runEntries = Object.entries(byRun);
+    const anTodayRuns = runEntries.filter(function(e) { return anLatestDate(e[1]).startsWith(anTodayStr); });
+    const anWeekRuns  = runEntries.filter(function(e) { var d = anLatestDate(e[1]); return d && !d.startsWith(anTodayStr) && d >= anWeekAgoStr; });
+    const anOldRuns   = runEntries.filter(function(e) { var d = anLatestDate(e[1]); return !d || d < anWeekAgoStr; });
+
+    var renderAnalysesGroup = function(label, color, entries) {
+      if (!entries.length) return '';
+      var gKey = label.replace(/\s/g, '-').toLowerCase();
+      var gh = '<div data-analyses-group="' + gKey + '" style="font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:' + color + ';margin:4px 2px 8px">' + label + ' (' + entries.length + ')</div>';
+      gh += '<div class="panel" style="margin-bottom:12px">';
+      for (var i = 0; i < entries.length; i++) {
+        var runId = entries[i][0]; var g = entries[i][1];
+        var hasGap    = g.items.some(function(a) { return a.analysis_type === 'gap'; });
+        var hasReq    = g.items.some(function(a) { return a.analysis_type === 'requirements'; });
+        var hasFeas   = g.items.some(function(a) { return a.analysis_type === 'feasibility'; });
+        var hasImpact = g.items.some(function(a) { return a.analysis_type === 'impact'; });
+        gh += '<div class="session-card" data-run-ref="' + esc(g.ref) + '" onclick="analysisSelectedRun=&apos;' + runId + '&apos;;analysisSelectedId=&apos;&apos;;renderAnalysesPage()">';
+        gh += '<div class="session-header">';
+        gh += '<span class="session-id" style="font-size:14px">' + esc(g.ref) + '</span>';
+        gh += '<div style="display:flex;align-items:center;gap:8px">';
+        gh += '<span style="font-size:12px;color:var(--dim)">' + g.items.length + ' analyses</span>';
+        gh += '<button onclick="event.stopPropagation();deleteAnalysesForRun(&apos;' + runId + '&apos;,&apos;' + esc(g.ref) + '&apos;)" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;cursor:pointer" onmouseover="this.style.borderColor=&apos;var(--red)&apos;" onmouseout="this.style.borderColor=&apos;var(--border)&apos;">Delete</button>';
+        gh += '</div></div>';
+        if (g.targetUrl) gh += '<div style="font-size:12px;color:var(--dim);margin-top:2px">' + esc(g.targetUrl) + '</div>';
+        gh += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+        if (hasGap)    gh += '<span class="suite-badge" style="background:rgba(210,153,34,0.15);color:var(--yellow)">Gap</span>';
+        if (hasReq)    gh += '<span class="suite-badge" style="background:rgba(88,166,255,0.15);color:var(--accent)">Requirements</span>';
+        if (hasFeas)   gh += '<span class="suite-badge" style="background:rgba(63,185,80,0.15);color:var(--green)">Feasibility</span>';
+        if (hasImpact) gh += '<span class="suite-badge" style="background:rgba(248,81,73,0.15);color:var(--red)">Impact</span>';
+        gh += '</div>';
+        gh += '<div style="font-size:11px;color:var(--dim);margin-top:4px">Run: ' + runId.slice(0,8) + '</div>';
+        gh += '</div>';
+      }
+      gh += '</div>';
+      return gh;
+    };
+
+    html += '<div id="analyses-run-list">';
+    html += renderAnalysesGroup('Today', 'var(--accent)', anTodayRuns);
+    html += renderAnalysesGroup('This Week', 'var(--muted)', anWeekRuns);
+    html += renderAnalysesGroup('Older', 'var(--dim)', anOldRuns);
     html += '</div>';
     setPage(html);
     return;
@@ -2542,7 +5315,7 @@ async function exportAnalysisPdf(id) {
 }
 
 async function deleteAnalysesForRun(runId, ref) {
-  if (!confirm("Delete all analyses for " + ref + "?")) return;
+  if (!await showConfirm("Delete all analyses for " + ref + "?", "Delete")) return;
   await fetchApi("/api/analyses/delete?run=" + encodeURIComponent(runId), { method: "DELETE" });
   analysisSelectedRun = "";
   analysisSelectedId = "";
@@ -2606,6 +5379,42 @@ async function exportAllAnalysesPdf(runId) {
   win.document.write(printHtml);
   win.document.close();
   setTimeout(() => { win.print(); }, 500);
+}
+
+function renderFlexValue(value, color) {
+  let html = "";
+  if (value === null || value === undefined) return html;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === "string") {
+        html += \`<div style="font-size:13px;padding:3px 0">• \${esc(item)}</div>\`;
+      } else if (item && typeof item === "object") {
+        const title = item.area || item.risk || item.concern || item.file || item.description || item.reason || item.issue || "";
+        const detail = item.details || item.impact || item.changes || item.scope || item.mitigation || "";
+        const sev = item.severity || "";
+        html += \`<div style="font-size:13px;padding:5px 0;border-bottom:1px solid var(--border)">\`;
+        if (sev) html += \`<span style="font-size:10px;font-weight:600;margin-right:6px;color:\${severityColor(sev)}">\${esc(sev.toUpperCase())}</span>\`;
+        if (title) html += \`<span style="font-weight:600;color:var(--accent)">\${esc(title)}</span>\`;
+        if (detail && detail !== title) html += \`<div style="font-size:12px;color:var(--text);margin-top:2px">\${esc(detail)}</div>\`;
+        html += "</div>";
+      } else {
+        html += \`<div style="font-size:13px;padding:3px 0">• \${esc(String(item))}</div>\`;
+      }
+    }
+  } else if (typeof value === "object") {
+    for (const [subKey, subVal] of Object.entries(value)) {
+      const subLabel = subKey.replace(/_/g, " ").replace(/\\b\\w/g, c => c.toUpperCase());
+      if (Array.isArray(subVal) && subVal.length > 0) {
+        html += \`<div style="font-size:11px;font-weight:600;color:var(--dim);margin:8px 0 4px">\${esc(subLabel)}</div>\`;
+        html += renderFlexValue(subVal, color);
+      } else if (typeof subVal === "string") {
+        html += \`<div style="font-size:13px;padding:3px 0"><strong>\${esc(subLabel)}:</strong> \${esc(subVal)}</div>\`;
+      }
+    }
+  } else {
+    html += \`<div style="font-size:13px;padding:3px 0">\${esc(String(value))}</div>\`;
+  }
+  return html;
 }
 
 function renderAnalysisContent(type, content) {
@@ -2714,40 +5523,20 @@ function renderAnalysisContent(type, content) {
     if (content.summary) {
       html += \`<div style="font-size:13px;padding:8px;background:rgba(248,81,73,0.1);border-radius:4px;margin-bottom:16px;color:var(--red)">\${esc(content.summary)}</div>\`;
     }
-    const sections = [
-      { key: "impacted_areas", label: "Impacted Areas", color: "var(--red)" },
-      { key: "dependency_risks", label: "Dependency Risks", color: "var(--orange)" },
-      { key: "config_concerns", label: "Config Concerns", color: "var(--yellow)" },
-      { key: "compatibility_issues", label: "Compatibility Issues", color: "var(--red)" },
-      { key: "infrastructure_concerns", label: "Infrastructure", color: "var(--purple)" },
-      { key: "hidden_edge_cases", label: "Hidden Edge Cases", color: "var(--accent)" },
-      { key: "existing_test_gaps", label: "Test Gaps", color: "var(--yellow)" },
-      { key: "regression_risks", label: "Regression Risks", color: "var(--red)" },
-    ];
-    for (const s of sections) {
-      const items = content[s.key] || [];
-      if (items.length === 0) continue;
-      html += \`<div class="tc-detail-section"><div class="tc-detail-section-title" style="color:\${s.color}">\${s.label} (\${items.length})</div>\`;
-      for (const item of items) {
-        if (typeof item === "string") {
-          html += \`<div style="font-size:13px;padding:3px 0">• \${esc(item)}</div>\`;
-        } else {
-          // Handle multiple object shapes from different analysis runs
-          const title = item.area || item.risk || item.concern || item.file || item.description || item.reason || "";
-          const detail = item.details || item.impact || item.changes || item.scope || item.description || item.mitigation || "";
-          const sev = item.severity || "";
-          const files = item.files || item.affected || item.dependencies || null;
-          const extra = item.change_type || item.mitigation || null;
-
-          html += \`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
-            \${sev ? \`<span style="color:\${severityColor(sev)};font-size:10px;font-weight:600;margin-right:6px">[\${sev.toUpperCase()}]</span>\` : ""}
-            \${title ? \`<span style="font-weight:600;color:var(--accent)">\${esc(title)}</span>\` : ""}
-            \${detail && detail !== title ? \`<div style="font-size:12px;color:var(--text);margin-top:2px">\${esc(detail)}</div>\` : ""}
-            \${extra ? \`<div style="font-size:11px;color:var(--green);margin-top:2px">→ \${esc(extra)}</div>\` : ""}
-            \${files ? \`<div style="font-size:10px;color:var(--dim);margin-top:3px;font-family:monospace">\${Array.isArray(files) ? files.map(f => esc(f)).join(", ") : esc(JSON.stringify(files))}</div>\` : ""}
-          </div>\`;
-        }
-      }
+    const sectionColors = {
+      impacted_areas: "var(--red)", dependency_risks: "var(--orange)",
+      config_concerns: "var(--yellow)", compatibility_issues: "var(--red)",
+      infrastructure_concerns: "var(--purple)", hidden_edge_cases: "var(--accent)",
+      test_gaps: "var(--yellow)", existing_test_gaps: "var(--yellow)",
+      regression_risks: "var(--red)"
+    };
+    for (const [key, value] of Object.entries(content)) {
+      if (key === "summary" || value === null || value === undefined) continue;
+      const color = sectionColors[key] || "var(--dim)";
+      const label = key.replace(/_/g, " ").replace(/\\b\\w/g, c => c.toUpperCase());
+      const count = Array.isArray(value) ? value.length : (typeof value === "object" ? Object.keys(value).length : 1);
+      html += \`<div class="tc-detail-section"><div class="tc-detail-section-title" style="color:\${color}">\${esc(label)} (\${count})</div>\`;
+      html += renderFlexValue(value, color);
       html += '</div>';
     }
   } else {
@@ -2764,45 +5553,90 @@ let plansSelectedTicket = "";
 let plansSelectedPlan = "";
 
 async function renderPlansPage() {
+  savePageState();
   const app = document.getElementById("app");
 
-  const tickets = await fetchJson("/api/plans/tickets");
+  const [tickets, agents, pageCfg] = await Promise.all([
+    fetchJson("/api/plans/tickets").catch(() => []),
+    fetchJson("/api/agents").catch(() => []),
+    fetchJson("/api/page-config/plans").catch(() => ({})),
+  ]);
+
+  const assignedAgent = pageCfg?.agent_name || null;
+  window.__pageConfigData = { page: 'plans', label: 'Plans', agents: agents || [], currentAgent: assignedAgent };
+  if (assignedAgent) {
+    const agentObj = (agents || []).find(function(a) { return a.name === assignedAgent; });
+    window.__agentRunData = { agentName: assignedAgent, agentPath: agentObj ? agentObj.path : null, contextLabel: 'Plans' };
+  }
+
+  const agentPlayBtn = assignedAgent
+    ? '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openPlansRunModal()" title="Run ' + esc(assignedAgent) + '"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(assignedAgent) + '</button>'
+    : '';
+  const plansTitleHtml = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px"><div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Plans</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Test plans generated for each ticket</div></div><div style="display:flex;align-items:center;gap:8px">' + agentPlayBtn + '<button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;plans&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button><button class="action-btn" style="font-size:11px" onclick="openPageConfigModal()"><i class="ph ph-gear" style="margin-right:4px"></i>Configure</button></div></div>';
 
   if (tickets.length === 0 && !plansSelectedTicket) {
-    app.innerHTML = '<div class="panel"><div class="empty">No plans yet. Use /noob-plan when a ticket is ready for QA.</div></div>';
+    setPage(plansTitleHtml + '<div class="panel"><div class="empty">No plans yet. Use /noob-plan when a ticket is ready for QA.</div></div>');
     return;
   }
 
-  let html = "";
+  let html = plansTitleHtml;
 
   // ── Level 1: Ticket list ──
   if (!plansSelectedTicket) {
     const totalPlans = tickets.reduce((s, t) => s + t.plan_count, 0);
     const totalSteps = tickets.reduce((s, t) => s + t.total_steps, 0);
-
     html += '<div class="panel" style="margin-bottom:8px">';
-    html += '<div class="panel-title">Test Plans by Ticket</div>';
     html += '<div style="display:flex;gap:16px">';
     html += \`<div class="stat"><div class="stat-value">\${tickets.length}</div><div class="stat-label">Tickets</div></div>\`;
     html += \`<div class="stat"><div class="stat-value">\${totalPlans}</div><div class="stat-label">Plans</div></div>\`;
     html += \`<div class="stat"><div class="stat-value">\${totalSteps}</div><div class="stat-label">Steps</div></div>\`;
     html += '</div></div>';
 
-    html += '<div class="panel">';
-    for (const t of tickets) {
-      html += \`<div class="session-card" onclick="plansSelectedTicket='\${esc(t.ticket_id)}';plansSelectedPlan='';renderPlansPage()">
-        <div class="session-header">
-          <span class="session-id" style="font-size:14px">\${esc(t.ticket_id)}</span>
-          <span style="font-size:11px;color:var(--dim)">\${t.plan_count} plan\${t.plan_count > 1 ? "s" : ""}</span>
-        </div>
-        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
-          <span class="suite-badge" style="background:rgba(88,166,255,0.15);color:var(--accent)">\${t.total_steps} steps</span>
-          \${t.confident ? \`<span class="suite-badge passed">\${t.confident} confident</span>\` : ""}
-          \${t.uncertain ? \`<span class="suite-badge" style="background:rgba(210,153,34,0.15);color:var(--yellow)">\${t.uncertain} uncertain</span>\` : ""}
-        </div>
-        <div class="session-meta"><span>\${t.last_plan || ""}</span></div>
-      </div>\`;
-    }
+    // Filter input
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
+    html += '<div style="flex:1;display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">';
+    html += '<i class="ph ph-magnifying-glass" style="font-size:13px;color:var(--dim);flex-shrink:0"></i>';
+    html += '<input id="plans-filter-input" type="text" placeholder="Filter by ticket ID..." oninput="filterPlansList(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />';
+    html += '</div></div>';
+
+    // Date grouping
+    var plNow = new Date();
+    var plTodayStr = plNow.toISOString().slice(0, 10);
+    var plWeekAgo = new Date(plNow); plWeekAgo.setDate(plWeekAgo.getDate() - 7);
+    var plWeekAgoStr = plWeekAgo.toISOString().slice(0, 10);
+    var plDate = function(t) { return (t.last_plan || '').slice(0, 10); };
+    var plTodayItems = tickets.filter(function(t) { return plDate(t) === plTodayStr; });
+    var plWeekItems  = tickets.filter(function(t) { var d = plDate(t); return d && d !== plTodayStr && d >= plWeekAgoStr; });
+    var plOldItems   = tickets.filter(function(t) { var d = plDate(t); return !d || d < plWeekAgoStr; });
+
+    var renderPlansGroup = function(label, color, items) {
+      if (!items.length) return '';
+      var gKey = label.replace(/\s/g, '-').toLowerCase();
+      var gh = '<div data-plans-group="' + gKey + '" style="font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:' + color + ';margin:4px 2px 8px">' + label + ' (' + items.length + ')</div>';
+      gh += '<div class="panel" style="margin-bottom:12px">';
+      for (var i = 0; i < items.length; i++) {
+        var t = items[i];
+        gh += '<div class="session-card" data-ticket-id="' + esc(t.ticket_id) + '" onclick="plansSelectedTicket=&apos;' + esc(t.ticket_id) + '&apos;;plansSelectedPlan=&apos;&apos;;renderPlansPage()">';
+        gh += '<div class="session-header">';
+        gh += '<span class="session-id" style="font-size:14px">' + esc(t.ticket_id) + '</span>';
+        gh += '<span style="font-size:11px;color:var(--dim)">' + t.plan_count + ' plan' + (t.plan_count > 1 ? 's' : '') + '</span>';
+        gh += '</div>';
+        gh += '<div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">';
+        gh += '<span class="suite-badge" style="background:rgba(88,166,255,0.15);color:var(--accent)">' + t.total_steps + ' steps</span>';
+        if (t.confident) gh += '<span class="suite-badge passed">' + t.confident + ' confident</span>';
+        if (t.uncertain) gh += '<span class="suite-badge" style="background:rgba(210,153,34,0.15);color:var(--yellow)">' + t.uncertain + ' uncertain</span>';
+        gh += '</div>';
+        gh += '<div class="session-meta"><span>' + (t.last_plan || '') + '</span></div>';
+        gh += '</div>';
+      }
+      gh += '</div>';
+      return gh;
+    };
+
+    html += '<div id="plans-ticket-list">';
+    html += renderPlansGroup('Today', 'var(--accent)', plTodayItems);
+    html += renderPlansGroup('This Week', 'var(--muted)', plWeekItems);
+    html += renderPlansGroup('Older', 'var(--dim)', plOldItems);
     html += '</div>';
     setPage(html);
     return;
@@ -2844,8 +5678,14 @@ async function renderPlansPage() {
 
   // ── Level 3: Plan detail — steps table ──
   const detail = await fetchJson("/api/plans?id=" + encodeURIComponent(plansSelectedPlan));
-  const plan = detail.plan;
-  const steps = detail.steps || [];
+  const plan = detail?.plan;
+  const steps = detail?.steps || [];
+
+  if (!plan) {
+    plansSelectedPlan = '';
+    renderPlansPage();
+    return;
+  }
 
   // Use normalized data from the API (detail.blockers, detail.coverageGaps)
   // These come from the blockers and coverage_gaps tables
@@ -2963,11 +5803,11 @@ async function renderPlansPage() {
     // Also show blockers, gaps, MRs in the table
     if (blockers.length > 0) {
       html += '<tr><td style="font-weight:600;color:var(--red);font-size:11px;vertical-align:top">Blockers</td>';
-      html += '<td style="font-size:12px">' + blockers.map(b => '<div style="color:var(--red);padding:1px 0">' + esc(typeof b === "string" ? b : JSON.stringify(b)) + '</div>').join("") + '</td></tr>';
+      html += '<td style="font-size:12px">' + blockers.map(b => '<div style="color:var(--red);padding:1px 0">' + esc(b.description || (typeof b === "string" ? b : JSON.stringify(b))) + '</div>').join("") + '</td></tr>';
     }
     if (gaps.length > 0) {
       html += '<tr><td style="font-weight:600;color:var(--yellow);font-size:11px;vertical-align:top">Coverage Gaps</td>';
-      html += '<td style="font-size:12px">' + gaps.map(g => '<div style="color:var(--yellow);padding:1px 0">' + esc(typeof g === "string" ? g : JSON.stringify(g)) + '</div>').join("") + '</td></tr>';
+      html += '<td style="font-size:12px">' + gaps.map(g => '<div style="color:var(--yellow);padding:1px 0">' + esc(g.gap_description || (typeof g === "string" ? g : JSON.stringify(g))) + '</div>').join("") + '</td></tr>';
     }
     if (mrRefs.length > 0) {
       html += '<tr><td style="font-weight:600;color:var(--accent);font-size:11px;vertical-align:top">MR References</td>';
@@ -2979,12 +5819,12 @@ async function renderPlansPage() {
     // No sections — show blockers/gaps/MRs as panels (legacy)
     if (blockers.length > 0) {
       html += '<div class="panel" style="margin-bottom:8px"><div class="panel-title" style="color:var(--red)">Blockers</div>';
-      for (const b of blockers) html += \`<div style="font-size:11px;color:var(--dim);padding:3px 0;border-bottom:1px solid var(--border)">\${esc(typeof b === "string" ? b : JSON.stringify(b))}</div>\`;
+      for (const b of blockers) html += \`<div style="font-size:11px;color:var(--dim);padding:3px 0;border-bottom:1px solid var(--border)">\${esc(b.description || (typeof b === "string" ? b : JSON.stringify(b)))}</div>\`;
       html += '</div>';
     }
     if (gaps.length > 0) {
       html += '<div class="panel" style="margin-bottom:8px"><div class="panel-title" style="color:var(--yellow)">Coverage Gaps</div>';
-      for (const g of gaps) html += \`<div style="font-size:11px;color:var(--dim);padding:3px 0;border-bottom:1px solid var(--border)">\${esc(typeof g === "string" ? g : JSON.stringify(g))}</div>\`;
+      for (const g of gaps) html += \`<div style="font-size:11px;color:var(--dim);padding:3px 0;border-bottom:1px solid var(--border)">\${esc(g.gap_description || (typeof g === "string" ? g : JSON.stringify(g)))}</div>\`;
       html += '</div>';
     }
     if (mrRefs.length > 0) {
@@ -3374,8 +6214,8 @@ function switchPlanTab(el, tab) {
   }
 }
 
-function deletePlan(planId) {
-  if (!confirm("Delete this plan and all its steps? This cannot be undone.")) return;
+async function deletePlan(planId) {
+  if (!await showConfirm("Delete this plan and all its steps? This cannot be undone.", "Delete")) return;
   fetchApi("/api/plans/delete?id=" + encodeURIComponent(planId), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
@@ -3399,6 +6239,7 @@ function resolveBlocker(blockerId) {
 let blockersShowOpen = true;
 
 async function renderBlockersPage() {
+  savePageState();
   const url = blockersShowOpen ? "/api/blockers?open=true" : "/api/blockers";
   const allBlockers = await fetchJson(url);
 
@@ -3413,8 +6254,8 @@ async function renderBlockersPage() {
     byTicket[ticket].push(b);
   }
 
-  let html = '<div class="panel" style="margin-bottom:8px">';
-  html += '<div class="panel-title">Blockers Across All Tickets</div>';
+  let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Blockers</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Open blockers and coverage gaps</div></div>';
+  html += '<div class="panel" style="margin-bottom:8px">';
   if (allBlockers.length > 0) {
     html += '<div style="display:flex;gap:16px;align-items:center">';
     html += '<div class="stat"><div class="stat-value" style="color:var(--red)">' + openCount + '</div><div class="stat-label">Open</div></div>';
@@ -3472,6 +6313,7 @@ async function renderBlockersPage() {
 let contextSelectedTicket = "";
 
 async function renderContextCachePage() {
+  savePageState();
   if (!contextSelectedTicket) {
     // Level 1: All tickets with cached context
     const tickets = await fetchJson("/api/ticket-context/tickets");
@@ -3482,12 +6324,12 @@ async function renderContextCachePage() {
     const totalStale = tickets.reduce((s, t) => s + (t.stale_count || 0), 0);
 
     if (tickets.length === 0) {
-      setPage('<div class="panel"><div class="panel-title">Ticket Context Cache</div><div class="empty">No cached context. Skills will populate this as they fetch ticket data.</div></div>');
+      setPage('<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Context Cache</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Cached ticket context for AI skills</div></div><div class="panel"><div class="empty">No cached context. Skills will populate this as they fetch ticket data.</div></div>');
       return;
     }
 
-    let html = '<div class="panel" style="margin-bottom:8px">';
-    html += '<div class="panel-title">Ticket Context Cache</div>';
+    let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Context Cache</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Cached ticket context for AI skills</div></div>';
+    html += '<div class="panel" style="margin-bottom:8px">';
     html += '<div style="display:flex;gap:16px;align-items:center">';
     html += '<div class="stat"><div class="stat-value">' + tickets.length + '</div><div class="stat-label">Tickets</div></div>';
     html += '<div class="stat"><div class="stat-value">' + totalEntries + '</div><div class="stat-label">Entries</div></div>';
@@ -3561,17 +6403,17 @@ async function renderContextCachePage() {
 
 // formatBytes is now in shared helpers
 
-function invalidateTicketContext(ticketId, type) {
+async function invalidateTicketContext(ticketId, type) {
   const msg = type ? "Invalidate " + type + " for " + ticketId + "?" : "Invalidate ALL cached context for " + ticketId + "?";
-  if (!confirm(msg)) return;
+  if (!await showConfirm(msg, "Remove")) return;
   const params = "ticket=" + encodeURIComponent(ticketId) + (type ? "&type=" + encodeURIComponent(type) : "");
   fetchApi("/api/ticket-context/invalidate?" + params, { method: "DELETE" })
     .then(r => r.json())
     .then(() => renderContextCachePage());
 }
 
-function purgeContextCache() {
-  if (!confirm("Remove all stale entries?")) return;
+async function purgeContextCache() {
+  if (!await showConfirm("Remove all stale entries?", "Remove")) return;
   fetchApi("/api/ticket-context/purge", { method: "POST" })
     .then(r => r.json())
     .then(data => { alert("Purged " + data.purged + " stale entries"); renderContextCachePage(); });
@@ -3583,12 +6425,13 @@ let apimapSelectedId = "";
 let apimapSelectedEndpoint = "";
 
 async function renderApiMapsPage() {
+  savePageState();
   if (!apimapSelectedId) {
     // Level 1: List all API maps
     const maps = await fetchJson("/api/apimaps");
 
     if (maps.length === 0) {
-      setPage('<div class="panel"><div class="panel-title">API Maps</div><div class="empty">No API maps yet. Use /noob-api-explore to populate them.</div></div>');
+      setPage('<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">API Maps</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Captured API endpoint maps</div></div><div class="panel"><div class="empty">No API maps yet. Use /noob-api-explore to populate them.</div></div>');
       return;
     }
 
@@ -3597,8 +6440,8 @@ async function renderApiMapsPage() {
     const totalFlaky = maps.reduce((s, m) => s + (m.flaky_count || 0), 0);
     const totalFailing = maps.reduce((s, m) => s + (m.failing_count || 0), 0);
 
-    let html = '<div class="panel" style="margin-bottom:8px">';
-    html += '<div class="panel-title">API Maps</div>';
+    let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">API Maps</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Captured API endpoint maps</div></div>';
+    html += '<div class="panel" style="margin-bottom:8px">';
     html += '<div style="display:flex;gap:16px">';
     html += '<div class="stat"><div class="stat-value">' + maps.length + '</div><div class="stat-label">Maps</div></div>';
     html += '<div class="stat"><div class="stat-value">' + totalEndpoints + '</div><div class="stat-label">Endpoints</div></div>';
@@ -3774,6 +6617,7 @@ async function renderApiMapsPage() {
 // ── Repos Page ──
 
 async function renderReposPage() {
+  savePageState();
   const data = await fetchJson("/api/repos");
   const app = document.getElementById("app");
 
@@ -3782,8 +6626,8 @@ async function renderReposPage() {
   const totalImports = data.repos.reduce((s, r) => s + (r.indexed_imports || 0), 0);
   const synced = data.repos.filter(r => r.last_synced).length;
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
-  html += '<div class="panel-title">Repositories & Codebase Index</div>';
+  let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Repos</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Connected repositories and codebase index</div></div>';
+  html += '<div class="panel" style="margin-bottom:16px">';
   if (data.repos.length > 0) {
     html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
     html += \`<div class="stat"><div class="stat-value">\${data.repos.length}</div><div class="stat-label">Repos</div></div>\`;
@@ -3837,7 +6681,7 @@ async function renderReposPage() {
           <span class="session-id" style="font-size:14px">\${esc(r.name)}</span>
           <span style="display:flex;gap:12px;align-items:center">
             \${syncStatus} \${indexStatus}
-            <button onclick="if(confirm('Delete repo \\\\'\${esc(r.name)}\\\\'? This removes the DB entry, index, AND the local folder in ~/.noob-tester/repos/.')){deleteRepoEntry('\${esc(r.name)}')}" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;cursor:pointer" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">&times;</button>
+            <button onclick="deleteRepoEntryConfirm('\${esc(r.name)}')" style="font-size:10px;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;cursor:pointer" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">&times;</button>
           </span>
         </div>
         <div style="font-size:12px;color:var(--dim);margin-top:4px;font-family:monospace">\${esc(r.url)}</div>
@@ -3917,7 +6761,7 @@ function exportTestCasesCsv(ticket) {
 }
 
 async function deleteRunPacksByTicket(ticket) {
-  if (!confirm("Delete ALL run packs and entries for " + ticket + "? This cannot be undone.")) return;
+  if (!await showConfirm("Delete ALL run packs and entries for " + ticket + "? This cannot be undone.", "Delete")) return;
   await postJson("/api/runpacks/delete", { ticket });
   rpSelectedTicket = "";
   rpSelectedPack = "";
@@ -3925,8 +6769,8 @@ async function deleteRunPacksByTicket(ticket) {
   renderRunsPage();
 }
 
-function deleteTestCasesByTicket(ticket) {
-  if (!confirm("Delete ALL test cases for " + ticket + "? This cannot be undone.")) return;
+async function deleteTestCasesByTicket(ticket) {
+  if (!await showConfirm("Delete ALL test cases for " + ticket + "? This cannot be undone.", "Delete")) return;
   fetchApi("/api/testcases/delete?ticket=" + encodeURIComponent(ticket), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
@@ -3934,8 +6778,8 @@ function deleteTestCasesByTicket(ticket) {
     });
 }
 
-function deleteVisualTestCase(id) {
-  if (!confirm("Delete this visual test case? This cannot be undone.")) return;
+async function deleteVisualTestCase(id) {
+  if (!await showConfirm("Delete this visual test case? This cannot be undone.", "Delete")) return;
   fetchApi("/api/visual-testcases/delete?id=" + encodeURIComponent(id), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
@@ -3943,13 +6787,17 @@ function deleteVisualTestCase(id) {
     });
 }
 
-function deleteVisualTestCasesByTicket(ticket) {
-  if (!confirm("Delete ALL visual test cases for " + ticket + "? This cannot be undone.")) return;
+async function deleteVisualTestCasesByTicket(ticket) {
+  if (!await showConfirm("Delete ALL visual test cases for " + ticket + "? This cannot be undone.", "Delete")) return;
   fetchApi("/api/visual-testcases/delete?ticket=" + encodeURIComponent(ticket), { method: "DELETE" })
     .then(r => r.json())
     .then(data => {
       if (data.deleted > 0) { tcSelectedVisualId = ""; renderTestCasesPage(); }
     });
+}
+
+async function deleteRepoEntryConfirm(name) {
+  if (await showConfirm("Delete repo '" + name + "'? This removes the DB entry, index, AND the local folder in ~/.noob-tester/repos/.", "Delete")) deleteRepoEntry(name);
 }
 
 function deleteRepoEntry(name) {
@@ -3964,7 +6812,7 @@ let uimapSelectedId = "";
 let uimapSelectedPageId = "";
 
 async function deleteUiMap(mapId, mapName) {
-  if (!confirm('Delete UI map "' + mapName + '" and ALL its pages, elements, navigations, and forms? This cannot be undone.')) return;
+  if (!await showConfirm('Delete UI map "' + mapName + '" and ALL its pages, elements, navigations, and forms? This cannot be undone.', "Delete")) return;
   await fetchApi("/api/uimaps/delete?id=" + encodeURIComponent(mapId), { method: "DELETE" });
   uimapSelectedId = "";
   uimapSelectedPageId = "";
@@ -3972,6 +6820,7 @@ async function deleteUiMap(mapId, mapName) {
 }
 
 async function renderUiMapsPage() {
+  savePageState();
   const app = document.getElementById("app");
 
   const maps = await fetchJson("/api/uimaps");
@@ -3985,7 +6834,8 @@ async function renderUiMapsPage() {
 
   // ── Level 1: Map list ──
   if (!uimapSelectedId) {
-    html += '<div class="panel" style="margin-bottom:16px"><div class="panel-title">UI Maps</div>';
+    html += '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">UI Maps</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Captured UI page maps</div></div>';
+    html += '<div class="panel" style="margin-bottom:16px">';
     const totalPages = maps.reduce((s, m) => s + m.stats.pages, 0);
     const totalElements = maps.reduce((s, m) => s + m.stats.elements, 0);
     html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
@@ -4102,12 +6952,13 @@ async function renderUiMapsPage() {
 let metricsTab = "metrics";
 
 async function renderMetricsPage() {
+  savePageState();
   const data = await fetchJson("/api/metrics");
   const agg = data.aggregate;
   const sessions = data.sessions;
 
-  let html = '<div class="panel" style="margin-bottom:12px">';
-  html += '<div class="panel-title">Metrics</div>';
+  let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Metrics</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Test run statistics and coverage</div></div>';
+  html += '<div class="panel" style="margin-bottom:12px">';
 
   // Recalculate total cost from per-session data (handles old sessions without DB cost)
   const totalCost = sessions.reduce((sum, s) => sum + calcCost(s), 0);
@@ -4307,13 +7158,56 @@ let rpSelectedEntry = "";
 let rpRunnerFilter = "all"; // "all" | "ui" | "api"
 
 async function renderRunsPage() {
+  savePageState();
   const app = document.getElementById("app");
 
-  // Fetch ticket IDs
-  const tickets = await fetchJson("/api/runpacks/tickets");
+  // Fetch ticket IDs, agents, and page config in parallel
+  const [tickets, agents, exploreCfgRaw] = await Promise.all([
+    fetchJson("/api/runpacks/tickets"),
+    fetchJson("/api/agents").catch(function() { return []; }),
+    fetchJson("/api/page-config/explore").catch(function() { return {}; }),
+  ]);
+
+  // Parse explore agent config
+  var exploreCfg = {};
+  try { exploreCfg = exploreCfgRaw.config_json ? JSON.parse(exploreCfgRaw.config_json) : {}; } catch(e) {}
+  window.__exploreConfigData = { agents: agents || [], config: exploreCfg };
+
+  // Configured agent pills
+  var exploreAgentKeys = [
+    { key: 'ui_claim_agent', label: 'UI Claim' },
+    { key: 'ui_test_agent', label: 'UI Tests' },
+    { key: 'api_test_agent', label: 'API Tests' },
+  ];
+  var explorePills = '';
+  exploreAgentKeys.forEach(function(entry) {
+    if (exploreCfg[entry.key]) {
+      var name = exploreCfg[entry.key].split('/').pop().replace('.md', '');
+      explorePills += '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(99,102,241,0.12);color:var(--accent);font-family:var(--font-mono)">' + esc(entry.label) + ': ' + esc(name) + '</span>';
+    }
+  });
+
+  // Play buttons for configured explore agents
+  var explorePlayBtns = '';
+  if (exploreCfg.ui_claim_agent) {
+    var uiClaimName = exploreCfg.ui_claim_agent.split('/').pop().replace('.md', '');
+    explorePlayBtns += '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openExploreRunModal(&apos;ui_claim_agent&apos;)" title="Run UI Pre Claim Job"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(uiClaimName) + '</button>';
+  }
+  if (exploreCfg.ui_test_agent) {
+    var uiName = exploreCfg.ui_test_agent.split('/').pop().replace('.md', '');
+    explorePlayBtns += '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openExploreRunModal(&apos;ui_test_agent&apos;)" title="Run UI Test Agent"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(uiName) + '</button>';
+  }
+  if (exploreCfg.api_test_agent) {
+    var apiName = exploreCfg.api_test_agent.split('/').pop().replace('.md', '');
+    explorePlayBtns += '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openExploreRunModal(&apos;api_test_agent&apos;)" title="Run API Test Agent"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(apiName) + '</button>';
+  }
+  const exploreHeader = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px"><div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Explore</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Test run packs organised by ticket</div>' + (explorePills ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + explorePills + '</div>' : '') + '</div><div style="display:flex;align-items:center;gap:8px">' + explorePlayBtns + '<button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;runs&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button><button class="action-btn" style="font-size:11px" onclick="openExploreConfigModal()"><i class="ph ph-gear" style="margin-right:4px"></i>Configure</button></div></div>';
 
   if (tickets.length === 0) {
-    app.innerHTML = '<div class="panel"><div class="empty">No run packs yet. Run <code>/noob-explore</code> (UI tests) or <code>/noob-api-explore</code> (API tests) to create one automatically via <code>runpack resolve</code>.</div></div>';
+    app.style.display = "";
+    app.style.flexDirection = "";
+    app.style.overflow = "";
+    app.innerHTML = '<div class="page-fixed">' + exploreHeader + '</div><div class="page-content"><div class="panel"><div class="empty">No run packs yet. Run <code>/noob-explore</code> (UI tests) or <code>/noob-api-explore</code> (API tests) to create one automatically via <code>runpack resolve</code>.</div></div></div>';
     return;
   }
 
@@ -4321,7 +7215,7 @@ async function renderRunsPage() {
 
   // ── Level 1: Ticket list ──
   if (!rpSelectedTicket) {
-    html += '<div class="panel" style="margin-bottom:16px"><div class="panel-title">Run Packs by Ticket</div>';
+    html += '<div class="panel" style="margin-bottom:16px">';
     html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
     const totalPacks = tickets.reduce((s, j) => s + j.pack_count, 0);
     const totalEntries = tickets.reduce((s, j) => s + j.total_entries, 0);
@@ -4333,31 +7227,63 @@ async function renderRunsPage() {
     html += \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${totalFailed}</div><div class="stat-label">Failed</div></div>\`;
     html += '</div></div>';
 
-    html += '<div class="panel">';
-    for (const j of tickets) {
-      html += \`<div class="session-card" onclick="rpSelectedTicket='\${esc(j.ticket_id)}';rpSelectedPack='';rpSelectedEntry='';renderRunsPage()">
-        <div class="session-header">
-          <span class="session-id" style="font-size:14px">\${esc(j.ticket_id)}</span>
-          <span style="display:flex;gap:6px;align-items:center">
-            <span style="font-size:12px;color:var(--dim)">\${j.pack_count} pack\${j.pack_count !== 1 ? 's' : ''}</span>
-            <button onclick="event.stopPropagation();deleteRunPacksByTicket('\${esc(j.ticket_id)}')" style="font-size:9px;color:var(--red);background:none;border:1px solid var(--border);border-radius:3px;padding:2px 5px;cursor:pointer" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='var(--border)'">&times;</button>
-          </span>
-        </div>
-        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-          \${j.passed ? \`<span class="suite-badge passed">\${j.passed} passed</span>\` : ""}
-          \${j.failed ? \`<span class="suite-badge failed">\${j.failed} failed</span>\` : ""}
-          \${j.pending ? \`<span class="suite-badge pending">\${j.pending} pending</span>\` : ""}
-          \${j.claimed ? \`<span class="suite-badge claimed">\${j.claimed} running</span>\` : ""}
-        </div>
-        <div style="display:flex;gap:6px;margin-top:4px;font-size:11px;color:var(--dim)">
-          \${j.ui_count ? \`<span style="color:var(--green)">\${j.ui_count} UI</span>\` : ""}
-          \${j.api_count ? \`<span style="color:var(--orange, #d2992a)">\${j.api_count} API</span>\` : ""}
-        </div>
-        <div class="session-meta"><span>Last run: \${j.last_run || "-"}</span></div>
-      </div>\`;
-    }
+    // Filter input
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
+    html += '<div style="flex:1;display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">';
+    html += '<i class="ph ph-magnifying-glass" style="font-size:13px;color:var(--dim);flex-shrink:0"></i>';
+    html += '<input id="runs-filter-input" type="text" placeholder="Filter by ticket ID..." oninput="filterRunsList(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />';
+    html += '</div></div>';
+
+    // Date grouping
+    const rpNow = new Date();
+    const rpTodayStr = rpNow.toISOString().slice(0, 10);
+    const rpWeekAgo = new Date(rpNow); rpWeekAgo.setDate(rpWeekAgo.getDate() - 7);
+    const rpWeekAgoStr = rpWeekAgo.toISOString().slice(0, 10);
+    const rpDate = (j) => (j.last_run || '').slice(0, 10);
+    const rpTodayItems = tickets.filter(j => rpDate(j) === rpTodayStr);
+    const rpWeekItems  = tickets.filter(j => { const d = rpDate(j); return d && d !== rpTodayStr && d >= rpWeekAgoStr; });
+    const rpOldItems   = tickets.filter(j => { const d = rpDate(j); return !d || d < rpWeekAgoStr; });
+
+    var renderRunsGroup = function(label, color, items) {
+      if (!items.length) return '';
+      var gKey = label.replace(/\s/g, '-').toLowerCase();
+      var gh = '<div data-runs-group="' + gKey + '" style="font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:' + color + ';margin:4px 2px 8px">' + label + ' (' + items.length + ')</div>';
+      gh += '<div class="panel" style="margin-bottom:12px">';
+      for (var i = 0; i < items.length; i++) {
+        var j = items[i];
+        gh += '<div class="session-card" data-ticket-id="' + esc(j.ticket_id) + '" onclick="rpSelectedTicket=&apos;' + esc(j.ticket_id) + '&apos;;rpSelectedPack=&apos;&apos;;rpSelectedEntry=&apos;&apos;;renderRunsPage()">';
+        gh += '<div class="session-header">';
+        gh += '<span class="session-id" style="font-size:14px">' + esc(j.ticket_id) + '</span>';
+        gh += '<span style="display:flex;gap:6px;align-items:center">';
+        gh += '<span style="font-size:12px;color:var(--dim)">' + j.pack_count + ' pack' + (j.pack_count !== 1 ? 's' : '') + '</span>';
+        gh += '<button onclick="event.stopPropagation();deleteRunPacksByTicket(&apos;' + esc(j.ticket_id) + '&apos;)" style="font-size:9px;color:var(--red);background:none;border:1px solid var(--border);border-radius:3px;padding:2px 5px;cursor:pointer" onmouseover="this.style.borderColor=&apos;var(--red)&apos;" onmouseout="this.style.borderColor=&apos;var(--border)&apos;">&times;</button>';
+        gh += '</span></div>';
+        gh += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+        if (j.passed)  gh += '<span class="suite-badge passed">' + j.passed + ' passed</span>';
+        if (j.failed)  gh += '<span class="suite-badge failed">' + j.failed + ' failed</span>';
+        if (j.pending) gh += '<span class="suite-badge pending">' + j.pending + ' pending</span>';
+        if (j.claimed) gh += '<span class="suite-badge claimed">' + j.claimed + ' running</span>';
+        gh += '</div>';
+        gh += '<div style="display:flex;gap:6px;margin-top:4px;font-size:11px;color:var(--dim)">';
+        if (j.ui_count)  gh += '<span style="color:var(--green)">' + j.ui_count + ' UI</span>';
+        if (j.api_count) gh += '<span style="color:var(--orange, #d2992a)">' + j.api_count + ' API</span>';
+        gh += '</div>';
+        gh += '<div class="session-meta"><span>Last run: ' + (j.last_run || '-') + '</span></div>';
+        gh += '</div>';
+      }
+      gh += '</div>';
+      return gh;
+    };
+
+    html += '<div id="runs-ticket-list">';
+    html += renderRunsGroup('Today', 'var(--accent)', rpTodayItems);
+    html += renderRunsGroup('This Week', 'var(--muted)', rpWeekItems);
+    html += renderRunsGroup('Older', 'var(--dim)', rpOldItems);
     html += '</div>';
-    setPage(html);
+    app.style.display = "";
+    app.style.flexDirection = "";
+    app.style.overflow = "";
+    app.innerHTML = '<div class="page-fixed">' + exploreHeader + '</div><div class="page-content">' + html + '</div>';
     return;
   }
 
@@ -4864,13 +7790,25 @@ let tcAllCases = [];
 let tcAllVisualCases = [];
 
 async function renderTestCasesPage() {
+  savePageState();
   const app = document.getElementById("app");
 
-  // Fetch both normal and visual test cases in parallel
-  [tcAllCases, tcAllVisualCases] = await Promise.all([
+  // Fetch test cases + agent config in parallel
+  const [_tc, _vtc, pageCfg, agents] = await Promise.all([
     fetchJson("/api/testcases"),
     fetchJson("/api/visual-testcases"),
+    fetchJson("/api/page-config/testcases").catch(() => ({})),
+    fetchJson("/api/agents").catch(() => []),
   ]);
+  tcAllCases = _tc;
+  tcAllVisualCases = _vtc;
+
+  const assignedAgent = pageCfg?.agent_name || null;
+  window.__pageConfigData = { page: 'testcases', label: 'Test Cases', agents: agents || [], currentAgent: assignedAgent };
+  if (assignedAgent) {
+    const agentObj = (agents || []).find(function(a) { return a.name === assignedAgent; });
+    window.__agentRunData = { agentName: assignedAgent, agentPath: agentObj ? agentObj.path : null, contextLabel: 'Test Cases' };
+  }
 
   // Group normal TCs by ticket
   const suites = {};
@@ -4891,7 +7829,13 @@ async function renderTestCasesPage() {
 
   const hasAny = tcAllCases.length > 0 || tcAllVisualCases.length > 0;
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
+  const tcAgentPlayBtn = assignedAgent
+    ? '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openTestcasesRunModal()" title="Run ' + esc(assignedAgent) + '"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(assignedAgent) + '</button>'
+    : '';
+  const tcTitleHtml = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px"><div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Test Cases</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Test cases across all tickets</div></div><div style="display:flex;align-items:center;gap:8px">' + tcAgentPlayBtn + '<button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;testcases&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button><button class="action-btn" style="font-size:11px" onclick="openPageConfigModal()"><i class="ph ph-gear" style="margin-right:4px"></i>Configure</button></div></div>';
+
+  let html = tcSelectedSuite ? '' : tcTitleHtml;
+  html += '<div class="panel" style="margin-bottom:16px">';
   if (tcSelectedSuite) {
     html += \`<div class="breadcrumb">
       <span class="breadcrumb-item" onclick="tcSelectedSuite='';tcSelectedId='';tcSelectedVisualId='';tcActiveTab='normal';renderTestCasesPage()">Test Cases</span>
@@ -4916,7 +7860,6 @@ async function renderTestCasesPage() {
       html += '</div>';
     }
   } else {
-    html += '<div class="panel-title">All Test Cases</div>';
     if (hasAny) {
       html += \`<div style="display:flex;gap:24px;margin-bottom:8px;align-items:center">
         <div class="stat"><div class="stat-value">\${tcAllCases.length}</div><div class="stat-label">Normal</div></div>
@@ -5332,13 +8275,15 @@ let reportData = null;
 let reportTab = "ai";
 
 async function renderReportsPage() {
+  savePageState();
   const app = document.getElementById("app");
 
   if (!reportSelectedTicket) {
     // Level 1: Ticket list
     const tickets = await fetchJson("/api/report/tickets");
 
-    let html = '<div class="panel" style="margin-bottom:16px"><div class="panel-title">Reports</div>';
+    let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Reports</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Test reports by ticket</div></div>';
+    html += '<div class="panel" style="margin-bottom:16px">';
     html += '<div style="font-size:12px;color:var(--dim);margin-bottom:8px">Select a ticket to generate a comprehensive report with insights, patterns, and improvement plan.</div>';
     html += '</div>';
 
@@ -5590,33 +8535,398 @@ async function renderReportsPage() {
   setPage(html);
 }
 
+// ── Datadog Page ──
+
+function ddIsStale(lastPolledAt) {
+  if (!lastPolledAt) return true;
+  const ms = new Date(lastPolledAt.replace(" ", "T") + "Z").getTime();
+  return (Date.now() - ms) > 5 * 60 * 1000;
+}
+
+let __ddPickerOutside = null;
+let __ddPage = 0;
+const DD_PAGE_SIZE = 25;
+
+function ddSaveTags() {
+  try { localStorage.setItem('dd_active_tags', JSON.stringify(window.__ddActiveTags || [])); } catch(e) {}
+}
+
+function ddAddTag(tag) {
+  tag = (tag || '').trim();
+  if (!tag) return;
+  if (!window.__ddActiveTags) window.__ddActiveTags = [];
+  if (window.__ddActiveTags.indexOf(tag) !== -1) return;
+  window.__ddActiveTags.push(tag);
+  ddSaveTags();
+  ddRenderTagChips();
+  ddFilterMonitors();
+}
+
+function ddRemoveTag(tag) {
+  if (!window.__ddActiveTags) return;
+  window.__ddActiveTags = window.__ddActiveTags.filter(t => t !== tag);
+  ddSaveTags();
+  ddRenderTagChips();
+  ddFilterMonitors();
+}
+
+function ddPickerToggleTag(tag) {
+  const active = window.__ddActiveTags || [];
+  if (active.indexOf(tag) !== -1) ddRemoveTag(tag); else ddAddTag(tag);
+  const list = document.getElementById('dd-tag-picker-list');
+  const search = document.getElementById('dd-tag-search');
+  if (list) list.innerHTML = ddRenderPickerGroups(search ? search.value : '');
+}
+
+function ddRenderPickerGroups(query) {
+  const knownTags = (window.__ddLastData && window.__ddLastData.knownTags) || {};
+  const active = window.__ddActiveTags || [];
+  const q = (query || '').toLowerCase().trim();
+  const keys = Object.keys(knownTags).sort();
+  if (!keys.length) return '<div style="font-size:12px;color:var(--dim);padding:16px;text-align:center">No tag data yet — refresh to load</div>';
+  let html = '';
+  let any = false;
+  for (const key of keys) {
+    const vals = (knownTags[key] || []).slice().sort();
+    const filtered = q ? vals.filter(function(v) { return (key + ':' + v).toLowerCase().indexOf(q) !== -1; }) : vals;
+    if (!filtered.length) continue;
+    any = true;
+    html += '<div style="padding:6px 10px 4px">';
+    html += '<div style="font-size:9px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">' + esc(key) + '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;padding-bottom:4px">';
+    for (const val of filtered) {
+      const tag = key + ':' + val;
+      const sel = active.indexOf(tag) !== -1;
+      html += '<span data-tag="' + esc(tag) + '" onclick="ddPickerToggleTag(this.dataset.tag)" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:3px 9px;border-radius:10px;white-space:nowrap;' +
+        (sel ? 'background:var(--accent);color:#fff;' : 'background:rgba(128,128,128,0.1);color:var(--text);') + '">' +
+        (sel ? '<i class="ph ph-check" style="font-size:9px"></i>' : '') +
+        esc(val) + '</span>';
+    }
+    html += '</div></div>';
+    if (keys.indexOf(key) < keys.length - 1) html += '<div style="height:1px;background:var(--border);margin:0 10px"></div>';
+  }
+  if (!any) html = '<div style="font-size:12px;color:var(--dim);padding:16px;text-align:center">No tags match</div>';
+  return html;
+}
+
+function ddSearchTagPicker(query) {
+  const list = document.getElementById('dd-tag-picker-list');
+  if (list) list.innerHTML = ddRenderPickerGroups(query);
+}
+
+function ddToggleTagPicker(e) {
+  const dropdown = document.getElementById('dd-tag-picker-dropdown');
+  const caret = document.getElementById('dd-picker-caret');
+  if (!dropdown) return;
+  if (dropdown.style.display !== 'none') { ddCloseTagPicker(); return; }
+  dropdown.style.display = 'block';
+  if (caret) caret.style.transform = 'rotate(180deg)';
+  const list = document.getElementById('dd-tag-picker-list');
+  if (list) list.innerHTML = ddRenderPickerGroups('');
+  const search = document.getElementById('dd-tag-search');
+  if (search) { search.value = ''; setTimeout(function() { search.focus(); }, 30); }
+  setTimeout(function() {
+    __ddPickerOutside = function(ev) {
+      const wrapper = document.getElementById('dd-tag-picker-wrapper');
+      if (!wrapper || !wrapper.contains(ev.target)) { ddCloseTagPicker(); }
+      else { document.addEventListener('click', __ddPickerOutside, { once: true }); }
+    };
+    document.addEventListener('click', __ddPickerOutside, { once: true });
+  }, 10);
+}
+
+function ddCloseTagPicker() {
+  const dropdown = document.getElementById('dd-tag-picker-dropdown');
+  const caret = document.getElementById('dd-picker-caret');
+  if (dropdown) dropdown.style.display = 'none';
+  if (caret) caret.style.transform = '';
+  if (__ddPickerOutside) { document.removeEventListener('click', __ddPickerOutside); __ddPickerOutside = null; }
+}
+
+function ddTagSearchKeyDown(e) {
+  if (e.key === 'Enter') {
+    const val = e.target.value.trim();
+    if (val) { ddPickerToggleTag(val); e.target.value = ''; const list = document.getElementById('dd-tag-picker-list'); if (list) list.innerHTML = ddRenderPickerGroups(''); }
+  } else if (e.key === 'Escape') { ddCloseTagPicker(); }
+}
+
+function ddRenderTagChips() {
+  const row = document.getElementById('dd-chips-row');
+  const placeholder = document.getElementById('dd-chips-placeholder');
+  if (!row) return;
+  const tags = window.__ddActiveTags || [];
+  row.innerHTML = tags.map(function(t) {
+    return '<span style="display:inline-flex;align-items:center;gap:3px;background:var(--accent);color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap">' +
+      esc(t) +
+      '<span data-tag="' + esc(t) + '" onclick="event.stopPropagation();ddRemoveTag(this.dataset.tag)" style="cursor:pointer;margin-left:2px;font-size:13px;line-height:1;opacity:0.8">&#215;</span>' +
+      '</span>';
+  }).join('');
+  if (placeholder) placeholder.style.display = tags.length ? 'none' : '';
+}
+
+function ddFilterMonitors(keepPage) {
+  if (!window.__ddLastData?.monitors) return;
+  const tokens = (window.__ddActiveTags || []).map(t => t.toLowerCase());
+  let list = window.__ddLastData.monitors;
+  if (tokens.length) {
+    list = list.filter(m => {
+      const tags = (m.tags || []).map(t => t.toLowerCase());
+      return tokens.every(tok => tags.some(t => t.includes(tok)));
+    });
+  }
+  window.__ddFilteredMonitors = list;
+  if (!keepPage) __ddPage = 0;
+  const statsEl = document.getElementById("dd-stats");
+  if (statsEl) {
+    const a = list.filter(m => m.state === 'Alert').length;
+    const w = list.filter(m => m.state === 'Warn').length;
+    const n = list.filter(m => m.state === 'No Data').length;
+    const o = list.filter(m => m.state === 'OK').length;
+    statsEl.innerHTML = \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${a}</div><div class="stat-label">Alert</div></div><div class="stat"><div class="stat-value" style="color:var(--yellow)">\${w}</div><div class="stat-label">Warn</div></div><div class="stat"><div class="stat-value" style="color:var(--dim)">\${n}</div><div class="stat-label">No Data</div></div><div class="stat"><div class="stat-value" style="color:var(--green)">\${o}</div><div class="stat-label">OK</div></div><div class="stat"><div class="stat-value">\${list.length}</div><div class="stat-label">Total</div></div>\`;
+  }
+  ddRenderMonitorPage();
+}
+
+function ddRenderMonitorPage() {
+  const list = window.__ddFilteredMonitors || window.__ddLastData?.monitors || [];
+  const total = list.length;
+  const totalPages = Math.ceil(total / DD_PAGE_SIZE) || 1;
+  __ddPage = Math.max(0, Math.min(__ddPage, totalPages - 1));
+  const page = list.slice(__ddPage * DD_PAGE_SIZE, (__ddPage + 1) * DD_PAGE_SIZE);
+  const el = document.getElementById("dd-monitor-list");
+  if (!el) return;
+
+  let html = ddMonitorList({ ...window.__ddLastData, monitors: page, truncated: false });
+
+  if (totalPages > 1) {
+    const start = __ddPage * DD_PAGE_SIZE + 1;
+    const end = Math.min((__ddPage + 1) * DD_PAGE_SIZE, total);
+    html += \`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;margin-top:6px">
+      <button onclick="ddChangePage(-1)" \${__ddPage === 0 ? 'disabled' : ''} style="border:1px solid var(--border);background:var(--surface-raised);color:var(--text);border-radius:var(--radius-xs);padding:4px 12px;font-size:11px;cursor:\${__ddPage === 0 ? 'default' : 'pointer'};opacity:\${__ddPage === 0 ? '0.4' : '1'}">← Prev</button>
+      <span style="font-size:11px;color:var(--muted)">\${start}–\${end} of \${total}</span>
+      <button onclick="ddChangePage(1)" \${__ddPage >= totalPages - 1 ? 'disabled' : ''} style="border:1px solid var(--border);background:var(--surface-raised);color:var(--text);border-radius:var(--radius-xs);padding:4px 12px;font-size:11px;cursor:\${__ddPage >= totalPages - 1 ? 'default' : 'pointer'};opacity:\${__ddPage >= totalPages - 1 ? '0.4' : '1'}">Next →</button>
+    </div>\`;
+  }
+  if (window.__ddLastData?.truncated) {
+    html += '<div style="font-size:11px;color:var(--muted);padding:4px 8px">100+ monitors — showing first 100. Use the tag filter to narrow results.</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function ddChangePage(delta) {
+  const list = window.__ddFilteredMonitors || window.__ddLastData?.monitors || [];
+  const totalPages = Math.ceil(list.length / DD_PAGE_SIZE) || 1;
+  __ddPage = Math.max(0, Math.min(__ddPage + delta, totalPages - 1));
+  ddRenderMonitorPage();
+  document.getElementById("dd-monitor-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function renderDatadogPage() {
+  savePageState();
+  const [mon, ddConn] = await Promise.all([
+    fetchJson("/api/datadog/monitors"),
+    fetchJson("/api/connections/datadog"),
+  ]);
+
+  if (!ddConn.configured) {
+    setPage(\`<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Datadog</div></div>
+    <div class="panel" style="display:flex;align-items:center;gap:12px">
+      <i class="ph ph-warning" style="font-size:18px;color:var(--yellow)"></i>
+      <div>
+        <div style="font-size:13px;font-weight:500">Datadog not configured</div>
+        <div style="font-size:12px;color:var(--dim);margin-top:2px">Add your API key in <span onclick="secretsActiveTab='external';switchPage('secrets')" style="cursor:pointer;color:var(--accent)">Secrets → External Connections</span></div>
+      </div>
+    </div>\`);
+    return;
+  }
+
+  const lastData = mon?.data || null;
+  const lastPolledAt = mon?.lastPolledAt || null;
+  const stale = ddIsStale(lastPolledAt);
+
+  if (lastData) window.__ddLastData = lastData;
+
+  const knownTagCount = lastData ? Object.keys(lastData.knownTags || {}).length : 0;
+
+  let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Datadog</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Monitor health across your account</div></div>';
+
+  html += '<div class="panel" style="margin-bottom:16px">';
+
+  // Stats row
+  if (lastData) {
+    html += '<div id="dd-stats" style="display:flex;gap:16px;margin-bottom:14px">';
+    html += \`<div class="stat"><div class="stat-value" style="color:var(--red)">\${lastData.alert}</div><div class="stat-label">Alert</div></div>\`;
+    html += \`<div class="stat"><div class="stat-value" style="color:var(--yellow)">\${lastData.warn}</div><div class="stat-label">Warn</div></div>\`;
+    html += \`<div class="stat"><div class="stat-value" style="color:var(--dim)">\${lastData.noData}</div><div class="stat-label">No Data</div></div>\`;
+    html += \`<div class="stat"><div class="stat-value" style="color:var(--green)">\${lastData.ok}</div><div class="stat-label">OK</div></div>\`;
+    html += \`<div class="stat"><div class="stat-value">\${lastData.total}</div><div class="stat-label">Total</div></div>\`;
+    html += '</div>';
+  }
+
+  // Controls row
+  html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+  html += \`<div id="dd-tag-picker-wrapper" style="position:relative;flex:1;min-width:180px">
+    <div id="dd-tag-chips-container" onclick="ddToggleTagPicker(event)" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);cursor:pointer;min-height:32px;user-select:none">
+      <div id="dd-chips-row" style="display:contents"></div>
+      <span id="dd-chips-placeholder" style="font-size:12px;color:var(--dim);flex:1">\${knownTagCount ? knownTagCount + ' tag types — click to filter' : 'click to filter by tag'}</span>
+      <i class="ph ph-caret-down" id="dd-picker-caret" style="font-size:11px;color:var(--muted);flex-shrink:0;margin-left:4px;transition:transform 0.15s"></i>
+    </div>
+    <div id="dd-tag-picker-dropdown" style="display:none;position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:200;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);box-shadow:0 8px 24px rgba(0,0,0,0.3);overflow:hidden">
+      <div style="padding:7px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px">
+        <i class="ph ph-magnifying-glass" style="font-size:12px;color:var(--dim)"></i>
+        <input id="dd-tag-search" autocomplete="off" placeholder="search or type tag, ↵ to add" oninput="ddSearchTagPicker(this.value)" onkeydown="ddTagSearchKeyDown(event)" style="flex:1;border:none;outline:none;background:transparent;color:var(--text);font-size:12px">
+        <button onclick="(function(){var i=document.getElementById('dd-tag-search');if(i&&i.value.trim()){ddAddTag(i.value.trim());i.value='';ddSearchTagPicker('');}})()" title="Add tag" style="border:none;background:var(--accent);color:#fff;border-radius:3px;padding:2px 7px;font-size:11px;cursor:pointer;line-height:1.6;flex-shrink:0">Add</button>
+      </div>
+      <div id="dd-tag-picker-list" style="max-height:280px;overflow-y:auto"></div>
+    </div>
+  </div>\`;
+  html += \`<button class="secret-reveal" onclick="ddFetchMonitors(true)">Refresh</button>\`;
+  if (lastPolledAt) {
+    html += \`<span style="font-size:11px;color:\${stale ? 'var(--yellow)' : 'var(--muted)'};margin-left:auto">\${stale ? 'stale — ' : ''}fetched \${esc(timeAgo(lastPolledAt))}</span>\`;
+  }
+  html += '</div>';
+  html += '</div>';
+
+  // Monitor list
+  html += '<div id="dd-results">';
+  html += '<div id="dd-monitor-list">' + (lastData ? '' : '<div style="font-size:12px;color:var(--dim);padding:8px 0" id="dd-loading">Loading monitors...</div>') + '</div>';
+  html += '</div>';
+
+  setPage(html);
+  try { window.__ddActiveTags = JSON.parse(localStorage.getItem('dd_active_tags') || '[]'); } catch(e) { window.__ddActiveTags = []; }
+  __ddPage = 0;
+  ddRenderTagChips();
+  if (lastData) { window.__ddLastData = lastData; ddFilterMonitors(); }
+  // Auto-fetch if no data or stale
+  if (stale || !lastData) ddFetchMonitors(false);
+}
+
+function ddHealthBadge(data) {
+  if (!data || data.total === 0) return '<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(100,100,100,0.15);color:var(--dim)">no monitors</span>';
+  if (data.alert > 0) return \`<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(220,53,69,0.15);color:var(--red)">\${data.alert} alert\${data.alert>1?'s':''}</span>\`;
+  if (data.warn > 0) return \`<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(210,153,34,0.15);color:var(--yellow)">\${data.warn} warn</span>\`;
+  return \`<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(80,200,120,0.15);color:var(--green)">all OK</span>\`;
+}
+
+
+function ddMonitorList(data) {
+  if (!data.monitors || data.monitors.length === 0) return '<div style="font-size:12px;color:var(--dim)">No monitors match this filter.</div>';
+  const stateColor = { OK: 'var(--green)', Alert: 'var(--red)', Warn: 'var(--yellow)', 'No Data': 'var(--dim)', Ignored: 'var(--muted)' };
+  const typeLabel = { metric: 'Metric', service_check: 'Service', event_alert: 'Event', query_alert: 'Query', log_alert: 'Log', process_alert: 'Process', synthetics_alert: 'Synthetic', composite: 'Composite' };
+  let html = '<div style="display:flex;flex-direction:column;gap:4px">';
+  for (const m of data.monitors) {
+    const col = stateColor[m.state] || 'var(--dim)';
+    const glowStyle = m.state === 'Alert' ? \`;box-shadow:0 0 0 1px rgba(220,53,69,0.25)\` : m.state === 'Warn' ? \`;box-shadow:0 0 0 1px rgba(210,153,34,0.2)\` : '';
+
+    // Tags row (limit to 4)
+    const tagChips = (m.tags || []).slice(0, 4).map(t =>
+      \`<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(100,100,255,0.1);color:var(--muted)">\${esc(t)}</span>\`
+    ).join('');
+    const moreTags = m.tags && m.tags.length > 4 ? \`<span style="font-size:10px;color:var(--dim)">+\${m.tags.length - 4}</span>\` : '';
+
+    // Time info
+    const changedAgo = m.state_changed_at ? \`state changed \${timeAgo(m.state_changed_at)}\` : '';
+    const triggeredAgo = m.last_triggered_at ? \`last triggered \${timeAgo(m.last_triggered_at)}\` : '';
+    const modifiedAgo = m.modified ? \`modified \${timeAgo(m.modified)}\` : '';
+    const createdDate = m.created ? new Date(m.created).toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' }) : '';
+    const timeInfo = [changedAgo, triggeredAgo].filter(Boolean).join(' · ');
+
+    // Priority badge
+    const priorityBadge = m.priority ? \`<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(100,100,100,0.12);color:var(--muted)">P\${m.priority}</span>\` : '';
+
+    // Creator
+    const creatorInfo = m.creator?.name ? \`<span style="font-size:10px;color:var(--dim)">\${esc(m.creator.name)}</span>\` : '';
+
+    // Type label
+    const tLabel = typeLabel[m.type] || m.type || '';
+
+    html += \`<div style="padding:8px 10px;border-radius:var(--radius-xs);background:var(--surface-raised)\${glowStyle}">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:\${(tagChips || timeInfo || createdDate) ? '5px' : '0'}">
+        <span style="width:7px;height:7px;border-radius:50%;background:\${col};flex-shrink:0\${m.state==='Alert'?';box-shadow:0 0 5px '+col:''}"></span>
+        <span style="font-size:12px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="\${esc(m.name)}">\${esc(m.name)}</span>
+        \${priorityBadge}
+        <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(100,100,100,0.1);color:var(--muted);flex-shrink:0">\${esc(tLabel)}</span>
+        <span style="font-size:11px;font-weight:600;color:\${col};flex-shrink:0">\${esc(m.state)}</span>
+      </div>
+      \${(tagChips || moreTags) ? \`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">\${tagChips}\${moreTags}</div>\` : ''}
+      \${(timeInfo || createdDate || creatorInfo) ? \`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        \${timeInfo ? \`<span style="font-size:10px;color:\${m.state === 'Alert' || m.state === 'Warn' ? col : 'var(--dim)'}">\${timeInfo}</span>\` : ''}
+        \${modifiedAgo ? \`<span style="font-size:10px;color:var(--dim)">\${modifiedAgo}</span>\` : ''}
+        \${createdDate ? \`<span style="font-size:10px;color:var(--dim)">created \${createdDate}</span>\` : ''}
+        \${creatorInfo}
+      </div>\` : ''}
+    </div>\`;
+  }
+  html += '</div>';
+  return html;
+}
+
+async function ddFetchMonitors(force) {
+  const loadingEl = document.getElementById("dd-loading");
+  if (loadingEl) loadingEl.textContent = "Loading monitors...";
+
+  const tags = (window.__ddActiveTags || []).join(',') || undefined;
+  const res = await postJson("/api/datadog/monitors/poll", { force: force === true, tags });
+  if (res.ok) {
+    window.__ddLastData = res.data;
+    ddFilterMonitors();
+  } else {
+    const resultsEl = document.getElementById("dd-results");
+    if (resultsEl) resultsEl.innerHTML = '<div id="dd-monitor-list"><span style="color:var(--red);font-size:12px">' + esc(res.error || "Fetch failed") + '</span></div>';
+  }
+}
+
 // ── Secrets Page ──
 
 let secretsSelectedTarget = "";
 let secretsSelectedRole = "";
+let secretsActiveTab = "targets";
 
 async function renderSecretsPage() {
+  savePageState();
+
+  // Tab header (always shown, breadcrumb takes over inside targets)
+  const tabHeader = \`<div style="margin-bottom:16px">
+    <div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Secrets</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:3px">Managed credentials and secrets</div>
+    <div class="tabs" style="border-bottom:1px solid var(--border);margin-top:10px">
+      <div class="\${secretsActiveTab === 'targets' ? 'tab active' : 'tab'}" onclick="secretsActiveTab='targets';secretsSelectedTarget='';secretsSelectedRole='';renderSecretsPage()">Targets</div>
+      <div class="\${secretsActiveTab === 'external' ? 'tab active' : 'tab'}" onclick="secretsActiveTab='external';renderSecretsPage()">External Connections</div>
+    </div>
+  </div>\`;
+
+  if (secretsActiveTab === "external") {
+    await renderExternalConnectionsTab(tabHeader);
+    return;
+  }
+
   const data = await fetchJson("/api/secrets");
-  const targetNames = Object.keys(data);
+  // Filter out internal targets (prefixed with _)
+  const targetNames = Object.keys(data).filter(n => !n.startsWith("_"));
   const app = document.getElementById("app");
 
   // Stats
   let totalSecrets = 0;
   let totalRoles = 0;
-  for (const t of Object.values(data)) {
+  for (const name of targetNames) {
+    const t = data[name];
     const roles = Object.keys(t.roles || {});
     totalRoles += roles.length;
     for (const secrets of Object.values(t.roles || {})) totalSecrets += secrets.length;
   }
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
+  let html = secretsSelectedTarget ? '' : tabHeader;
+  html += '<div class="panel" style="margin-bottom:16px">';
   if (secretsSelectedTarget) {
     const tgt = data[secretsSelectedTarget];
     const tgtRoles = Object.keys(tgt?.roles || {});
     let tgtSecrets = 0;
     for (const secs of Object.values(tgt?.roles || {})) tgtSecrets += secs.length;
     html += \`<div class="breadcrumb">
-      <span class="breadcrumb-item" onclick="secretsSelectedTarget='';secretsSelectedRole='';renderSecretsPage()">Secrets</span>
+      <span class="breadcrumb-item" onclick="secretsActiveTab='targets';secretsSelectedTarget='';secretsSelectedRole='';renderSecretsPage()">Secrets</span>
+      <span class="breadcrumb-sep">|</span>
+      <span class="breadcrumb-item" onclick="secretsSelectedTarget='';secretsSelectedRole='';renderSecretsPage()">Targets</span>
       <span class="breadcrumb-sep">|</span>
       <span class="breadcrumb-item current">\${esc(secretsSelectedTarget)}</span>
     </div>\`;
@@ -5626,7 +8936,6 @@ async function renderSecretsPage() {
     if (tgt?.url) html += \`<div style="font-size:11px;color:var(--dim);align-self:center">\${esc(tgt.url)}</div>\`;
     html += '</div>';
   } else {
-    html += '<div class="panel-title">Secrets & Credentials</div>';
     if (targetNames.length > 0) {
       html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
       html += \`<div class="stat"><div class="stat-value">\${targetNames.length}</div><div class="stat-label">Targets</div></div>\`;
@@ -5780,6 +9089,175 @@ async function renderSecretsPage() {
   setPage(html);
 }
 
+let ddEditMode = false;
+
+async function renderExternalConnectionsTab(tabHeader) {
+  const dd = await fetchJson("/api/connections/datadog");
+
+  let html = tabHeader;
+  html += '<div style="display:flex;flex-direction:column;gap:16px;max-width:680px">';
+
+  const ddConfigured = dd.configured === true;
+  const ddApiKey = dd.secrets?.DD_API_KEY;
+  const ddAppKey = dd.secrets?.DD_APP_KEY;
+  const ddSite = dd.secrets?.DD_SITE;
+  const currentSite = ddSite?.masked || "datadoghq.com";
+
+  html += '<div class="panel">';
+  html += \`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <span style="font-size:15px;font-weight:600">Datadog</span>
+    <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:\${ddConfigured ? 'rgba(80,200,120,0.15)' : 'rgba(100,100,100,0.15)'};color:\${ddConfigured ? 'var(--green)' : 'var(--dim)'}">\${ddConfigured ? 'Configured' : 'Not configured'}</span>
+  </div>\`;
+
+  if (ddConfigured && !ddEditMode) {
+    // ── View mode ──
+    html += \`<div style="font-size:12px;display:flex;flex-direction:column;gap:7px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--dim);width:80px;flex-shrink:0">API Key</span>
+        <span class="secret-source \${ddApiKey?.source || 'literal'}" style="font-size:10px">\${esc(ddApiKey?.source || 'literal')}</span>
+        <span class="secret-value" id="dd-val-api" style="font-family:monospace">••••••••</span>
+        <button class="secret-reveal" onclick="revealDdSecret('DD_API_KEY','dd-val-api')">Reveal</button>
+      </div>
+      \${ddAppKey ? \`<div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--dim);width:80px;flex-shrink:0">App Key</span>
+        <span class="secret-source \${ddAppKey.source}" style="font-size:10px">\${esc(ddAppKey.source)}</span>
+        <span class="secret-value" id="dd-val-app" style="font-family:monospace">••••••••</span>
+        <button class="secret-reveal" onclick="revealDdSecret('DD_APP_KEY','dd-val-app')">Reveal</button>
+      </div>\` : ''}
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--dim);width:80px;flex-shrink:0">Site</span>
+        <code>\${esc(currentSite)}</code>
+      </div>
+    </div>\`;
+    html += \`<div style="display:flex;gap:6px;align-items:center">
+      <button class="secret-reveal" onclick="testDatadogUI()">Test</button>
+      <button class="secret-reveal" onclick="ddEditMode=true;renderSecretsPage()">Edit</button>
+      <button class="secret-delete" onclick="deleteDatadogUI()">Remove</button>
+    </div>
+    <div id="dd-test-result" style="margin-top:8px;font-size:12px"></div>\`;
+
+  } else {
+    // ── Configure / Edit form ──
+    const siteOptions = ["datadoghq.com","datadoghq.eu","us3.datadoghq.com","us5.datadoghq.com","ap1.datadoghq.com"];
+    const siteSelect = siteOptions.map(s =>
+      \`<option value="\${s}" \${currentSite === s ? 'selected' : ''}>\${s}</option>\`
+    ).join("");
+
+    html += \`<div class="add-form" style="flex-direction:column;gap:10px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:12px;color:var(--dim);width:80px;flex-shrink:0">API Key\${!ddConfigured ? ' <span style=\\"color:var(--red)\\">*</span>' : ''}</label>
+        <select id="dd-api-key-source" style="width:80px">
+          <option value="literal">literal</option>
+          <option value="env">env:</option>
+          <option value="op">op:</option>
+        </select>
+        <input id="dd-api-key" type="text" placeholder="\${ddConfigured ? 'leave blank to keep current' : 'required'}" style="flex:1" />
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:12px;color:var(--dim);width:80px;flex-shrink:0">App Key</label>
+        <select id="dd-app-key-source" style="width:80px">
+          <option value="literal">literal</option>
+          <option value="env">env:</option>
+          <option value="op">op:</option>
+        </select>
+        <input id="dd-app-key" type="text" placeholder="\${ddConfigured && ddAppKey ? 'leave blank to keep current' : 'optional'}" style="flex:1" />
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:12px;color:var(--dim);width:80px;flex-shrink:0">Site</label>
+        <select id="dd-site" style="flex:1">\${siteSelect}</select>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:4px">
+        <button class="secret-reveal" onclick="saveDatadogUI()">\${ddConfigured ? 'Update' : 'Save'}</button>
+        \${ddConfigured ? '<button class="secret-reveal" onclick="ddEditMode=false;renderSecretsPage()">Cancel</button>' : ''}
+      </div>
+      <div id="dd-save-result" style="font-size:12px"></div>
+    </div>\`;
+  }
+
+  html += '</div>'; // panel
+
+  html += \`<div class="panel" style="opacity:0.5">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:15px;font-weight:600">Sentry</span>
+      <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(100,100,100,0.15);color:var(--dim)">Coming soon</span>
+    </div>
+    <div style="font-size:12px;color:var(--dim);margin-top:6px">Error tracking and release health from Sentry.</div>
+  </div>\`;
+
+  html += '</div>';
+  setPage(html);
+}
+
+function buildDdValue(source, value) {
+  if (source === "env") return "env:" + value;
+  if (source === "op") return "op:" + value;
+  return value;
+}
+
+async function revealDdSecret(key, elId) {
+  const data = await fetchJson("/api/secrets?resolve=true&target=_datadog_&role=connection");
+  const el = document.getElementById(elId);
+  if (el && data[key]) {
+    el.textContent = data[key];
+    el.style.color = "var(--green)";
+    setTimeout(() => { el.textContent = "••••••••"; el.style.color = ""; }, 5000);
+  }
+}
+
+async function testDatadogUI() {
+  const resultEl = document.getElementById("dd-test-result");
+  if (resultEl) resultEl.innerHTML = '<span style="color:var(--dim)">Testing...</span>';
+  try {
+    const res = await fetchJson("/api/connections/datadog/test");
+    if (res.ok) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--green)">Valid — connected to api.' + esc(res.site || 'datadoghq.com') + '</span>';
+    } else {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--red)">' + esc(res.error || "Validation failed") + '</span>';
+    }
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--red)">Request failed</span>';
+  }
+}
+
+async function saveDatadogUI() {
+  const apiKeyRaw = document.getElementById("dd-api-key").value.trim();
+  const appKeyRaw = document.getElementById("dd-app-key").value.trim();
+  const apiKeySrc = document.getElementById("dd-api-key-source").value;
+  const appKeySrc = document.getElementById("dd-app-key-source").value;
+  const site = document.getElementById("dd-site").value;
+  const resultEl = document.getElementById("dd-save-result");
+
+  const payload = {};
+  if (apiKeyRaw) payload.apiKey = buildDdValue(apiKeySrc, apiKeyRaw);
+  if (appKeyRaw) payload.appKey = buildDdValue(appKeySrc, appKeyRaw);
+  if (site) payload.site = site;
+
+  if (!payload.apiKey && !payload.appKey && !payload.site) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--dim)">Nothing to update</span>';
+    return;
+  }
+
+  if (resultEl) resultEl.innerHTML = '<span style="color:var(--dim)">Saving...</span>';
+  try {
+    const res = await postJson("/api/connections/datadog", payload);
+    if (res.error) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--red)">' + esc(res.error) + '</span>';
+      return;
+    }
+    ddEditMode = false;
+    renderSecretsPage();
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--red)">Save failed</span>';
+  }
+}
+
+async function deleteDatadogUI() {
+  if (!await showConfirm("Remove Datadog connection and all its secrets?", "Remove")) return;
+  await fetchApi("/api/connections/datadog", { method: "DELETE" });
+  ddEditMode = false;
+  renderSecretsPage();
+}
+
 async function addTargetUI() {
   const name = document.getElementById("add-target-name").value;
   const url = document.getElementById("add-target-url").value;
@@ -5804,20 +9282,20 @@ async function addSecretUI() {
 }
 
 async function deleteSecretUI(target, role, key) {
-  if (!confirm("Delete " + key + "?")) return;
+  if (!await showConfirm("Delete " + key + "?", "Delete")) return;
   await fetchApi("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, role, key }) });
   renderSecretsPage();
 }
 
 async function deleteRoleUI(target, role) {
-  if (!confirm("Delete role " + role + " from " + target + "?")) return;
+  if (!await showConfirm("Delete role " + role + " from " + target + "?", "Delete")) return;
   await fetchApi("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, role }) });
   secretsSelectedRole = "";
   renderSecretsPage();
 }
 
 async function deleteTargetUI(target) {
-  if (!confirm("Delete target " + target + " and ALL its secrets?")) return;
+  if (!await showConfirm("Delete target " + target + " and ALL its secrets?", "Delete")) return;
   await fetchApi("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target }) });
   secretsSelectedTarget = "";
   secretsSelectedRole = "";
@@ -5876,19 +9354,50 @@ const FILE_TYPE_LABELS = {
 let qaPoolSelectedTicket = "";
 
 async function renderQaPoolPage() {
-  const data = await fetchJson("/api/qa-pool");
+  savePageState();
+  const poolApp = document.getElementById("app");
+
+  const [data, agents, poolCfgRaw] = await Promise.all([
+    fetchJson("/api/qa-pool"),
+    fetchJson("/api/agents").catch(function() { return []; }),
+    fetchJson("/api/page-config/pool").catch(function() { return {}; }),
+  ]);
   const { byTicket, ticketIds } = data;
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
-  html += '<div class="breadcrumb">';
+  // Parse the 5-agent config from config_json
+  var poolCfg = {};
+  try { poolCfg = poolCfgRaw.config_json ? JSON.parse(poolCfgRaw.config_json) : {}; } catch(e) {}
+
+  // Store for modal
+  window.__poolConfigData = { agents: agents || [], config: poolCfg };
+
+  // Configured agent pills for title block
+  var poolAgentKeys = [
+    { key: 'prior_normal_agent', label: 'Normal Claim' },
+    { key: 'prior_visual_agent', label: 'Visual Claim' },
+    { key: 'ui_test_agent',      label: 'UI Tests' },
+    { key: 'api_test_agent',     label: 'API Tests' },
+    { key: 'visual_test_agent',  label: 'Visual Tests' },
+  ];
+  var configuredPills = '';
+  poolAgentKeys.forEach(function(entry) {
+    if (poolCfg[entry.key]) {
+      var name = poolCfg[entry.key].split('/').pop().replace('.md', '');
+      configuredPills += '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(99,102,241,0.12);color:var(--accent);font-family:var(--font-mono)">' + esc(entry.label) + ': ' + esc(name) + '</span>';
+    }
+  });
+
+  const poolHeader = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px"><div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Pool</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Execution pool for running test cases</div>' + (configuredPills ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + configuredPills + '</div>' : '') + '</div><div style="display:flex;align-items:center;gap:8px"><button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;pool&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button><button class="action-btn" style="font-size:11px" onclick="openPoolConfigModal()"><i class="ph ph-gear" style="margin-right:4px"></i>Configure</button></div></div>';
+
+  let html = qaPoolSelectedTicket ? '' : poolHeader;
+  html += '<div class="panel" style="margin-bottom:16px">';
   if (qaPoolSelectedTicket) {
+    html += '<div class="breadcrumb">';
     html += '<span class="breadcrumb-item" onclick="qaPoolSelectedTicket=\\'\\';renderQaPoolPage()">Pool</span>';
     html += '<span class="breadcrumb-sep">|</span>';
     html += '<span class="breadcrumb-item current">' + esc(qaPoolSelectedTicket) + '</span>';
-  } else {
-    html += '<span class="breadcrumb-item current">Pool</span>';
+    html += '</div>';
   }
-  html += '</div>';
   if (ticketIds.length > 0) {
     html += '<div style="display:flex;gap:16px;margin-bottom:8px">';
     html += '<div class="stat"><div class="stat-value">' + ticketIds.length + '</div><div class="stat-label">Tickets</div></div>';
@@ -5935,7 +9444,7 @@ async function renderQaPoolPage() {
       html += '<span style="display:flex;align-items:center;gap:6px"><i class="ph ph-robot" style="color:var(--accent);font-size:16px"></i><span class="session-id" style="font-size:13px">' + esc(a.agent_path.split('/').pop()) + '</span></span>';
       html += '<span style="display:flex;align-items:center;gap:6px">' + existsBadge + '<button class="secret-delete" onclick="event.stopPropagation();deleteQaPoolAgent(\\'' + a.id + '\\')">Remove</button></span>';
       html += '</div>';
-      html += '<div style="font-size:11px;color:var(--dim);margin-top:4px;font-family:monospace;word-break:break-all">' + esc(a.agent_path) + '</div>';
+      html += '<div style="font-size:11px;color:var(--dim);margin-top:4px;font-family:monospace;word-break:break-all">' + esc(shortenPath(a.agent_path)) + '</div>';
       html += '<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--dim);flex-wrap:wrap">';
       if (a.target) html += '<span><i class="ph ph-target" style="margin-right:3px"></i>' + esc(a.target) + '</span>';
       if (a.role && a.role !== 'default') html += '<span><i class="ph ph-user-circle" style="margin-right:3px"></i>' + esc(a.role) + '</span>';
@@ -6019,26 +9528,457 @@ async function renderQaPoolPage() {
 }
 
 async function deleteQaPoolAgent(id) {
-  if (!confirm("Remove this agent config?")) return;
+  if (!await showConfirm("Remove this agent config?", "Remove")) return;
   await fetchApi("/api/qa-pool", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
   renderQaPoolPage();
 }
 
 async function killPoolSpawn(ticketId) {
-  if (!confirm("Kill all spawned agents for " + ticketId + "?")) return;
+  if (!await showConfirm("Kill all spawned agents for " + ticketId + "?", "Kill")) return;
   await fetchApi("/api/qa-pool/kills", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket_id: ticketId }) });
   renderQaPoolPage();
 }
 
 async function killAllPoolSpawns(ticketId) {
-  if (!confirm("Kill ALL spawned agents for " + ticketId + "? This cannot be undone.")) return;
+  if (!await showConfirm("Kill ALL spawned agents for " + ticketId + "? This cannot be undone.", "Kill")) return;
   await fetchApi("/api/qa-pool/kills", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket_id: ticketId, force: true }) });
   renderQaPoolPage();
+}
+
+// ── Pool Config Modal ──
+
+function openPoolConfigModal() {
+  var cfg = window.__poolConfigData || {};
+  var agents = cfg.agents || [];
+  var config = cfg.config || {};
+  var modal = document.getElementById("pool-config-modal");
+  if (!modal) return;
+  var keys = ['prior_normal_agent','prior_visual_agent','ui_test_agent','api_test_agent','visual_test_agent'];
+  keys.forEach(function(key) {
+    var sel = document.getElementById('pool-cfg-' + key);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">\u2014 None \u2014</option>';
+    agents.forEach(function(a) {
+      var opt = document.createElement('option');
+      opt.value = a.path;
+      opt.textContent = a.name;
+      if (a.path === config[key]) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  });
+  modal.style.display = 'flex';
+}
+
+function closePoolConfigModal() {
+  var modal = document.getElementById("pool-config-modal");
+  if (modal) modal.style.display = 'none';
+}
+
+async function savePoolConfigModal() {
+  var keys = ['prior_normal_agent','prior_visual_agent','ui_test_agent','api_test_agent','visual_test_agent'];
+  var config = {};
+  keys.forEach(function(key) {
+    var sel = document.getElementById('pool-cfg-' + key);
+    if (sel && sel.value) config[key] = sel.value;
+  });
+  await fetch('/api/page-config/pool', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config_json: JSON.stringify(config) }),
+  });
+  closePoolConfigModal();
+  renderQaPoolPage();
+}
+
+// ── Explore / Visual Runs — Shared Agent Run Modal ──
+
+var _exploreRunAgent = null; // { key, label, agentName, agentPath }
+var _exploreRunSelectedTicket = null;
+var _exploreRunTicketsData = [];   // full ticket objects for MR/PR + repo display
+var _exploreRunSecretsData = {};   // full secrets map { targetName: { roles: {...} } }
+var _exploreRunSelectedTarget = '';
+var _exploreRunSelectedRole = '';
+var _exploreRunSource = null;      // SSE reader for active stream
+
+async function openExploreRunModal(agentKey) {
+  // Resolve agent config from whichever page data is available
+  var explorerCfgObj = (window.__exploreConfigData && window.__exploreConfigData.config) || {};
+  var vrCfgObj = (window.__vrConfigData && window.__vrConfigData.config) || {};
+  var allAgents = (window.__exploreConfigData && window.__exploreConfigData.agents) || (window.__vrConfigData && window.__vrConfigData.agents) || [];
+  var agentLabels = { ui_claim_agent: 'UI Pre Claim', ui_test_agent: 'UI Test', api_test_agent: 'API Test', visual_claim_agent: 'Visual Pre Claim', visual_test_agent: 'Visual Test' };
+  var agentPath = explorerCfgObj[agentKey] || vrCfgObj[agentKey] || '';
+  var agentName = agentPath ? agentPath.split('/').pop().replace('.md','') : agentKey;
+  _exploreRunAgent = { key: agentKey, label: agentLabels[agentKey] || agentKey, agentName: agentName, agentPath: agentPath };
+  _exploreRunSelectedTicket = null;
+  _exploreRunSelectedTarget = '';
+  _exploreRunSelectedRole = '';
+
+  var modal = document.getElementById('explore-run-modal');
+  if (!modal) return;
+  var titleEl = document.getElementById('explore-run-modal-title');
+  var subEl = document.getElementById('explore-run-modal-sub');
+  if (titleEl) titleEl.textContent = 'Run ' + _exploreRunAgent.label + ' Agent';
+  if (subEl) { var _hp = agentPath || ''; var _hm = '/Users/' + (_hp.split('/')[2] || ''); subEl.textContent = _hp.indexOf(_hm) === 0 ? '~' + _hp.slice(_hm.length) : _hp; }
+
+  // Reset all fields
+  var label = document.getElementById('explore-run-ticket-label');
+  if (label) { label.textContent = '— Select a ticket —'; label.style.color = 'var(--muted)'; }
+  var detailsEl = document.getElementById('explore-run-ticket-details');
+  if (detailsEl) detailsEl.style.display = 'none';
+  var targetSel = document.getElementById('explore-run-target');
+  if (targetSel) { targetSel.innerHTML = '<option value="">— None —</option>'; }
+  var roleSel = document.getElementById('explore-run-role');
+  if (roleSel) { roleSel.innerHTML = '<option value="">— None —</option>'; roleSel.disabled = true; }
+  var outputWrap = document.getElementById('explore-run-output-wrap');
+  if (outputWrap) outputWrap.style.display = 'none';
+  var outputEl = document.getElementById('explore-run-output');
+  if (outputEl) outputEl.textContent = '';
+  var statusEl = document.getElementById('explore-run-status');
+  if (statusEl) statusEl.textContent = '';
+  var btn = document.getElementById('explore-run-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; }
+  closeExploreRunTicketDropdown();
+  updateExploreRunCmd();
+  modal.style.display = 'flex';
+
+  // Load tickets and secrets in parallel
+  var ticketList = document.getElementById('explore-run-ticket-list');
+  if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 12px">Loading...</div>';
+  try {
+    var results = await Promise.all([
+      fetchJson('/api/tickets'),
+      fetchJson('/api/secrets').catch(function() { return {}; }),
+    ]);
+    _exploreRunTicketsData = (results[0] || []).filter(function(t) { return t.mr_pr_link && t.git_repo; });
+    _exploreRunSecretsData = results[1] || {};
+    // Populate ticket list
+    if (!ticketList) return;
+    if (_exploreRunTicketsData.length === 0) {
+      ticketList.innerHTML = '';
+      ticketList.style.display = 'none';
+      var noTk = document.getElementById('explore-run-no-tickets');
+      if (noTk) noTk.style.display = 'block';
+    } else {
+      ticketList.style.display = 'flex';
+      var noTk2 = document.getElementById('explore-run-no-tickets');
+      if (noTk2) noTk2.style.display = 'none';
+      ticketList.innerHTML = '';
+      _exploreRunTicketsData.forEach(function(t) {
+        var row = document.createElement('div');
+        row.dataset.ticket = t.ticket_id;
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;transition:background 0.1s';
+        row.innerHTML = '<i class="ph ph-ticket" style="font-size:13px;color:var(--muted);flex-shrink:0"></i>'
+          + '<span style="font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.ticket_id) + '</span>'
+          + '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:' + (t.status === 'running' ? 'var(--green)' : t.status === 'completed' ? 'var(--muted)' : 'var(--surface-raised)') + ';color:' + (t.status === 'running' ? '#fff' : t.status === 'completed' ? '#fff' : 'var(--dim)') + '">' + esc(t.status) + '</span>';
+        row.onmouseenter = function() { this.style.background = 'var(--surface-raised)'; };
+        row.onmouseleave = function() { this.style.background = _exploreRunSelectedTicket === this.dataset.ticket ? 'rgba(99,102,241,0.08)' : 'transparent'; };
+        row.onclick = function() {
+          _exploreRunSelectedTicket = this.dataset.ticket;
+          var lbl = document.getElementById('explore-run-ticket-label');
+          if (lbl) { lbl.textContent = _exploreRunSelectedTicket; lbl.style.color = 'var(--text)'; }
+          closeExploreRunTicketDropdown();
+          exploreRunShowTicketDetails(_exploreRunSelectedTicket);
+          updateExploreRunCmd();
+        };
+        ticketList.appendChild(row);
+      });
+    }
+    // Populate target dropdown
+    exploreRunPopulateTargets();
+  } catch(e) {
+    if (ticketList) ticketList.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px 12px">Failed to load data</div>';
+  }
+}
+
+function exploreRunShowTicketDetails(ticketId) {
+  var t = _exploreRunTicketsData.find(function(x) { return x.ticket_id === ticketId; });
+  var detailsEl = document.getElementById('explore-run-ticket-details');
+  if (!detailsEl) return;
+  if (!t) { detailsEl.style.display = 'none'; return; }
+  var mrEl = document.getElementById('explore-run-mr-pr');
+  var repoEl = document.getElementById('explore-run-repo');
+  if (mrEl) { mrEl.textContent = t.mr_pr_link || '—'; mrEl.style.color = t.mr_pr_link ? 'var(--accent)' : 'var(--dim)'; }
+  if (repoEl) { repoEl.textContent = t.git_repo || '—'; repoEl.style.color = t.git_repo ? 'var(--text)' : 'var(--dim)'; }
+  detailsEl.style.display = 'flex';
+}
+
+function exploreRunPopulateTargets() {
+  var targetSel = document.getElementById('explore-run-target');
+  if (!targetSel) return;
+  targetSel.innerHTML = '<option value="">— None —</option>';
+  Object.keys(_exploreRunSecretsData).filter(function(n) { return !n.startsWith('_'); }).sort().forEach(function(name) {
+    var opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (name === _exploreRunSelectedTarget) opt.selected = true;
+    targetSel.appendChild(opt);
+  });
+  exploreRunUpdateRoles();
+}
+
+function exploreRunUpdateRoles() {
+  var targetSel = document.getElementById('explore-run-target');
+  var roleSel = document.getElementById('explore-run-role');
+  if (!roleSel) return;
+  var target = targetSel ? targetSel.value : '';
+  _exploreRunSelectedTarget = target;
+  roleSel.innerHTML = '<option value="">— None —</option>';
+  if (target && _exploreRunSecretsData[target]) {
+    var roles = Object.keys(_exploreRunSecretsData[target].roles || {}).sort();
+    roles.forEach(function(r) {
+      var opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = r;
+      if (r === _exploreRunSelectedRole) opt.selected = true;
+      roleSel.appendChild(opt);
+    });
+    roleSel.disabled = false;
+  } else {
+    roleSel.disabled = true;
+    _exploreRunSelectedRole = '';
+  }
+  updateExploreRunCmd();
+}
+
+function exploreRunOnRoleChange() {
+  var roleSel = document.getElementById('explore-run-role');
+  _exploreRunSelectedRole = roleSel ? roleSel.value : '';
+  updateExploreRunCmd();
+}
+
+function updateExploreRunCmd() {
+  var agent = _exploreRunAgent || {};
+  var agentPath = agent.agentPath || '';
+  var previewEl = document.getElementById('explore-run-cmd-preview');
+  if (!previewEl) return;
+  var ticketPart = _exploreRunSelectedTicket ? 'on ticket ' + _exploreRunSelectedTicket : 'on ticket <select ticket>';
+  var agentPart = agentPath ? 'use agent @' + agentPath + ' ' : '';
+  var targetPart = _exploreRunSelectedTarget ? ' and target is ' + _exploreRunSelectedTarget : '';
+  var rolePart = _exploreRunSelectedRole ? ' and role is ' + _exploreRunSelectedRole : '';
+  previewEl.textContent = 'claude -p "' + agentPart + ticketPart + targetPart + rolePart + '"';
+}
+
+function filterExploreRunTickets(q) {
+  var list = document.getElementById('explore-run-ticket-list');
+  var noMatch = document.getElementById('explore-run-no-match');
+  if (!list) return;
+  var term = q.trim().toLowerCase();
+  var rows = list.querySelectorAll('[data-ticket]');
+  var visible = 0;
+  rows.forEach(function(row) {
+    var tid = (row.dataset.ticket || '').toLowerCase();
+    var show = !term || tid.indexOf(term) !== -1;
+    row.style.display = show ? 'flex' : 'none';
+    if (show) visible++;
+  });
+  if (noMatch) noMatch.style.display = (rows.length > 0 && visible === 0) ? 'block' : 'none';
+}
+
+function toggleExploreRunTicketDropdown() {
+  var dd = document.getElementById('explore-run-ticket-dropdown');
+  var caret = document.getElementById('explore-run-ticket-caret');
+  var trigger = document.getElementById('explore-run-ticket-trigger');
+  var search = document.getElementById('explore-run-ticket-search');
+  if (!dd) return;
+  var isOpen = dd.style.display !== 'none';
+  if (isOpen) {
+    dd.style.display = 'none';
+  } else {
+    var rect = trigger.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 4) + 'px';
+    dd.style.left = rect.left + 'px';
+    dd.style.width = rect.width + 'px';
+    dd.style.display = 'block';
+  }
+  if (caret) caret.style.transform = isOpen ? '' : 'rotate(180deg)';
+  if (trigger) trigger.style.borderColor = isOpen ? 'var(--border)' : 'var(--accent)';
+  if (!isOpen) {
+    if (search) { search.value = ''; filterExploreRunTickets(''); }
+    setTimeout(function() { if (search) search.focus(); }, 30);
+  }
+}
+
+function closeExploreRunTicketDropdown() {
+  var dd = document.getElementById('explore-run-ticket-dropdown');
+  var caret = document.getElementById('explore-run-ticket-caret');
+  var trigger = document.getElementById('explore-run-ticket-trigger');
+  var search = document.getElementById('explore-run-ticket-search');
+  if (dd) dd.style.display = 'none';
+  if (caret) caret.style.transform = '';
+  if (trigger) trigger.style.borderColor = 'var(--border)';
+  if (search) { search.value = ''; filterExploreRunTickets(''); }
+}
+
+function closeExploreRunModal() {
+  var modal = document.getElementById('explore-run-modal');
+  if (modal) modal.style.display = 'none';
+  closeExploreRunTicketDropdown();
+  if (_exploreRunSource) { try { _exploreRunSource.cancel(); } catch(e) {} _exploreRunSource = null; }
+  _exploreRunSelectedTicket = null;
+}
+
+async function startExploreRun() {
+  var agent = _exploreRunAgent || {};
+  if (!_exploreRunSelectedTicket) {
+    var statusEl = document.getElementById('explore-run-status');
+    if (statusEl) { statusEl.style.color = 'var(--red)'; statusEl.textContent = 'Select a ticket first'; setTimeout(function() { if (statusEl) { statusEl.style.color = 'var(--muted)'; statusEl.textContent = ''; } }, 2000); }
+    return;
+  }
+  var outputWrap = document.getElementById('explore-run-output-wrap');
+  var outputEl = document.getElementById('explore-run-output');
+  var statusEl = document.getElementById('explore-run-status');
+  var btn = document.getElementById('explore-run-btn');
+  if (outputEl) outputEl.textContent = '';
+  if (outputWrap) outputWrap.style.display = 'block';
+  if (statusEl) { statusEl.style.color = 'var(--muted)'; statusEl.textContent = 'Running...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-circle-notch ph-spin" style="margin-right:5px"></i>Running'; }
+
+  var resetBtn = function() { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-play" style="margin-right:5px"></i>Run'; } };
+  var appendOutput = function(text, color) {
+    if (!outputEl) return;
+    if (color) { var sp = document.createElement('span'); sp.style.color = color; sp.textContent = text; outputEl.appendChild(sp); }
+    else outputEl.appendChild(document.createTextNode(text));
+    outputEl.scrollTop = outputEl.scrollHeight;
+  };
+
+  // Build prompt: ticket + optional target/role parts
+  var t = _exploreRunTicketsData.find(function(x) { return x.ticket_id === _exploreRunSelectedTicket; }) || {};
+  var repoPart = t.git_repo ? ' and repo is ' + t.git_repo : '';
+  var mrPart = t.mr_pr_link ? ' and mr/pr is ' + t.mr_pr_link : '';
+  var targetPart = _exploreRunSelectedTarget ? ' and target is ' + _exploreRunSelectedTarget : '';
+  var rolePart = _exploreRunSelectedRole ? ' and role is ' + _exploreRunSelectedRole : '';
+  var prompt = repoPart + mrPart + targetPart + rolePart;
+
+  try {
+    var resp = await fetch('/api/agent-run/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentName: agent.agentName, agentPath: agent.agentPath, ticketId: _exploreRunSelectedTicket, prompt: prompt.trim(), page: 'explore' }),
+    });
+    if (!resp.ok || !resp.body) { if (statusEl) statusEl.textContent = 'Failed to start'; resetBtn(); return; }
+    var reader = resp.body.getReader();
+    _exploreRunSource = reader;
+    var decoder = new TextDecoder();
+    var buf = '';
+    while (true) {
+      var rd = await reader.read();
+      if (rd.done) break;
+      buf += decoder.decode(rd.value, { stream: true });
+      var lines = buf.split("\\n");
+      buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line.startsWith('data:')) continue;
+        try {
+          var msg = JSON.parse(line.slice(5).trim());
+          if (msg.type === 'cmd') appendOutput('$ ' + msg.text + "\\n", 'var(--dim)');
+          else if (msg.type === 'stdout') appendOutput(msg.text);
+          else if (msg.type === 'stderr') appendOutput(msg.text, 'var(--yellow)');
+          else if (msg.type === 'done') { if (statusEl) statusEl.textContent = msg.code === 0 ? 'Done ✓' : 'Exited (' + msg.code + ')'; resetBtn(); }
+        } catch(e) {}
+      }
+    }
+  } catch(err) {
+    if (statusEl) statusEl.textContent = 'Error: ' + err.message;
+  }
+  _exploreRunSource = null;
+  resetBtn();
+}
+
+// ── Explore Config Modal ──
+
+function openExploreConfigModal() {
+  var cfg = window.__exploreConfigData || {};
+  var agents = cfg.agents || [];
+  var config = cfg.config || {};
+  var modal = document.getElementById("explore-config-modal");
+  if (!modal) return;
+  var keys = ['ui_claim_agent', 'ui_test_agent', 'api_test_agent'];
+  keys.forEach(function(key) {
+    var sel = document.getElementById('explore-cfg-' + key);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">\u2014 None \u2014</option>';
+    agents.forEach(function(a) {
+      var opt = document.createElement('option');
+      opt.value = a.path;
+      opt.textContent = a.name;
+      if (a.path === config[key]) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  });
+  modal.style.display = 'flex';
+}
+
+function closeExploreConfigModal() {
+  var modal = document.getElementById("explore-config-modal");
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveExploreConfigModal() {
+  var keys = ['ui_claim_agent', 'ui_test_agent', 'api_test_agent'];
+  var config = {};
+  keys.forEach(function(key) {
+    var sel = document.getElementById('explore-cfg-' + key);
+    if (sel && sel.value) config[key] = sel.value;
+  });
+  await fetch('/api/page-config/explore', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config_json: JSON.stringify(config) }),
+  });
+  closeExploreConfigModal();
+  renderRunsPage();
+}
+
+// ── Visual Runs Config Modal ──
+
+function openVisualRunsConfigModal() {
+  var cfg = window.__vrConfigData || {};
+  var agents = cfg.agents || [];
+  var config = cfg.config || {};
+  var modal = document.getElementById("visual-runs-config-modal");
+  if (!modal) return;
+  var keys = ['visual_claim_agent', 'visual_test_agent'];
+  keys.forEach(function(key) {
+    var sel = document.getElementById('vr-cfg-' + key);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">\u2014 None \u2014</option>';
+    agents.forEach(function(a) {
+      var opt = document.createElement('option');
+      opt.value = a.path;
+      opt.textContent = a.name;
+      if (a.path === config[key]) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  });
+  modal.style.display = 'flex';
+}
+
+function closeVisualRunsConfigModal() {
+  var modal = document.getElementById("visual-runs-config-modal");
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveVisualRunsConfigModal() {
+  var keys = ['visual_claim_agent', 'visual_test_agent'];
+  var config = {};
+  keys.forEach(function(key) {
+    var sel = document.getElementById('vr-cfg-' + key);
+    if (sel && sel.value) config[key] = sel.value;
+  });
+  await fetch('/api/page-config/visual-runs', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config_json: JSON.stringify(config) }),
+  });
+  closeVisualRunsConfigModal();
+  renderVisualRunsPage();
 }
 
 async function renderFilesPage() {
   const files = await fetchJson("/api/files");
   const app = document.getElementById("app");
+  const filesHeader = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Files</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Default files available for upload during test sessions</div></div>';
 
   // Stats
   const byType = {};
@@ -6114,7 +10054,10 @@ async function renderFilesPage() {
   html += '</div>';
 
   html += '</div>';
-  setPage(html);
+  app.style.display = "";
+  app.style.flexDirection = "";
+  app.style.overflow = "";
+  app.innerHTML = '<div class="page-fixed">' + filesHeader + '</div><div class="page-content">' + html + '</div>';
 }
 
 async function addFileUI() {
@@ -6135,7 +10078,7 @@ async function addFileUI() {
 }
 
 async function deleteFileUI(id, label) {
-  if (!confirm("Delete file " + label + "?")) return;
+  if (!await showConfirm("Delete file " + label + "?", "Delete")) return;
   await fetchApi("/api/files", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
   renderFilesPage();
 }
@@ -6151,17 +10094,17 @@ let covUncoveredCache = [];
 let covTotalUncovered = 0;
 
 async function renderCoveragePage() {
+  savePageState();
   const repos = await fetchJson("/api/coverage/repos");
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
+  let html = covSelectedRepo ? '' : '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Coverage</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Code coverage from test runs</div></div>';
+  html += '<div class="panel" style="margin-bottom:16px">';
   if (covSelectedRepo) {
     html += \`<div class="breadcrumb">
       <span class="breadcrumb-item" onclick="covSelectedRepo='';covSelectedFile='';covSearch='';covOffset=0;renderCoveragePage()">Coverage</span>
       <span class="breadcrumb-sep">|</span>
       <span class="breadcrumb-item current">\${esc(covSelectedRepo)}</span>
     </div>\`;
-  } else {
-    html += '<div class="panel-title">Code Coverage</div>';
   }
   html += '</div>';
 
@@ -6286,32 +10229,34 @@ let a11ySelectedPack = "";
 let a11ySelectedPage = "";
 
 async function renderA11yPage() {
+  savePageState();
   const queryParam = a11ySelectedPack ? "?pack=" + encodeURIComponent(a11ySelectedPack)
     : a11ySelectedTicket ? "?ticket=" + encodeURIComponent(a11ySelectedTicket)
     : "";
   const summary = await fetchJson("/api/a11y/summary" + queryParam);
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
-
   const impactColors = { critical: "var(--red)", serious: "var(--yellow)", moderate: "var(--accent)", minor: "var(--dim)" };
 
-  // Breadcrumb
-  html += '<div class="breadcrumb">';
-  html += \`<span class="breadcrumb-item\${!a11ySelectedTicket ? ' current' : ''}" onclick="a11ySelectedTicket='';a11ySelectedPack='';a11ySelectedPage='';a11ySelectedRun='';renderA11yPage()">Accessibility</span>\`;
+  let html = a11ySelectedTicket ? '' : '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Accessibility</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Accessibility issues found during test runs</div></div>';
+  html += '<div class="panel" style="margin-bottom:16px">';
+
+  // Breadcrumb — only when navigated in (L2+)
   if (a11ySelectedTicket) {
+    html += '<div class="breadcrumb">';
+    html += \`<span class="breadcrumb-item" onclick="a11ySelectedTicket='';a11ySelectedPack='';a11ySelectedPage='';a11ySelectedRun='';renderA11yPage()">Accessibility</span>\`;
     html += '<span class="breadcrumb-sep">|</span>';
     html += \`<span class="breadcrumb-item\${!a11ySelectedPack ? ' current' : ''}" onclick="a11ySelectedPack='';a11ySelectedPage='';renderA11yPage()">\${esc(a11ySelectedTicket)}</span>\`;
+    if (a11ySelectedPack) {
+      html += '<span class="breadcrumb-sep">|</span>';
+      html += \`<span class="breadcrumb-item\${!a11ySelectedPage ? ' current' : ''}" onclick="a11ySelectedPage='';renderA11yPage()">\${esc(a11ySelectedPack.slice(0, 8))}</span>\`;
+    }
+    if (a11ySelectedPage) {
+      html += '<span class="breadcrumb-sep">|</span>';
+      const shortUrl = a11ySelectedPage.replace(/^https?:[/][/][^/]+/, "");
+      html += \`<span class="breadcrumb-item current" style="font-family:monospace;font-size:11px">\${esc(shortUrl)}</span>\`;
+    }
+    html += '</div>';
   }
-  if (a11ySelectedPack) {
-    html += '<span class="breadcrumb-sep">|</span>';
-    html += \`<span class="breadcrumb-item\${!a11ySelectedPage ? ' current' : ''}" onclick="a11ySelectedPage='';renderA11yPage()">\${esc(a11ySelectedPack.slice(0, 8))}</span>\`;
-  }
-  if (a11ySelectedPage) {
-    html += '<span class="breadcrumb-sep">|</span>';
-    const shortUrl = a11ySelectedPage.replace(/^https?:[/][/][^/]+/, "");
-    html += \`<span class="breadcrumb-item current" style="font-family:monospace;font-size:11px">\${esc(shortUrl)}</span>\`;
-  }
-  html += '</div>';
 
   if (summary.total === 0) {
     html += '</div>';
@@ -6479,11 +10424,12 @@ let auditTab = "overview";
 
 
 async function renderTestAuditPage() {
+  savePageState();
   const audit = await fetchJson("/api/test-audit" + (auditTicket ? "?ticket=" + encodeURIComponent(auditTicket) : ""));
   const s = audit.stats;
 
-  let html = '<div class="panel" style="margin-bottom:16px">';
-  html += '<div class="panel-title" style="margin-bottom:8px">Test Suite Audit</div>';
+  let html = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Test Audit</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Audit your test suite for quality and coverage</div></div>';
+  html += '<div class="panel" style="margin-bottom:16px">';
 
   // Ticket filter
   html += \`<div style="margin-bottom:12px"><input type="text" placeholder="Filter by ticket (e.g. PROJ-123)" value="\${esc(auditTicket)}"
@@ -6622,19 +10568,23 @@ async function renderSwarmPage() {
     ...(noTicket.length > 0 ? [{ label: "__none__", sessions: noTicket }] : []),
   ];
 
+  const swarmApp = document.getElementById("app");
+  const swarmHeader = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Swarm</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Live browser streams from active test sessions</div></div>';
+
   let html = '<div style="padding-bottom:24px">';
 
   // Header bar
-  html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">';
-  html += '<div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">Swarm</div>';
-  html += \`<span style="font-size:12px;color:var(--dim)">\${total} active stream\${total !== 1 ? "s" : ""}</span>\`;
+  html += \`<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px"><span style="font-size:12px;color:var(--dim)">\${total} active stream\${total !== 1 ? "s" : ""}</span></div>\`;
   html += '<button class="action-btn" style="margin-left:auto" onclick="renderSwarmPage()"><i class="ph ph-arrows-clockwise"></i> Refresh</button>';
   html += '</div>';
 
   if (total === 0) {
     html += '<div class="swarm-empty">No active explore sessions with a stream port.<br>Start a <code>noob-explore</code> session to see live streams here.</div>';
     html += '</div>';
-    setPage(html);
+    swarmApp.style.display = "";
+    swarmApp.style.flexDirection = "";
+    swarmApp.style.overflow = "";
+    swarmApp.innerHTML = '<div class="page-fixed">' + swarmHeader + '</div><div class="page-content">' + html + '</div>';
     return;
   }
 
@@ -6694,7 +10644,10 @@ async function renderSwarmPage() {
     </div>
   </div>\`;
 
-  setPage(html);
+  swarmApp.style.display = "";
+  swarmApp.style.flexDirection = "";
+  swarmApp.style.overflow = "";
+  swarmApp.innerHTML = '<div class="page-fixed">' + swarmHeader + '</div><div class="page-content">' + html + '</div>';
 
   // After DOM is rendered, connect WebSockets
   for (const group of allGroups) {
@@ -6913,14 +10866,14 @@ let vrSelectedRun = "";
 let vrSelectedEntry = "";
 
 async function deleteVisualRun(runId) {
-  if (!confirm("Delete this run pack? This cannot be undone.")) return;
+  if (!await showConfirm("Delete this run pack? This cannot be undone.", "Delete")) return;
   await postJson("/api/visual-runs/delete", { run: runId });
   if (vrSelectedRun === runId) { vrSelectedRun = ""; vrSelectedEntry = ""; }
   renderVisualRunsPage();
 }
 
 async function deleteVisualRunsByTicket(ticket) {
-  if (!confirm("Delete ALL run packs for " + ticket + "? This cannot be undone.")) return;
+  if (!await showConfirm("Delete ALL run packs for " + ticket + "? This cannot be undone.", "Delete")) return;
   await postJson("/api/visual-runs/delete", { ticket });
   vrSelectedTicket = "";
   vrSelectedRun = "";
@@ -6935,7 +10888,44 @@ function selectVrTab(runId) {
 }
 
 async function renderVisualRunsPage() {
+  savePageState();
+  const vrApp = document.getElementById("app");
   let html = "";
+
+  // Fetch agents and page config upfront
+  const [agents, vrCfgRaw] = await Promise.all([
+    fetchJson("/api/agents").catch(function() { return []; }),
+    fetchJson("/api/page-config/visual-runs").catch(function() { return {}; }),
+  ]);
+
+  var vrCfg = {};
+  try { vrCfg = vrCfgRaw.config_json ? JSON.parse(vrCfgRaw.config_json) : {}; } catch(e) {}
+  window.__vrConfigData = { agents: agents || [], config: vrCfg };
+
+  // Configured agent pills
+  var vrPillParts = '';
+  var vrAgentKeys = [
+    { key: 'visual_claim_agent', label: 'Visual Claim' },
+    { key: 'visual_test_agent', label: 'Visual Tests' },
+  ];
+  vrAgentKeys.forEach(function(entry) {
+    if (vrCfg[entry.key]) {
+      var name = vrCfg[entry.key].split('/').pop().replace('.md', '');
+      vrPillParts += '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(99,102,241,0.12);color:var(--accent);font-family:var(--font-mono)">' + esc(entry.label) + ': ' + esc(name) + '</span>';
+    }
+  });
+  var vrPill = vrPillParts;
+
+  var vrPlayBtn = '';
+  if (vrCfg.visual_claim_agent) {
+    var vrClaimPlayName = vrCfg.visual_claim_agent.split('/').pop().replace('.md', '');
+    vrPlayBtn += '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openExploreRunModal(&apos;visual_claim_agent&apos;)" title="Run Visual Pre Claim Job"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(vrClaimPlayName) + '</button>';
+  }
+  if (vrCfg.visual_test_agent) {
+    var vrAgentPlayName = vrCfg.visual_test_agent.split('/').pop().replace('.md', '');
+    vrPlayBtn += '<button class="action-btn" style="font-size:12px;color:var(--accent);border-color:var(--accent);padding:4px 10px" onclick="openExploreRunModal(&apos;visual_test_agent&apos;)" title="Run Visual Test Agent"><i class="ph ph-play" style="font-size:11px;margin-right:5px"></i>' + esc(vrAgentPlayName) + '</button>';
+  }
+  const vrHeader = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px"><div><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Visual Runs</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Visual regression tests by ticket</div>' + (vrPill ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + vrPill + '</div>' : '') + '</div><div style="display:flex;align-items:center;gap:8px">' + vrPlayBtn + '<button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;visual-runs&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button><button class="action-btn" style="font-size:11px" onclick="openVisualRunsConfigModal()"><i class="ph ph-gear" style="margin-right:4px"></i>Configure</button></div></div>';
 
   function fmtTs(ts) {
     if (!ts) return "-";
@@ -6950,7 +10940,10 @@ async function renderVisualRunsPage() {
     const ticketIds = Object.keys(byTicket).sort();
 
     if (ticketIds.length === 0) {
-      setPage('<div class="panel"><div class="empty">No visual runs found. Use <code>/noob-visual</code> to run visual tests.</div></div>');
+      vrApp.style.display = "";
+      vrApp.style.flexDirection = "";
+      vrApp.style.overflow = "";
+      vrApp.innerHTML = '<div class="page-fixed">' + vrHeader + '</div><div class="page-content"><div class="panel"><div class="empty">No visual runs found. Use <code>/noob-visual</code> to run visual tests.</div></div></div>';
       return;
     }
 
@@ -6961,12 +10954,13 @@ async function renderVisualRunsPage() {
       totalVerifications += byTicket[tid].filter(r => r.mode === "verification").length;
     }
 
-    html += '<div class="panel" style="margin-bottom:16px"><div class="panel-title"><i class="ph ph-eye" style="margin-right:6px"></i>Visual Testing</div>';
+    html += '<div class="panel" style="margin-bottom:16px">';
     html += '<div style="display:flex;gap:24px;margin-bottom:8px">';
     html += \`<div class="stat"><div class="stat-value">\${ticketIds.length}</div><div class="stat-label">Tickets</div></div>\`;
     html += \`<div class="stat"><div class="stat-value">\${totalBaselines}</div><div class="stat-label">Baseline Packs</div></div>\`;
     html += \`<div class="stat"><div class="stat-value">\${totalVerifications}</div><div class="stat-label">Verification Packs</div></div>\`;
     html += '</div></div>';
+
 
     html += '<div class="panel">';
     for (const tid of ticketIds) {
@@ -6993,7 +10987,10 @@ async function renderVisualRunsPage() {
       </div>\`;
     }
     html += '</div>';
-    setPage(html);
+    vrApp.style.display = "";
+    vrApp.style.flexDirection = "";
+    vrApp.style.overflow = "";
+    vrApp.innerHTML = '<div class="page-fixed">' + vrHeader + '</div><div class="page-content">' + html + '</div>';
     return;
   }
 
@@ -7511,11 +11508,247 @@ function renderVrTab(tab, selEntry, entryComps, entryScreenshots, isBaseline, ru
 // ── Scheduler Page ──
 
 let schedulerSelectedAgentId = "";
+let schedulerDrawerTab = "config";
 
-function selectSchedulerAgent(id) {
-  schedulerSelectedAgentId = id;
+// ── Scheduler Drawer ──
+
+async function openSchedulerDrawer(agentId) {
+  schedulerSelectedAgentId = agentId;
+  schedulerDrawerTab = "config";
   savePageState();
-  renderSchedulerPage();
+
+  // Highlight selected row
+  document.querySelectorAll(".sched-agent-row").forEach(function(r) { r.classList.remove("selected"); });
+  var row = document.querySelector('.sched-agent-row[data-id="' + agentId + '"]');
+  if (row) row.classList.add("selected");
+
+  // Open backdrop + drawer
+  var backdrop = document.getElementById("sched-drawer-backdrop");
+  var drawer = document.getElementById("sched-drawer");
+  if (backdrop) backdrop.style.display = "block";
+  if (drawer) drawer.classList.add("open");
+
+  // Reset to config tab
+  document.querySelectorAll(".sched-drawer-tab").forEach(function(t) { t.classList.remove("active"); });
+  var cfgTab = document.getElementById("sched-tab-config");
+  if (cfgTab) cfgTab.classList.add("active");
+
+  await loadSchedulerDrawerConfig(agentId);
+}
+
+function closeSchedulerDrawer() {
+  schedulerSelectedAgentId = "";
+  savePageState();
+  document.querySelectorAll(".sched-agent-row").forEach(function(r) { r.classList.remove("selected"); });
+  var backdrop = document.getElementById("sched-drawer-backdrop");
+  var drawer = document.getElementById("sched-drawer");
+  if (backdrop) backdrop.style.display = "none";
+  if (drawer) drawer.classList.remove("open");
+}
+
+async function switchSchedulerDrawerTab(tab) {
+  schedulerDrawerTab = tab;
+  document.querySelectorAll(".sched-drawer-tab").forEach(function(t) { t.classList.remove("active"); });
+  var el = document.getElementById("sched-tab-" + tab);
+  if (el) el.classList.add("active");
+  if (tab === "config") {
+    await loadSchedulerDrawerConfig(schedulerSelectedAgentId);
+  } else if (tab === "domino") {
+    await loadSchedulerDominoTab(schedulerSelectedAgentId);
+  } else if (tab === "history") {
+    await loadSchedulerHistoryTab(schedulerSelectedAgentId);
+  }
+}
+
+async function loadSchedulerDrawerConfig(agentId) {
+  var body = document.getElementById("sched-drawer-body");
+  if (!body) return;
+  body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--dim)">Loading…</div>';
+
+  var agent = await fetchJson("/api/scheduled-agents/" + agentId);
+
+  // Set drawer header
+  var titleEl = document.getElementById("sched-drawer-title");
+  var subtitleEl = document.getElementById("sched-drawer-subtitle");
+  var actionsEl = document.getElementById("sched-drawer-actions");
+  var agentName = agent.agent_path.split("/").pop() || agent.agent_path;
+  if (titleEl) titleEl.textContent = agentName;
+  var agentType = (agent.parameters && agent.parameters.type) || "polling";
+  if (subtitleEl) subtitleEl.innerHTML = agentType === "workflow"
+    ? '<span style="font-size:9px;padding:1px 7px;border-radius:6px;background:rgba(168,85,247,0.15);color:#a855f7;font-weight:600">WORKFLOW</span>'
+    : '<span style="font-size:9px;padding:1px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:var(--accent);font-weight:600">POLLING</span>';
+  if (actionsEl) {
+    var agentIdEsc = esc(agent.id);
+    actionsEl.innerHTML = '<button onclick="window.triggerScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ')" style="padding:4px 10px;font-size:11px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>'
+      + '<button onclick="window.toggleScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.status).replace(/"/g, '&quot;') + ')" style="padding:4px 10px;font-size:11px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
+  }
+
+  // Build config content
+  var html = "";
+  var detailTypeBadge = agentType === "workflow"
+    ? '<span style="font-size:9px;padding:1px 7px;border-radius:6px;background:rgba(168,85,247,0.15);color:#a855f7;font-weight:600;margin-left:7px">WORKFLOW</span>'
+    : '<span style="font-size:9px;padding:1px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:var(--accent);font-weight:600;margin-left:7px">POLLING</span>';
+  var statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
+  var lastRun = agent.last_run_at ? new Date(agent.last_run_at).toLocaleString() : "Never";
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+  html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Agent</div><div style="display:flex;align-items:center;font-family:var(--font-mono);font-size:12px">' + esc(shortenPath(agent.agent_path)) + detailTypeBadge + '</div></div>';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Schedule</div><div style="font-family:var(--font-mono);font-size:12px">' + esc(agent.cron_expression) + '</div></div>';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Status</div><div style="color:' + statusColor + ';font-weight:600;text-transform:uppercase;font-size:11px">' + agent.status + '</div></div>';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Last Run</div><div style="font-size:12px">' + lastRun + '</div></div>';
+  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Created</div><div style="font-size:12px">' + new Date(agent.created_at).toLocaleString() + '</div></div>';
+  if (agent.description) {
+    html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Description</div><div style="color:var(--text)">' + esc(agent.description) + '</div></div>';
+  }
+
+  if (agentType === "workflow") {
+    var reqRepo = !!(agent.parameters && agent.parameters.requireRepo);
+    var reqMrPr = !!(agent.parameters && agent.parameters.requireMrPr);
+    var conditionLabel = (reqRepo && reqMrPr) ? "Repo AND MR/PR" : reqRepo ? "Repo required" : reqMrPr ? "MR/PR required" : "No link filter";
+    var daysLabel = (agent.parameters && agent.parameters.days) === "all" ? "All tickets" : "Today's tickets";
+    var maxTickets = (agent.parameters && agent.parameters.maxTickets) || 5;
+    var requirePriorRun = !!(agent.parameters && agent.parameters.requirePriorRun);
+    var priorRunSameDay = !!(agent.parameters && agent.parameters.priorRunSameDay);
+    var priorRunAgents = (agent.parameters && Array.isArray(agent.parameters.requirePriorRunAgents)) ? agent.parameters.requirePriorRunAgents : [];
+    var priorRunAgentNames = priorRunAgents.map((p) => p.split("/").pop()).filter(Boolean);
+    var priorRunLabel = requirePriorRun ? (priorRunSameDay ? "Yes — same day" : "Yes — any prior run") : "No";
+    var repoCmdPart = reqRepo ? ' and repo is &lt;repo-url&gt;' : '';
+    var mrprCmdPart = reqMrPr ? ' and mr/pr is &lt;mr-pr-url&gt;' : '';
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Ticket Days</div><div style="font-size:12px">' + daysLabel + '</div></div>';
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Link Condition</div><div style="font-size:12px">' + conditionLabel + '</div></div>';
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Max Tickets / Run</div><div style="font-size:12px">' + maxTickets + '</div></div>';
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Prior Run Required</div><div style="font-size:12px">' + priorRunLabel + '</div></div>';
+    if (requirePriorRun && priorRunAgentNames.length > 0) {
+      html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Required Prior Agent(s)</div><div style="display:flex;flex-wrap:wrap;gap:5px">' + priorRunAgentNames.map((n) => '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(99,102,241,0.12);color:var(--accent);font-family:var(--font-mono)">' + esc(n) + '</span>').join("") + '</div></div>';
+    }
+    html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Command (per ticket)</div>';
+    html += '<div style="font-family:var(--font-mono);font-size:11px;background:var(--bg);border:1px solid var(--border);padding:8px;border-radius:4px;color:var(--dim)">claude -p "use agent @' + esc(shortenPath(agent.agent_path)) + ' on ticket &lt;ticket-id&gt;' + repoCmdPart + mrprCmdPart + '"</div></div>';
+  } else {
+    if (agent.parameters && agent.parameters.prompt) {
+      html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Prompt</div><div style="font-family:var(--font-mono);font-size:12px;color:var(--text)">' + esc(agent.parameters.prompt) + '</div></div>';
+    }
+  }
+  html += '</div>';
+
+  body.innerHTML = html;
+}
+
+async function loadSchedulerHistoryTab(agentId) {
+  var body = document.getElementById("sched-drawer-body");
+  if (!body) return;
+  body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--dim)">Loading…</div>';
+
+  var history = await fetchJson("/api/scheduled-agents/" + agentId + "/history");
+
+  var html = "";
+  if (history.length === 0) {
+    html = '<div class="empty" style="padding:40px;text-align:center">No executions yet</div>';
+  } else {
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html += '<thead><tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Executed</th><th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Duration</th><th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Status</th><th style="text-align:left;padding:6px;font-weight:600;color:var(--dim)">Logs</th></tr></thead><tbody>';
+    for (var exec of history.slice(0, 20)) {
+      var startedAt = exec.started_at ? new Date(exec.started_at) : null;
+      var completedAt = exec.completed_at ? new Date(exec.completed_at) : null;
+      var duration = startedAt && completedAt ? Math.round((completedAt - startedAt) / 1000) + "s" : "—";
+      var execStatusColor = exec.status === "success" ? "var(--green)" : exec.status === "failed" ? "var(--red)" : "var(--yellow)";
+      var logContent = (exec.logs || "No logs").slice(0, 500);
+      html += '<tr style="border-bottom:1px solid var(--border-light)">';
+      html += '<td style="padding:6px">' + (startedAt ? startedAt.toLocaleString() : "—") + '</td>';
+      html += '<td style="padding:6px">' + duration + '</td>';
+      html += '<td style="padding:6px"><span style="color:' + execStatusColor + ';font-weight:500;text-transform:uppercase">' + exec.status + '</span></td>';
+      html += '<td style="padding:6px"><button onclick="window.showLogs(' + JSON.stringify(logContent).replace(/"/g, '&quot;') + ')" style="font-size:9px;padding:2px 6px;background:var(--surface);border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--accent)">View</button></td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  body.innerHTML = html;
+}
+
+async function loadSchedulerDominoTab(agentId) {
+  var body = document.getElementById("sched-drawer-body");
+  if (!body) return;
+  body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--dim)">Loading…</div>';
+
+  var preview = await fetchJson("/api/scheduled-agents/" + agentId + "/preview");
+
+  if (preview.type === "polling") {
+    body.innerHTML = '<div class="empty" style="padding:40px;text-align:center;color:var(--muted)">Polling agents target a single ticket.<br>No domino preview available.</div>';
+    return;
+  }
+
+  var html = "";
+
+  // Stats row
+  var onHold = preview.onHold || [];
+  html += '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
+  html += '<div class="stat"><div class="stat-value" style="color:var(--accent)">' + preview.willRun.length + '</div><div class="stat-label">Will Run</div></div>';
+  html += '<div class="stat"><div class="stat-value">' + preview.overLimit.length + '</div><div class="stat-label">Over Limit</div></div>';
+  html += '<div class="stat"><div class="stat-value" style="color:var(--dim)">' + preview.skippedDedup.length + '</div><div class="stat-label">Already Ran</div></div>';
+  html += '<div class="stat"><div class="stat-value" style="color:var(--yellow)">' + onHold.length + '</div><div class="stat-label">On Hold</div></div>';
+  html += '<div class="stat"><div class="stat-value" style="color:var(--dim)">' + preview.filteredOut.length + '</div><div class="stat-label">Filtered Out</div></div>';
+  html += '</div>';
+
+  function dominoRow(t, kind) {
+    var colors = { new: "var(--dim)", queued: "var(--accent)", running: "var(--green)", paused: "var(--yellow)", completed: "var(--green)", failed: "var(--red)", cancelled: "var(--dim)" };
+    var color = colors[t.status] || "var(--dim)";
+    var opacity = kind === "will-run" ? "1" : "0.45";
+    var icon = kind === "will-run" ? "ph-arrow-circle-right" : kind === "over-limit" ? "ph-clock" : kind === "dedup" ? "ph-check-circle" : kind === "on-hold" ? "ph-pause-circle" : "ph-funnel";
+    var iconColor = kind === "will-run" ? "var(--accent)" : kind === "on-hold" ? "var(--yellow)" : "var(--dim)";
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface-raised);border-radius:var(--radius-xs);opacity:' + opacity + '">'
+      + '<i class="ph ' + icon + '" style="font-size:14px;color:' + iconColor + ';flex-shrink:0"></i>'
+      + '<span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent);flex:1">' + esc(t.ticket_id) + '</span>'
+      + '<span style="font-size:10px;color:' + color + ';font-weight:600">' + t.status + '</span>'
+      + (t.git_repo ? '<i class="ph ph-git-branch" style="font-size:11px;color:var(--green)" title="' + esc(t.git_repo) + '"></i>' : '')
+      + (t.mr_pr_link ? '<i class="ph ph-git-pull-request" style="font-size:11px;color:var(--accent)" title="' + esc(t.mr_pr_link) + '"></i>' : '')
+      + '</div>';
+  }
+
+  if (preview.willRun.length > 0) {
+    html += '<div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--accent);margin-bottom:8px">Will Run (' + preview.willRun.length + ' of ' + preview.maxTickets + ' max)</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:16px">';
+    for (var t of preview.willRun) html += dominoRow(t, "will-run");
+    html += '</div>';
+  }
+
+  if (preview.overLimit.length > 0) {
+    html += '<div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Over Limit — queued next run (' + preview.overLimit.length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:16px">';
+    for (var t of preview.overLimit) html += dominoRow(t, "over-limit");
+    html += '</div>';
+  }
+
+  if (preview.skippedDedup.length > 0) {
+    html += '<div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Already Ran Today (' + preview.skippedDedup.length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:16px">';
+    for (var t of preview.skippedDedup) html += dominoRow(t, "dedup");
+    html += '</div>';
+  }
+
+  if (onHold.length > 0) {
+    html += '<div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--yellow);margin-bottom:8px">On Hold — skipped by scheduler (' + onHold.length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:16px">';
+    for (var t of onHold) html += dominoRow(t, "on-hold");
+    html += '</div>';
+  }
+
+  if (preview.filteredOut.length > 0) {
+    html += '<div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Filtered Out (' + preview.filteredOut.length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px">';
+    for (var t of preview.filteredOut) html += dominoRow(t, "filtered");
+    html += '</div>';
+  }
+
+  if (!preview.willRun.length && !preview.skippedDedup.length && !preview.filteredOut.length && !preview.overLimit.length && !onHold.length) {
+    html = '<div class="empty" style="padding:40px;text-align:center;color:var(--muted)">No tickets in the workflow pool yet.</div>';
+  }
+
+  body.innerHTML = html;
+}
+
+// Keep legacy selectSchedulerAgent for saved page state restore
+function selectSchedulerAgent(id) {
+  if (id) openSchedulerDrawer(id);
 }
 
 function triggerScheduler(id) {
@@ -7535,114 +11768,149 @@ function showLogs(content) {
 }
 
 async function renderSchedulerPage() {
-  const app = document.getElementById("app");
+  savePageState();
 
   const agents = await fetchJson("/api/scheduled-agents");
 
   let html = "";
 
-  // Stats
-  html += '<div class="panel" style="margin-bottom:8px">';
+  // Stats bar
   const activeCount = agents.filter(a => a.status === "active").length;
   const pausedCount = agents.filter(a => a.status === "paused").length;
   const totalCount = agents.length;
-  html += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+  html += '<div class="panel" style="margin-bottom:8px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+  html += '<div style="display:flex;gap:16px">';
   html += '<div class="stat"><div class="stat-value">' + totalCount + '</div><div class="stat-label">Scheduled</div></div>';
   html += '<div class="stat"><div class="stat-value" style="color:var(--green)">' + activeCount + '</div><div class="stat-label">Active</div></div>';
   html += '<div class="stat"><div class="stat-value" style="color:var(--yellow)">' + pausedCount + '</div><div class="stat-label">Paused</div></div>';
-  html += '</div></div>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px"><button class="action-btn" style="font-size:11px" onclick="openAgentRunsModal(&apos;scheduler&apos;)"><i class="ph ph-clock-clockwise" style="margin-right:4px"></i>Runs</button><button onclick="openSchedulerModal()" style="padding:5px 12px;font-size:12px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">+ New</button></div>';
+  html += '</div>';
+  html += '</div>';
 
-  // Split view: agents list on left, detail/create on right
-  html += '<div class="split-view wide-left" style="margin-top:8px">';
-
-  // LEFT: Agents list
-  html += '<div class="split-left panel">';
-
+  // Agents grid
   if (agents.length === 0) {
-    html += '<div class="empty" style="padding:20px;text-align:center">No scheduled agents yet.</div>';
+    html += '<div class="panel"><div class="empty" style="padding:32px;text-align:center">No scheduled agents yet. Click <strong>+ New</strong> to create one.</div></div>';
   } else {
-    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
-    html += '<tbody>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">';
     for (const agent of agents) {
-      const statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
-      const agentName = agent.agent_path.split("/").pop() || agent.agent_path;
-      const agentId = esc(agent.id);
-      const isSelected = agent.id === schedulerSelectedAgentId;
-      html += '<tr style="border-bottom:1px solid var(--border-light);background:' + (isSelected ? 'var(--surface-raised)' : 'transparent') + '">';
-      html += '<td style="padding:10px 8px;cursor:pointer" onclick="window.selectSchedulerAgent(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')">';
-      html += '<div style="font-family:var(--font-mono);font-size:11px;color:var(--accent)">' + esc(agentName) + '</div>';
-      html += '<div style="font-size:10px;color:var(--dim);margin-top:2px">' + esc(agent.ticket_id) + '</div>';
-      html += '<div style="font-size:10px;color:' + statusColor + ';font-weight:500;margin-top:2px;text-transform:uppercase">' + agent.status + '</div>';
-      html += '</td></tr>';
+      html += renderSchedCard(agent);
     }
-    html += '</tbody></table>';
     html += '</div>';
   }
-  html += '</div>';
 
-  // RIGHT: Detail or create form
-  html += '<div class="split-right panel" style="overflow-y:auto">';
-  if (agents.length === 0 || !schedulerSelectedAgentId) {
-    html += renderSchedulerCreateForm();
-  } else {
-    html += await renderSchedulerAgentDetail(schedulerSelectedAgentId);
+  const schedApp = document.getElementById("app");
+  const schedHeader = '<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Scheduler</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Schedule agents to run automatically on a cron expression — click any row to inspect</div></div>';
+  schedApp.style.display = "";
+  schedApp.style.flexDirection = "";
+  schedApp.style.overflow = "";
+  schedApp.innerHTML = '<div class="page-fixed">' + schedHeader + '</div><div class="page-content">' + html + '</div>';
+
+  // Re-highlight open drawer row (survives page re-renders)
+  if (schedulerSelectedAgentId) {
+    var openRow = document.querySelector('.sched-agent-row[data-id="' + schedulerSelectedAgentId + '"]');
+    if (openRow) openRow.classList.add("selected");
   }
-  html += '</div>';
-
-  html += '</div>';
-
-  setPage(html);
 }
 
-function renderSchedulerAgentsList(agents) {
-  let html = '<div class="panel"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
-  html += '<thead><tr style="border-bottom:1px solid var(--border)">';
-  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Agent</th>';
-  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Ticket</th>';
-  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Schedule</th>';
-  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Status</th>';
-  html += '<th style="text-align:left;padding:8px;font-weight:600;color:var(--dim)">Last Run</th>';
-  html += '<th style="text-align:right;padding:8px;font-weight:600;color:var(--dim)">Actions</th>';
-  html += '</tr></thead><tbody>';
+function renderSchedCard(agent) {
+  const agentId   = esc(agent.id);
+  const safeId    = agent.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const agentName = agent.agent_path.split("/").pop() || agent.agent_path;
+  const agentType = (agent.parameters && agent.parameters.type) || "polling";
+  const status    = agent.status;
 
-  for (const agent of agents) {
-    const statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
-    const lastRun = agent.last_run_at ? new Date(agent.last_run_at).toLocaleString() : "Never";
-    const agentName = agent.agent_path.split("/").pop() || agent.agent_path;
-    const agentId = esc(agent.id);
-    const status = agent.status;
+  const statusColor = status === "active" ? "var(--green)" : status === "paused" ? "var(--yellow)" : "var(--red)";
+  const statusBg    = status === "active" ? "rgba(34,197,94,0.12)" : status === "paused" ? "rgba(234,179,8,0.12)" : "rgba(239,68,68,0.12)";
+  const iconColor   = status === "active" ? "var(--green)" : status === "paused" ? "var(--yellow)" : "var(--red)";
+  const lastRunLabel = agent.last_run_at ? timeAgo(agent.last_run_at) : "never";
 
-    html += '<tr style="border-bottom:1px solid var(--border-light)" data-agent-id="' + agentId + '" data-agent-status="' + status + '">';
-    html += '<td style="padding:10px 8px"><span style="color:var(--accent);font-family:var(--font-mono);font-size:11px;cursor:pointer" onclick="window.selectSchedulerAgent(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')">' + esc(agentName) + '</span></td>';
-    html += '<td style="padding:10px 8px">' + esc(agent.ticket_id) + '</td>';
-    html += '<td style="padding:10px 8px;font-family:var(--font-mono);font-size:11px">' + esc(agent.cron_expression) + '</td>';
-    html += '<td style="padding:10px 8px"><span style="color:' + statusColor + ';font-weight:500">' + status + '</span></td>';
-    html += '<td style="padding:10px 8px;color:var(--dim);font-size:11px">' + lastRun + '</td>';
-    html += '<td style="padding:10px 8px;text-align:right">';
-    html += '<button onclick="window.triggerScheduler(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--accent);color:var(--bg);border:none;border-radius:3px;cursor:pointer">Run</button>';
-    html += '<button onclick="window.toggleScheduler(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ',' + JSON.stringify(status).replace(/"/g, '&quot;') + ')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer">' + (status === "active" ? "Pause" : "Resume") + '</button>';
-    html += '<button onclick="window.deleteScheduler(' + JSON.stringify(agentId).replace(/"/g, '&quot;') + ')" style="font-size:10px;padding:4px 8px;margin:0 2px;background:var(--red-dim);color:var(--red);border:none;border-radius:3px;cursor:pointer">Delete</button>';
-    html += '</td></tr>';
+  const typeBadge = agentType === "workflow"
+    ? '<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:rgba(168,85,247,0.15);color:#a855f7;font-weight:600">WORKFLOW</span>'
+    : '<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:rgba(99,102,241,0.12);color:var(--accent);font-weight:600">POLLING</span>';
+
+  const statusBadge = '<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:' + statusBg + ';color:' + statusColor + ';font-weight:600;text-transform:uppercase">' + status + '</span>';
+
+  // Meta row: ticket / workflow days+conditions
+  let metaLine = "";
+  if (agentType === "workflow") {
+    const wfReqRepo = !!(agent.parameters && agent.parameters.requireRepo);
+    const wfReqMrpr = !!(agent.parameters && agent.parameters.requireMrPr);
+    const wfCond = (wfReqRepo && wfReqMrpr) ? "repo+MR/PR" : wfReqRepo ? "repo only" : wfReqMrpr ? "MR/PR only" : "no filter";
+    const wfDays = agent.parameters && agent.parameters.days ? esc(agent.parameters.days) : "today";
+    metaLine = '<i class="ph ph-calendar-blank" style="font-size:11px;color:var(--dim)"></i><span>' + wfDays + '</span><span style="color:var(--border)"> · </span><span>' + wfCond + '</span>';
+  } else if (agent.ticket_id) {
+    metaLine = '<i class="ph ph-ticket" style="font-size:11px;color:var(--dim)"></i><span style="font-family:var(--font-mono)">' + esc(agent.ticket_id) + '</span>';
   }
 
-  html += '</tbody></table></div></div>';
-  return html;
+  const cronLine = '<i class="ph ph-clock" style="font-size:11px;color:var(--dim)"></i><span style="font-family:var(--font-mono)">' + esc(agent.cron_expression) + '</span>';
+  const lastRunLine = '<i class="ph ph-arrow-counter-clockwise" style="font-size:11px;color:var(--dim)"></i><span>last run ' + lastRunLabel + '</span>';
+
+  const toggleLabel = status === "active" ? "Pause" : "Resume";
+  const toggleIcon  = status === "active"
+    ? '<i class="ph ph-pause-circle" style="font-size:13px;color:var(--yellow)"></i>'
+    : '<i class="ph ph-play-circle" style="font-size:13px;color:var(--green)"></i>';
+
+  const idJson     = JSON.stringify(agentId).replace(/"/g, '&quot;');
+  const statusJson = JSON.stringify(status).replace(/"/g, '&quot;');
+
+  let h = '';
+  h += '<div class="sched-agent-row" data-id="' + agentId + '" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;cursor:pointer;transition:border-color 0.15s" onclick="window.openSchedulerDrawer(' + idJson + ')" onmouseover="this.style.borderColor=&apos;var(--border-strong)&apos;" onmouseout="this.style.borderColor=&apos;var(--border)&apos;">';
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px 10px">';
+  h += '<div style="width:32px;height:32px;border-radius:8px;background:' + statusBg + ';display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ph ph-robot" style="font-size:16px;color:' + iconColor + '"></i></div>';
+  h += '<div style="flex:1;min-width:0">';
+  h += '<div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(agent.agent_path) + '">' + esc(agentName) + '</div>';
+  h += '<div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap">' + typeBadge + ' ' + statusBadge + '</div>';
+  h += '</div>';
+  // Three-dot menu
+  h += '<div style="position:relative;flex-shrink:0">';
+  h += '<button onclick="event.stopPropagation();schedCtxToggle(&apos;' + safeId + '&apos;,event)" style="background:none;border:none;cursor:pointer;color:var(--dim);padding:4px 6px;border-radius:4px;font-size:16px;line-height:1" onmouseover="this.style.background=&apos;var(--surface-raised)&apos;" onmouseout="this.style.background=&apos;none&apos;">&#8942;</button>';
+  h += '<div id="sched-ctx-' + safeId + '" class="tw-ctx-menu" style="position:fixed;min-width:160px;z-index:2000">';
+  h += '<button class="tw-ctx-item" onclick="event.stopPropagation();schedCtxClose(&apos;' + safeId + '&apos;);window.triggerScheduler(' + idJson + ')"><i class="ph ph-play" style="font-size:13px;color:var(--green)"></i>Run Now</button>';
+  h += '<button class="tw-ctx-item" onclick="event.stopPropagation();schedCtxClose(&apos;' + safeId + '&apos;);window.toggleScheduler(' + idJson + ',' + statusJson + ')">' + toggleIcon + toggleLabel + '</button>';
+  h += '<div class="tw-ctx-divider"></div>';
+  h += '<button class="tw-ctx-item" onclick="event.stopPropagation();schedCtxClose(&apos;' + safeId + '&apos;);window.editScheduler(' + idJson + ')"><i class="ph ph-pencil-simple" style="font-size:13px;color:var(--dim)"></i>Edit</button>';
+  h += '<div class="tw-ctx-divider"></div>';
+  h += '<button class="tw-ctx-item danger" onclick="event.stopPropagation();schedCtxClose(&apos;' + safeId + '&apos;);window.deleteScheduler(' + idJson + ')"><i class="ph ph-trash" style="font-size:13px"></i>Delete</button>';
+  h += '</div></div>';
+  h += '</div>';
+  // Body: meta rows
+  h += '<div style="display:flex;flex-direction:column;gap:5px;padding:0 14px 12px">';
+  if (metaLine) h += '<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text)">' + metaLine + '</div>';
+  h += '<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text)">' + cronLine + '</div>';
+  h += '<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim)">' + lastRunLine + '</div>';
+  h += '</div>';
+  h += '</div>';
+  return h;
 }
 
 async function renderSchedulerAgentDetail(agentId) {
   const agent = await fetchJson("/api/scheduled-agents/" + agentId);
   const history = await fetchJson("/api/scheduled-agents/" + agentId + "/history");
 
+  const agentIdEsc = esc(agent.id);
   let html = '<div class="panel" style="margin-bottom:8px">';
-  html += '<div class="breadcrumb">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+  html += '<div class="breadcrumb" style="margin-bottom:0">';
   html += '<span class="breadcrumb-item" onclick="window.selectSchedulerAgent(' + JSON.stringify("").replace(/"/g, '&quot;') + ')">Agents</span>';
   html += '<span class="breadcrumb-sep">|</span>';
   html += '<span class="breadcrumb-item current">' + esc(agent.agent_path.split("/").pop() || agent.agent_path) + '</span>';
   html += '</div>';
+  html += '<div style="display:flex;gap:6px;flex-shrink:0">';
+  html += '<button onclick="window.triggerScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ')" style="padding:4px 10px;font-size:11px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>';
+  html += '<button onclick="window.toggleScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.status).replace(/"/g, '&quot;') + ')" style="padding:4px 10px;font-size:11px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
+  html += '</div>';
+  html += '</div>';
+
+  const detailType = (agent.parameters && agent.parameters.type) || "polling";
+  const detailTypeBadge = detailType === "workflow"
+    ? '<span style="font-size:9px;padding:1px 7px;border-radius:6px;background:rgba(168,85,247,0.15);color:#a855f7;font-weight:600;margin-left:7px">WORKFLOW</span>'
+    : '<span style="font-size:9px;padding:1px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:var(--accent);font-weight:600;margin-left:7px">POLLING</span>';
 
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">';
-  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Agent</div><div style="font-family:var(--font-mono);font-size:12px">' + esc(agent.agent_path) + '</div></div>';
-  html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Ticket</div><div style="font-family:var(--font-mono);font-size:12px">' + esc(agent.ticket_id) + '</div></div>';
+  html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Agent</div><div style="display:flex;align-items:center;font-family:var(--font-mono);font-size:12px">' + esc(shortenPath(agent.agent_path)) + detailTypeBadge + '</div></div>';
   html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Schedule</div><div style="font-family:var(--font-mono);font-size:12px">' + esc(agent.cron_expression) + '</div></div>';
 
   const statusColor = agent.status === "active" ? "var(--green)" : agent.status === "paused" ? "var(--yellow)" : "var(--red)";
@@ -7656,18 +11924,38 @@ async function renderSchedulerAgentDetail(agentId) {
     html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Description</div><div style="color:var(--text)">' + esc(agent.description) + '</div></div>';
   }
 
-  if (agent.parameters && Object.keys(agent.parameters).length > 0) {
-    html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Parameters</div>';
-    html += '<div style="font-family:var(--font-mono);font-size:11px;background:var(--surface);padding:8px;border-radius:4px;white-space:pre-wrap;overflow-x:auto">' + esc(JSON.stringify(agent.parameters, null, 2)) + '</div></div>';
+  if (detailType === "workflow") {
+    const reqRepo = !!(agent.parameters && agent.parameters.requireRepo);
+    const reqMrPr = !!(agent.parameters && agent.parameters.requireMrPr);
+    const conditionLabel = (reqRepo && reqMrPr) ? "Repo AND MR/PR (both required)" : reqRepo ? "Repo link required" : reqMrPr ? "MR/PR link required" : "No link filter";
+    const daysLabel = (agent.parameters && agent.parameters.days) === "all" ? "All tickets" : "Today's tickets";
+    const maxTickets = (agent.parameters && agent.parameters.maxTickets) || 5;
+    const reqRepoDetail = !!(agent.parameters && agent.parameters.requireRepo);
+    const reqMrPrDetail = !!(agent.parameters && agent.parameters.requireMrPr);
+    const repoCmdPart = reqRepoDetail ? ' and repo is &lt;repo-url&gt;' : '';
+    const mrprCmdPart = reqMrPrDetail ? ' and mr/pr is &lt;mr-pr-url&gt;' : '';
+    const requirePriorRun = !!(agent.parameters && agent.parameters.requirePriorRun);
+    const priorRunSameDay = !!(agent.parameters && agent.parameters.priorRunSameDay);
+    const priorRunAgents = (agent.parameters && Array.isArray(agent.parameters.requirePriorRunAgents)) ? agent.parameters.requirePriorRunAgents : [];
+    const priorRunAgentNames = priorRunAgents.map((p) => p.split("/").pop()).filter(Boolean);
+    const priorRunLabel = requirePriorRun
+      ? (priorRunSameDay ? "Yes — same day" : "Yes — any prior run")
+      : "No";
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Ticket Days</div><div style="font-size:12px">' + daysLabel + '</div></div>';
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Link Condition</div><div style="font-size:12px">' + conditionLabel + '</div></div>';
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Max Tickets / Run</div><div style="font-size:12px">' + maxTickets + '</div></div>';
+    html += '<div><div style="font-size:10px;color:var(--dim);text-transform:uppercase">Prior Run Required</div><div style="font-size:12px">' + priorRunLabel + '</div></div>';
+    if (requirePriorRun && priorRunAgentNames.length > 0) {
+      html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Required Prior Agent(s)</div><div style="display:flex;flex-wrap:wrap;gap:5px">' + priorRunAgentNames.map((n) => '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(99,102,241,0.12);color:var(--accent);font-family:var(--font-mono)">' + esc(n) + '</span>').join("") + '</div></div>';
+    }
+    html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Command (one run per ticket)</div>';
+    html += '<div style="font-family:var(--font-mono);font-size:11px;background:var(--bg);border:1px solid var(--border);padding:8px;border-radius:4px;color:var(--dim)">claude -p "use agent @' + esc(shortenPath(agent.agent_path)) + ' on ticket &lt;ticket-id&gt;' + repoCmdPart + mrprCmdPart + '"</div></div>';
+  } else {
+    if (agent.parameters && agent.parameters.prompt) {
+      html += '<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Prompt</div><div style="font-family:var(--font-mono);font-size:12px;color:var(--text)">' + esc(agent.parameters.prompt) + '</div></div>';
+    }
   }
 
-  html += '</div>';
-
-  const agentIdEsc = esc(agent.id);
-  html += '<div style="display:flex;gap:8px;margin-top:12px" data-agent-id="' + agentIdEsc + '" data-agent-status="' + agent.status + '">';
-  html += '<button onclick="window.triggerScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:600">Run Now</button>';
-  html += '<button onclick="window.toggleScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ',' + JSON.stringify(agent.status).replace(/"/g, '&quot;') + ')" style="flex:1;padding:8px 12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">' + (agent.status === "active" ? "Pause" : "Resume") + '</button>';
-  html += '<button onclick="window.deleteScheduler(' + JSON.stringify(agentIdEsc).replace(/"/g, '&quot;') + ')" style="flex:1;padding:8px 12px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-weight:600">Delete</button>';
   html += '</div>';
   html += '</div>';
 
@@ -7711,6 +11999,275 @@ async function renderSchedulerAgentDetail(agentId) {
   html += '</div>';
 
   return html;
+}
+
+async function openSchedulerModal(editAgentId) {
+  var modal = document.getElementById("scheduler-modal");
+  if (modal) modal.style.display = "flex";
+
+  var titleEl = document.getElementById("scheduler-modal-title");
+  var submitBtn = document.getElementById("scheduler-modal-submit");
+  var editIdInput = document.getElementById("scheduler-editing-id");
+  if (editIdInput) editIdInput.value = editAgentId || "";
+  if (titleEl) titleEl.textContent = editAgentId ? "Edit Scheduled Agent" : "New Ticket Polling Agent";
+  if (submitBtn) submitBtn.textContent = editAgentId ? "Save" : "Create";
+
+  var pathRow = document.getElementById("scheduler-agent-path-row");
+  if (pathRow) pathRow.style.display = "none";
+
+  var select = document.getElementById("scheduler-agent-pick");
+  if (!select) return;
+  select.innerHTML = '<option value="">— pick agent —</option>';
+  var _fetchedAgents = [];
+  try {
+    _fetchedAgents = await fetchJson("/api/agents");
+    var globals = _fetchedAgents.filter(function(a) { return a.scope === "global"; });
+    var projects = _fetchedAgents.filter(function(a) { return a.scope === "project"; });
+    if (globals.length) {
+      var og = document.createElement("optgroup");
+      og.label = "Global (~/.claude/agents)";
+      globals.forEach(function(a) {
+        var opt = document.createElement("option");
+        opt.value = a.path;
+        opt.textContent = a.name + (a.description ? " — " + a.description.slice(0, 50) : "");
+        og.appendChild(opt);
+      });
+      select.appendChild(og);
+    }
+    if (projects.length) {
+      var op = document.createElement("optgroup");
+      op.label = "Project (.claude/agents)";
+      projects.forEach(function(a) {
+        var opt = document.createElement("option");
+        opt.value = a.path;
+        opt.textContent = a.name + (a.description ? " — " + a.description.slice(0, 50) : "");
+        op.appendChild(opt);
+      });
+      select.appendChild(op);
+    }
+    // Pre-populate prior-run agent checkboxes (no selection restored yet)
+    populatePriorRunAgentsList(_fetchedAgents, []);
+  } catch (err) { /* ignore */ }
+
+  if (editAgentId) {
+    try {
+      var agentData = await fetchJson("/api/scheduled-agents/" + editAgentId);
+      var cronInput = document.getElementById("scheduler-cron");
+      var descInput = document.getElementById("scheduler-description");
+      var promptEl2 = document.getElementById("scheduler-prompt");
+      if (cronInput) { cronInput.value = agentData.cron_expression || ""; updateCronDesc(cronInput.value); }
+      if (descInput) descInput.value = agentData.description || "";
+      // Restore type
+      var savedType = (agentData.parameters && agentData.parameters.type) || "polling";
+      switchSchedulerType(savedType);
+      if (savedType === "workflow") {
+        var daysEl = document.getElementById("scheduler-wf-days");
+        var reqRepoEl2 = document.getElementById("scheduler-wf-req-repo");
+        var reqMrprEl2 = document.getElementById("scheduler-wf-req-mrpr");
+        var maxTicketsEl2 = document.getElementById("scheduler-wf-max-tickets");
+        var reqPriorRunEl = document.getElementById("scheduler-wf-req-prior-run");
+        var priorRunSameDayEl = document.getElementById("scheduler-wf-prior-run-same-day");
+        if (daysEl) daysEl.value = (agentData.parameters && agentData.parameters.days) || "today";
+        if (reqRepoEl2) reqRepoEl2.checked = !!(agentData.parameters && agentData.parameters.requireRepo);
+        if (reqMrprEl2) reqMrprEl2.checked = !!(agentData.parameters && agentData.parameters.requireMrPr);
+        if (maxTicketsEl2) maxTicketsEl2.value = String(agentData.parameters && agentData.parameters.maxTickets != null ? agentData.parameters.maxTickets : 5);
+        var hasPriorRun = !!(agentData.parameters && agentData.parameters.requirePriorRun);
+        var savedPriorAgents = (agentData.parameters && Array.isArray(agentData.parameters.requirePriorRunAgents)) ? agentData.parameters.requirePriorRunAgents : [];
+        if (reqPriorRunEl) reqPriorRunEl.checked = hasPriorRun;
+        if (priorRunSameDayEl) priorRunSameDayEl.checked = !!(agentData.parameters && agentData.parameters.priorRunSameDay);
+        populatePriorRunAgentsList(_fetchedAgents, savedPriorAgents);
+        togglePriorRunOptions(hasPriorRun);
+        var wfDefaultReadyEl2 = document.getElementById("scheduler-wf-default-ready");
+        if (wfDefaultReadyEl2) wfDefaultReadyEl2.checked = !!(agentData.parameters && agentData.parameters.defaultReady);
+      } else {
+        if (promptEl2) promptEl2.value = (agentData.parameters && agentData.parameters.prompt) || "";
+        var pollingDefaultReadyEl2 = document.getElementById("scheduler-polling-default-ready");
+        if (pollingDefaultReadyEl2) pollingDefaultReadyEl2.checked = !!(agentData.parameters && agentData.parameters.defaultReady);
+      }
+      var matchedOpt = Array.from(select.options).find(function(o) { return o.value === agentData.agent_path; });
+      if (matchedOpt) {
+        select.value = agentData.agent_path;
+        var pathInput2 = document.getElementById("scheduler-agent-path");
+        if (pathInput2) pathInput2.value = agentData.agent_path;
+        var pathRow2 = document.getElementById("scheduler-agent-path-row");
+        if (pathRow2) pathRow2.style.display = "none";
+      } else {
+        select.value = "";
+        var pathInput3 = document.getElementById("scheduler-agent-path");
+        if (pathInput3) pathInput3.value = agentData.agent_path || "";
+        var pathRow3 = document.getElementById("scheduler-agent-path-row");
+        if (pathRow3) pathRow3.style.display = "";
+      }
+      updateSchedulerCmd();
+    } catch (err) { /* ignore */ }
+  } else {
+    switchSchedulerType("polling");
+    updateSchedulerCmd();
+  }
+}
+
+function pickSchedulerAgent(val) {
+  var pathInput = document.getElementById("scheduler-agent-path");
+  var pathRow = document.getElementById("scheduler-agent-path-row");
+  if (val) {
+    pathInput.value = val;
+    pathRow.style.display = "none";
+  } else {
+    pathInput.value = "";
+    pathRow.style.display = "";
+  }
+  updateSchedulerCmd();
+}
+
+var _confirmResolveRef = null;
+function showConfirm(msg, okLabel) {
+  return new Promise(function(resolve) {
+    var modal = document.getElementById("confirm-modal");
+    var msgEl = document.getElementById("confirm-modal-msg");
+    var okBtn = document.getElementById("confirm-modal-ok");
+    if (!modal || !msgEl) { resolve(window.confirm(msg)); return; }
+    msgEl.textContent = msg;
+    if (okBtn) okBtn.textContent = okLabel || "Confirm";
+    _confirmResolveRef = resolve;
+    modal.style.display = "flex";
+  });
+}
+function _confirmResolve(val) {
+  var modal = document.getElementById("confirm-modal");
+  if (modal) modal.style.display = "none";
+  if (_confirmResolveRef) { var r = _confirmResolveRef; _confirmResolveRef = null; r(val); }
+}
+
+function updateCronDesc(val) {
+  var el = document.getElementById("scheduler-cron-desc");
+  if (!el) return;
+  var v = (val || "").trim();
+  if (!v) { el.style.display = "none"; el.textContent = ""; return; }
+  try {
+    var desc = window.cronstrue ? window.cronstrue.toString(v, { throwExceptionOnParseError: true }) : null;
+    if (desc) { el.textContent = desc; el.style.display = "block"; el.style.color = "var(--accent)"; }
+    else { el.style.display = "none"; }
+  } catch (e) {
+    el.textContent = "Invalid expression";
+    el.style.display = "block";
+    el.style.color = "var(--red)";
+  }
+}
+
+function switchSchedulerType(type) {
+  var typeInput = document.getElementById("scheduler-type");
+  var pollingFields = document.getElementById("scheduler-polling-fields");
+  var workflowFields = document.getElementById("scheduler-workflow-fields");
+  var tabPolling = document.getElementById("scheduler-tab-polling");
+  var tabWorkflow = document.getElementById("scheduler-tab-workflow");
+  var titleEl = document.getElementById("scheduler-modal-title");
+  var editIdInput = document.getElementById("scheduler-editing-id");
+  var isEditing = editIdInput && editIdInput.value;
+  if (typeInput) typeInput.value = type;
+  if (type === "workflow") {
+    if (pollingFields) pollingFields.style.display = "none";
+    if (workflowFields) { workflowFields.style.display = "flex"; }
+    if (tabPolling) { tabPolling.style.background = "var(--surface-raised)"; tabPolling.style.color = "var(--dim)"; }
+    if (tabWorkflow) { tabWorkflow.style.background = "var(--accent)"; tabWorkflow.style.color = "#fff"; }
+    if (titleEl && !isEditing) titleEl.textContent = "New Workflow Agent";
+  } else {
+    if (pollingFields) pollingFields.style.display = "";
+    if (workflowFields) workflowFields.style.display = "none";
+    if (tabPolling) { tabPolling.style.background = "var(--accent)"; tabPolling.style.color = "#fff"; }
+    if (tabWorkflow) { tabWorkflow.style.background = "var(--surface-raised)"; tabWorkflow.style.color = "var(--dim)"; }
+    if (titleEl && !isEditing) titleEl.textContent = "New Ticket Polling Agent";
+  }
+  updateSchedulerCmd();
+}
+
+function populatePriorRunAgentsList(agents, selectedPaths) {
+  var container = document.getElementById("scheduler-wf-prior-run-agents");
+  if (!container) return;
+  if (!agents || agents.length === 0) {
+    container.innerHTML = '<span style="font-size:11px;color:var(--dim)">No agents found.</span>';
+    return;
+  }
+  container.innerHTML = "";
+  agents.forEach(function(a) {
+    var isChecked = selectedPaths && selectedPaths.indexOf(a.path) !== -1;
+    var label = document.createElement("label");
+    label.style.cssText = "display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:var(--text)";
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "prior-run-agent-cb";
+    cb.value = a.path;
+    cb.checked = isChecked;
+    cb.style.cssText = "width:14px;height:14px;cursor:pointer;accent-color:var(--accent);flex-shrink:0";
+    var nameSpan = document.createElement("span");
+    nameSpan.textContent = a.name + (a.description ? " — " + a.description.slice(0, 50) : "");
+    label.appendChild(cb);
+    label.appendChild(nameSpan);
+    container.appendChild(label);
+  });
+}
+
+function togglePriorRunOptions(checked) {
+  var optionsEl = document.getElementById("scheduler-wf-prior-run-options");
+  if (optionsEl) optionsEl.style.display = checked ? "" : "none";
+  if (!checked) {
+    var sameDayEl = document.getElementById("scheduler-wf-prior-run-same-day");
+    if (sameDayEl) sameDayEl.checked = false;
+    // Uncheck all agent checkboxes too
+    var cbs = document.querySelectorAll(".prior-run-agent-cb");
+    cbs.forEach(function(cb) { cb.checked = false; });
+  }
+}
+
+function updateSchedulerCmd() {
+  var preview = document.getElementById("scheduler-cmd-preview");
+  if (!preview) return;
+  var pick = document.getElementById("scheduler-agent-pick");
+  var pathInput = document.getElementById("scheduler-agent-path");
+  var typeInput = document.getElementById("scheduler-type");
+  var agentPath = (pick && pick.value) ? pick.value : (pathInput ? pathInput.value.trim() : "");
+  var agentPart = agentPath ? \`@\${agentPath}\` : "@<agent>";
+  var type = typeInput ? typeInput.value : "polling";
+  if (type === "workflow") {
+    var reqRepoEl = document.getElementById("scheduler-wf-req-repo");
+    var reqMrprEl = document.getElementById("scheduler-wf-req-mrpr");
+    var maxTicketsEl = document.getElementById("scheduler-wf-max-tickets");
+    var reqRepo = reqRepoEl ? reqRepoEl.checked : false;
+    var reqMrpr = reqMrprEl ? reqMrprEl.checked : false;
+    var maxTickets = maxTicketsEl ? (parseInt(maxTicketsEl.value) || 5) : 5;
+    var repoPart = reqRepo ? ' and repo is <repo-url>' : '';
+    var mrprPart = reqMrpr ? ' and mr/pr is <mr-pr-url>' : '';
+    preview.textContent = \`claude -p "use agent \${agentPart} on ticket <ticket-id>\${repoPart}\${mrprPart}"\`;
+    var noteEl = document.getElementById("scheduler-cmd-note");
+    if (noteEl) {
+      noteEl.style.display = "block";
+      noteEl.textContent = \`↑ One separate agent run is spawned per matching ticket, up to \${maxTickets} per scheduler fire.\`;
+    }
+  } else {
+    var promptEl = document.getElementById("scheduler-prompt");
+    var prompt = promptEl ? promptEl.value.trim() : "";
+    var promptPart = prompt || "<prompt>";
+    preview.textContent = \`claude -p "use agent \${agentPart} to run ticket polling on \${promptPart}"\`;
+    var noteEl2 = document.getElementById("scheduler-cmd-note");
+    if (noteEl2) noteEl2.style.display = "none";
+  }
+}
+
+function closeSchedulerModal() {
+  var modal = document.getElementById("scheduler-modal");
+  if (modal) modal.style.display = "none";
+  var form = document.getElementById("schedulerForm");
+  if (form) form.reset();
+  var pathRow = document.getElementById("scheduler-agent-path-row");
+  if (pathRow) pathRow.style.display = "none";
+  var pick = document.getElementById("scheduler-agent-pick");
+  if (pick) pick.value = "";
+  var editIdInput = document.getElementById("scheduler-editing-id");
+  if (editIdInput) editIdInput.value = "";
+  var titleEl = document.getElementById("scheduler-modal-title");
+  if (titleEl) titleEl.textContent = "New Ticket Polling Agent";
+  var submitBtn = document.getElementById("scheduler-modal-submit");
+  if (submitBtn) submitBtn.textContent = "Create";
+  switchSchedulerType("polling");
 }
 
 function renderSchedulerCreateForm() {
@@ -7761,11 +12318,19 @@ function renderSchedulerCreateForm() {
 
 async function triggerScheduledAgent(agentId) {
   const agent = await fetchJson("/api/scheduled-agents/" + agentId);
-  if (!confirm('Run "' + agent.agent_path + '" now for ' + agent.ticket_id + '?')) return;
+  if (!await showConfirm('Run "' + agent.agent_path + '" now for ' + agent.ticket_id + '?')) return;
 
   try {
     const result = await postJson("/api/scheduled-agents/" + agentId + "/trigger", {});
-    alert("Agent triggered! Execution ID: " + result.executionId);
+    if (result.workflow) {
+      if (result.tickets === 0) {
+        alert("No matching tickets found" + (result.skipped > 0 ? " (" + result.skipped + " already ran today)." : "."));
+      } else {
+        alert("Workflow triggered! Spawned " + result.tickets + " ticket run(s)" + (result.skipped > 0 ? ", " + result.skipped + " skipped (already ran today)." : "."));
+      }
+    } else {
+      alert("Agent triggered! Run ID: " + result.runId);
+    }
     setTimeout(() => renderSchedulerPage(), 500);
   } catch (e) {
     alert("Error triggering agent: " + e.message);
@@ -7786,7 +12351,7 @@ async function toggleScheduledAgent(agentId, currentStatus) {
 
 async function deleteScheduledAgent(agentId) {
   const agent = await fetchJson("/api/scheduled-agents/" + agentId);
-  if (!confirm('Delete "' + agent.agent_path + '" scheduled agent?')) return;
+  if (!await showConfirm('Delete "' + agent.agent_path + '" scheduled agent?', "Delete")) return;
 
   try {
     await fetchApi("/api/scheduled-agents/" + agentId + "/delete", { method: "DELETE" });
@@ -7797,63 +12362,955 @@ async function deleteScheduledAgent(agentId) {
   }
 }
 
-function applySchedulerTemplate(templateId) {
-  if (templateId === "ticket-polling") {
-    document.getElementById("scheduler-agent-path").value = ".claude/agents/ticket-polling.md";
-    document.getElementById("scheduler-description").value = "Poll tickets using filter";
-    document.getElementById("scheduler-cron").value = "0 9 * * 1-5";
-    document.getElementById("scheduler-parameters").value = JSON.stringify({
-      filter_id: "",
-      jql: ""
-    }, null, 2);
-  } else {
-    document.getElementById("scheduler-agent-path").value = "";
-    document.getElementById("scheduler-description").value = "";
-    document.getElementById("scheduler-cron").value = "";
-    document.getElementById("scheduler-parameters").value = "{}";
-  }
-}
 
 async function createScheduledAgent() {
-  const agentPath = document.getElementById("scheduler-agent-path").value.trim();
-  const ticketId = document.getElementById("scheduler-ticket-id").value.trim();
+  var pick = document.getElementById("scheduler-agent-pick");
+  var pathInput = document.getElementById("scheduler-agent-path");
+  var editIdInput = document.getElementById("scheduler-editing-id");
+  var typeInput = document.getElementById("scheduler-type");
+  const agentPath = (pick && pick.value) ? pick.value : (pathInput ? pathInput.value.trim() : "");
   const cronExpr = document.getElementById("scheduler-cron").value.trim();
   const description = document.getElementById("scheduler-description").value.trim();
-  const parametersStr = document.getElementById("scheduler-parameters").value.trim();
+  const editingId = editIdInput ? editIdInput.value : "";
+  const schedulerType = typeInput ? typeInput.value : "polling";
 
-  if (!agentPath) { alert("Agent path required"); return; }
-  if (!ticketId) { alert("Ticket ID required"); return; }
+  if (!agentPath) { alert("Select an agent first"); return; }
   if (!cronExpr) { alert("Cron expression required"); return; }
 
-  let parameters = {};
-  if (parametersStr) {
-    try {
-      parameters = JSON.parse(parametersStr);
-    } catch (e) {
-      alert("Invalid JSON in parameters: " + e.message);
-      return;
-    }
+  var parameters;
+  if (schedulerType === "workflow") {
+    var daysEl = document.getElementById("scheduler-wf-days");
+    var reqRepoElSave = document.getElementById("scheduler-wf-req-repo");
+    var reqMrprElSave = document.getElementById("scheduler-wf-req-mrpr");
+    var maxTicketsElSave = document.getElementById("scheduler-wf-max-tickets");
+    var reqPriorRunElSave = document.getElementById("scheduler-wf-req-prior-run");
+    var priorRunSameDayElSave = document.getElementById("scheduler-wf-prior-run-same-day");
+    var maxTicketsVal = maxTicketsElSave ? Math.min(5, Math.max(1, parseInt(maxTicketsElSave.value) || 5)) : 5;
+    var reqPriorRun = !!(reqPriorRunElSave && reqPriorRunElSave.checked);
+    var selectedPriorAgents = reqPriorRun
+      ? Array.from(document.querySelectorAll(".prior-run-agent-cb")).filter(function(cb) { return cb.checked; }).map(function(cb) { return cb.value; })
+      : [];
+    var wfDefaultReadyEl = document.getElementById("scheduler-wf-default-ready");
+    parameters = {
+      type: "workflow",
+      days: daysEl ? daysEl.value : "today",
+      requireRepo: !!(reqRepoElSave && reqRepoElSave.checked),
+      requireMrPr: !!(reqMrprElSave && reqMrprElSave.checked),
+      maxTickets: maxTicketsVal,
+      requirePriorRun: reqPriorRun,
+      priorRunSameDay: reqPriorRun && !!(priorRunSameDayElSave && priorRunSameDayElSave.checked),
+      requirePriorRunAgents: selectedPriorAgents,
+      defaultReady: !!(wfDefaultReadyEl && wfDefaultReadyEl.checked),
+    };
+  } else {
+    var promptEl = document.getElementById("scheduler-prompt");
+    var pollingDefaultReadyEl = document.getElementById("scheduler-polling-default-ready");
+    const prompt = promptEl ? promptEl.value.trim() : "";
+    const defaultReady = !!(pollingDefaultReadyEl && pollingDefaultReadyEl.checked);
+    parameters = { type: "polling", prompt, defaultReady };
   }
 
   try {
-    const result = await postJson("/api/scheduled-agents/create", {
-      agent_path: agentPath,
-      ticket_id: ticketId,
-      cron_expression: cronExpr,
-      description: description || undefined,
-      parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
-      status: "active",
-    });
-
-    document.getElementById("schedulerForm").reset();
-    schedulerSelectedAgentId = "";
-    renderSchedulerPage();
+    if (editingId) {
+      await fetchApi("/api/scheduled-agents/" + editingId, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_path: agentPath,
+          cron_expression: cronExpr,
+          description: description || undefined,
+          parameters,
+        }),
+      });
+      closeSchedulerModal();
+      renderSchedulerPage();
+    } else {
+      await postJson("/api/scheduled-agents/create", {
+        agent_path: agentPath,
+        ticket_id: "",
+        cron_expression: cronExpr,
+        description: description || undefined,
+        parameters,
+        status: "active",
+      });
+      closeSchedulerModal();
+      schedulerSelectedAgentId = "";
+      renderSchedulerPage();
+    }
   } catch (e) {
-    alert("Error creating scheduled agent: " + e.message);
+    alert("Error saving scheduled agent: " + e.message);
   }
 }
 
+window.editScheduler = async function(agentId) {
+  await openSchedulerModal(agentId);
+};
+
+// ── Shell Runner ──
+
+let shellAbortController = null;
+
+function renderShellPage() {
+  const app = document.getElementById("app");
+  app.style.display = "flex";
+  app.style.flexDirection = "column";
+  app.style.overflow = "hidden";
+
+  const header = \`<div style="margin-bottom:16px"><div style="font-size:16px;font-weight:600;letter-spacing:-0.3px">Shell Runner</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Run shell scripts and stream output in real-time.</div></div>\`;
+
+  const content = \`
+  <div style="display:flex;flex-direction:column;height:100%;gap:10px">
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <textarea id="shell-script" placeholder="echo hello world" spellcheck="false"
+        onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();runShellScript()}"
+        style="flex:1;height:96px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+               color:var(--text);font-family:var(--font-mono);font-size:12px;padding:8px 10px;resize:none;outline:none;
+               transition:border-color var(--transition)"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button onclick="runShellScript()" id="shell-run-btn"
+          style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);
+                 font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+          Run <span style="opacity:.6;font-size:10px">⌘↵</span>
+        </button>
+        <button onclick="killShellScript()" id="shell-kill-btn"
+          style="padding:6px 18px;background:var(--surface-raised);color:var(--dim);border:1px solid var(--border);
+                 border-radius:var(--radius-sm);font-size:12px;cursor:pointer;display:none">
+          Kill
+        </button>
+        <button onclick="clearShellOutput()"
+          style="padding:6px 18px;background:var(--surface-raised);color:var(--dim);border:1px solid var(--border);
+                 border-radius:var(--radius-sm);font-size:12px;cursor:pointer">
+          Clear
+        </button>
+      </div>
+    </div>
+    <pre id="shell-output"
+      style="flex:1;overflow-y:auto;margin:0;background:var(--surface);border:1px solid var(--border);
+             border-radius:var(--radius-sm);padding:10px 12px;font-family:var(--font-mono);font-size:12px;
+             line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-all;min-height:0"></pre>
+  </div>\`;
+
+  app.innerHTML = \`<div class="page-fixed">\${header}</div><div class="page-content" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">\${content}</div>\`;
+}
+
+async function runShellScript() {
+  const scriptEl = document.getElementById("shell-script");
+  const output = document.getElementById("shell-output");
+  const runBtn = document.getElementById("shell-run-btn");
+  const killBtn = document.getElementById("shell-kill-btn");
+  if (!scriptEl || !output) return;
+
+  const script = scriptEl.value.trim();
+  if (!script) return;
+
+  if (shellAbortController) shellAbortController.abort();
+  shellAbortController = new AbortController();
+
+  output.innerHTML = "";
+  runBtn.disabled = true;
+  runBtn.style.opacity = "0.5";
+  killBtn.style.display = "block";
+
+  const appendText = (text, color) => {
+    if (color) {
+      const span = document.createElement("span");
+      span.style.color = color;
+      span.textContent = text;
+      output.appendChild(span);
+    } else {
+      output.appendChild(document.createTextNode(text));
+    }
+    output.scrollTop = output.scrollHeight;
+  };
+
+  try {
+    const resp = await fetch(API + "/api/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script }),
+      signal: shellAbortController.signal,
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      appendText("Error: " + (err.error || resp.statusText) + "\\n", "var(--red)");
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        if (ev.type === "stdout") appendText(ev.text, null);
+        else if (ev.type === "stderr") appendText(ev.text, "var(--yellow)");
+        else if (ev.type === "error") appendText("Error: " + ev.text + "\\n", "var(--red)");
+        else if (ev.type === "done") {
+          appendText("\\n[exit " + ev.code + (ev.signal ? " (" + ev.signal + ")" : "") + "]", ev.code === 0 ? "var(--muted)" : "var(--red)");
+        }
+      }
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") appendText("\\nAborted: " + err.message + "\\n", "var(--muted)");
+  } finally {
+    runBtn.disabled = false;
+    runBtn.style.opacity = "1";
+    killBtn.style.display = "none";
+    shellAbortController = null;
+  }
+}
+
+function killShellScript() {
+  if (shellAbortController) {
+    shellAbortController.abort();
+    shellAbortController = null;
+  }
+}
+
+function clearShellOutput() {
+  const output = document.getElementById("shell-output");
+  if (output) output.innerHTML = "";
+}
+
+// ── Output Modal ──
+function openOutputModal(title) {
+  var modal = document.getElementById("output-modal");
+  var titleEl = document.getElementById("output-modal-title");
+  if (titleEl) titleEl.textContent = title || "Output";
+  if (modal) modal.style.display = "flex";
+}
+function closeOutputModal() {
+  var modal = document.getElementById("output-modal");
+  if (modal) modal.style.display = "none";
+}
+window.toggleOutputModal = function(title) {
+  var modal = document.getElementById("output-modal");
+  if (!modal) return;
+  if (modal.style.display === "none" || !modal.style.display) {
+    openOutputModal(title);
+  } else {
+    closeOutputModal();
+  }
+};
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape") {
+    var sm = document.getElementById("scheduler-modal");
+    if (sm && sm.style.display !== "none") { closeSchedulerModal(); return; }
+    var rm = document.getElementById("agent-runs-modal");
+    if (rm && rm.style.display !== "none") { closeAgentRunsModal(); return; }
+    var tcm = document.getElementById("testcases-run-modal");
+    if (tcm && tcm.style.display !== "none") { closeTestcasesRunModal(); return; }
+    closeOutputModal();
+  }
+});
+
+document.addEventListener("click", function(e) {
+  var dd = document.getElementById("analyses-run-ticket-dropdown");
+  var trigger = document.getElementById("analyses-run-ticket-trigger");
+  if (dd && dd.style.display !== "none" && !dd.contains(e.target) && trigger && !trigger.contains(e.target)) {
+    closeAnalysesTicketDropdown();
+  }
+  var tdd = document.getElementById("testcases-run-ticket-dropdown");
+  var ttrigger = document.getElementById("testcases-run-ticket-trigger");
+  if (tdd && tdd.style.display !== "none" && !tdd.contains(e.target) && ttrigger && !ttrigger.contains(e.target)) {
+    closeTestcasesTicketDropdown();
+  }
+  var edd = document.getElementById("explore-run-ticket-dropdown");
+  var etrigger = document.getElementById("explore-run-ticket-trigger");
+  if (edd && edd.style.display !== "none" && !edd.contains(e.target) && etrigger && !etrigger.contains(e.target)) {
+    closeExploreRunTicketDropdown();
+  }
+});
+
 </script>
+
+<!-- Scheduler modal -->
+<div id="scheduler-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeSchedulerModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:560px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div id="scheduler-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">New Ticket Polling Agent</div>
+      <div onclick="closeSchedulerModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px">
+      <form id="schedulerForm" style="display:flex;flex-direction:column;gap:14px">
+        <input type="hidden" id="scheduler-editing-id" value="" />
+        <input type="hidden" id="scheduler-type" value="polling" />
+        <!-- Type switcher -->
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius-xs);overflow:hidden">
+          <button type="button" id="scheduler-tab-polling" onclick="switchSchedulerType('polling')" style="flex:1;padding:7px 12px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:var(--accent);color:#fff;transition:all 0.15s">Polling</button>
+          <button type="button" id="scheduler-tab-workflow" onclick="switchSchedulerType('workflow')" style="flex:1;padding:7px 12px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:var(--surface-raised);color:var(--dim);transition:all 0.15s">Workflow</button>
+        </div>
+        <!-- Shared: Agent select -->
+        <div>
+          <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Agent</label>
+          <select id="scheduler-agent-pick" onchange="pickSchedulerAgent(this.value)" style="width:100%;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-size:12px;outline:none">
+            <option value="">— pick agent —</option>
+          </select>
+        </div>
+        <div id="scheduler-agent-path-row" style="display:none">
+          <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Agent Path</label>
+          <input id="scheduler-agent-path" type="text" placeholder="e.g., .claude/agents/my-agent.md" oninput="updateSchedulerCmd()" style="width:100%;box-sizing:border-box;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font-mono);font-size:12px;outline:none" />
+        </div>
+        <!-- Polling-specific fields -->
+        <div id="scheduler-polling-fields" style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Prompt</label>
+            <textarea id="scheduler-prompt" placeholder="e.g., check for new tickets and run the pool workflow" oninput="updateSchedulerCmd()" style="width:100%;box-sizing:border-box;height:80px;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font-mono);font-size:12px;resize:vertical;outline:none"></textarea>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px">New Ticket Ready State</label>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:var(--text)">
+              <input type="checkbox" id="scheduler-polling-default-ready" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+              Mark polled tickets as Ready (default: On Hold)
+            </label>
+            <div style="font-size:10px;color:var(--dim);margin-top:3px">Controls the initial ready state of tickets added by this polling agent</div>
+          </div>
+        </div>
+        <!-- Workflow-specific fields -->
+        <div id="scheduler-workflow-fields" style="display:none;flex-direction:column;gap:10px">
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Ticket Days</label>
+            <select id="scheduler-wf-days" onchange="updateSchedulerCmd()" style="width:100%;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-size:12px;outline:none">
+              <option value="today">Today's tickets</option>
+              <option value="all">All tickets</option>
+            </select>
+            <div style="font-size:10px;color:var(--dim);margin-top:3px">Which tickets from the workflow pool to process</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px">Required Links</label>
+            <div style="display:flex;gap:16px">
+              <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:var(--text)">
+                <input type="checkbox" id="scheduler-wf-req-repo" onchange="updateSchedulerCmd()" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+                Repo link
+              </label>
+              <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:var(--text)">
+                <input type="checkbox" id="scheduler-wf-req-mrpr" onchange="updateSchedulerCmd()" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+                MR/PR link
+              </label>
+            </div>
+            <div style="font-size:10px;color:var(--dim);margin-top:5px">If one is checked — that link must be present. If both — both must be present.</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Max tickets per run</label>
+            <input type="number" id="scheduler-wf-max-tickets" min="1" max="5" value="5" oninput="updateSchedulerCmd()" style="width:80px;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-size:12px;outline:none;text-align:center" />
+            <div style="font-size:10px;color:var(--dim);margin-top:3px">Each ticket gets its own agent run (1–5 per scheduler fire)</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px">Required Prior Run</label>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:var(--text)">
+              <input type="checkbox" id="scheduler-wf-req-prior-run" onchange="togglePriorRunOptions(this.checked);updateSchedulerCmd()" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+              Require a prior agent run for this ticket
+            </label>
+            <div id="scheduler-wf-prior-run-options" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs)">
+              <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:var(--text)">
+                <input type="checkbox" id="scheduler-wf-prior-run-same-day" onchange="updateSchedulerCmd()" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+                Same day only (prior run must have started today)
+              </label>
+              <div style="margin-top:8px">
+                <div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:5px">Required agent(s) <span style="font-weight:normal;text-transform:none;color:var(--dim)">(optional — leave all unchecked to accept any agent)</span></div>
+                <div id="scheduler-wf-prior-run-agents" style="display:flex;flex-direction:column;gap:5px;max-height:130px;overflow-y:auto">
+                  <span style="font-size:11px;color:var(--dim)">Loading agents…</span>
+                </div>
+              </div>
+            </div>
+            <div style="font-size:10px;color:var(--dim);margin-top:5px">Only process tickets that already have an agent run recorded.</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px">New Ticket Ready State</label>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:var(--text)">
+              <input type="checkbox" id="scheduler-wf-default-ready" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+              Mark new tickets as Ready (default: On Hold)
+            </label>
+            <div style="font-size:10px;color:var(--dim);margin-top:3px">Controls the initial ready state of tickets when this workflow agent adds them</div>
+          </div>
+        </div>
+        <!-- Shared: Cron + Description + Preview -->
+        <div>
+          <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Cron Expression</label>
+          <input id="scheduler-cron" type="text" placeholder="e.g., 0 9 * * 1-5" oninput="updateCronDesc(this.value)" style="width:100%;box-sizing:border-box;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font-mono);font-size:12px;outline:none" />
+          <div style="font-size:10px;color:var(--dim);margin-top:4px">Format: min(0-59) hour(0-23) day(1-31) month(1-12) dow(0-6)</div>
+          <div id="scheduler-cron-desc" style="display:none;margin-top:5px;padding:5px 8px;background:rgba(99,102,241,0.08);border-radius:var(--radius-xs);font-size:11px;color:var(--accent)"></div>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Description (optional)</label>
+          <input id="scheduler-description" type="text" placeholder="e.g., Daily ticket polling" style="width:100%;box-sizing:border-box;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font-mono);font-size:12px;outline:none" />
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px">Command Preview</label>
+          <div id="scheduler-cmd-preview" style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);font-family:var(--font-mono);font-size:11px;color:var(--dim);word-break:break-all">claude -p "use agent @&lt;agent&gt; to run ticket polling on &lt;prompt&gt;"</div>
+          <div id="scheduler-cmd-note" style="display:none;font-size:10px;color:var(--dim);margin-top:4px">↑ One separate agent run is spawned per matching ticket, up to the max tickets limit.</div>
+        </div>
+      </form>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button id="scheduler-modal-submit" onclick="createScheduledAgent()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Create</button>
+      <div class="action-btn" style="font-size:12px;color:var(--muted)" onclick="closeSchedulerModal()">Cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom confirm modal -->
+<div id="confirm-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)_confirmResolve(false)">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:400px;max-width:92vw;box-shadow:0 24px 64px rgba(0,0,0,0.5);display:flex;flex-direction:column">
+    <div style="padding:20px 20px 0 20px">
+      <div id="confirm-modal-msg" style="font-size:14px;color:var(--text);line-height:1.5"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:16px 20px">
+      <button onclick="_confirmResolve(false)" style="padding:7px 16px;font-size:13px;border-radius:var(--radius-xs);border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer">Cancel</button>
+      <button id="confirm-modal-ok" onclick="_confirmResolve(true)" style="padding:7px 16px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--red);color:#fff;cursor:pointer;font-weight:500">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="agent-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)abCloseModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:760px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div id="agent-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">New Agent</div>
+      <div onclick="abCloseModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div id="agent-modal-body" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column"></div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;flex-shrink:0">
+      <button onclick="abSave()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Save Agent</button>
+      <div class="action-btn" id="ab-validate-btn" onclick="abValidate(this)" style="font-size:12px;color:var(--yellow)"><i class="ph ph-seal-check" style="margin-right:4px"></i>Validate</div>
+      <div class="action-btn" onclick="abPreview()" style="font-size:12px">Preview</div>
+      <div class="action-btn" style="font-size:12px;color:var(--muted)" onclick="abCloseModal()">Cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- Claude global settings modal -->
+<div id="claude-settings-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeClaudeSettingsModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:740px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div style="font-weight:600;font-size:15px;color:var(--text)">Global Claude Settings</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--font-mono)">~/.claude/settings.json</div>
+      </div>
+      <div onclick="closeClaudeSettingsModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px;min-height:0">
+      <!-- Permissions section -->
+      <div>
+        <div style="font-size:12px;font-weight:500;margin-bottom:10px">Permissions</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <span style="font-size:11px;color:var(--green);font-weight:500">Allow</span>
+              <span style="font-size:10px;color:var(--dim)">tools always permitted</span>
+            </div>
+            <div id="cs-allow-pills" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <div id="cs-allow-suggestions" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+              <input id="cs-allow-custom" type="text" placeholder="custom tool or Bash(cmd)…" style="font-size:11px;padding:3px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none;width:200px" onkeydown="if(event.key==='Enter')csAddCustom('allow')" />
+              <div class="action-btn" style="font-size:10px" onclick="csAddCustom('allow')">+ Add</div>
+            </div>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:10px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <span style="font-size:11px;color:var(--red);font-weight:500">Deny</span>
+              <span style="font-size:10px;color:var(--dim)">tools always blocked</span>
+            </div>
+            <div id="cs-deny-pills" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <div id="cs-deny-suggestions" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+              <input id="cs-deny-custom" type="text" placeholder="custom tool or Bash(cmd)…" style="font-size:11px;padding:3px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none;width:200px" onkeydown="if(event.key==='Enter')csAddCustom('deny')" />
+              <div class="action-btn" style="font-size:10px" onclick="csAddCustom('deny')">+ Add</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Raw JSON -->
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-size:12px;font-weight:500;margin-bottom:8px">Raw JSON</div>
+        <textarea id="claude-settings-editor" spellcheck="false" oninput="csSyncFromEditor()" style="width:100%;box-sizing:border-box;min-height:200px;font-size:12px;padding:10px 14px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-mono);line-height:1.6;outline:none;resize:vertical"></textarea>
+        <div id="claude-settings-error" style="font-size:11px;color:var(--red);margin-top:4px;display:none"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;flex-shrink:0">
+      <button onclick="saveClaudeSettings()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Save</button>
+      <div id="claude-settings-saved" style="font-size:11px;color:var(--green);display:none">Saved</div>
+      <div class="action-btn" style="margin-left:auto;font-size:12px;color:var(--muted)" onclick="closeClaudeSettingsModal()">Close</div>
+    </div>
+  </div>
+</div>
+
+<!-- Add ticket modal -->
+<div id="add-ticket-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeAddTicketModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:440px;max-width:96vw;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="font-weight:600;font-size:15px;color:var(--text)">Add Ticket</div>
+      <div onclick="closeAddTicketModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:5px">Ticket ID</div>
+        <input id="tw-ticket-id" placeholder="e.g. PROJ-123" style="width:100%;box-sizing:border-box;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none" onkeydown="if(event.key==='Enter')twAddTicket()" />
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:5px">Notes <span style="color:var(--muted)">(optional)</span></div>
+        <input id="tw-notes" placeholder="What needs to be tested?" style="width:100%;box-sizing:border-box;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none" onkeydown="if(event.key==='Enter')twAddTicket()" />
+      </div>
+      <div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="tw-add-ready" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+          <span style="font-size:12px;color:var(--text)">Mark as Ready <span style="color:var(--muted);font-size:11px">(default: On Hold)</span></span>
+        </label>
+      </div>
+      <div id="tw-add-error" style="font-size:11px;color:var(--red);display:none"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;flex-shrink:0">
+      <button onclick="twAddTicket()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Add</button>
+      <div class="action-btn" style="font-size:12px;color:var(--muted)" onclick="closeAddTicketModal()">Cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- Agent run modal -->
+<div id="agent-run-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeAgentRunModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:680px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div id="agent-run-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">Run Agent</div>
+        <div id="agent-run-modal-sub" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div onclick="closeAgentRunModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="padding:16px 20px;flex-shrink:0;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Prompt</div>
+        <textarea id="agent-run-prompt" rows="4" placeholder="Describe what the agent should do..." style="width:100%;box-sizing:border-box;font-size:13px;padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);line-height:1.5;outline:none;resize:vertical"></textarea>
+      </div>
+      <div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="agent-run-default-ready" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" />
+          <span style="font-size:12px;color:var(--text)">Mark new tickets as Ready <span style="color:var(--muted);font-size:11px">(default: On Hold)</span></span>
+        </label>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px;margin-left:22px">Tickets added via the API during this run will use this ready state</div>
+      </div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:0 20px 12px;min-height:0">
+      <div id="agent-run-output-wrap" style="display:none">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Output</div>
+        <pre id="agent-run-output" style="margin:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:break-word;max-height:320px;overflow-y:auto"></pre>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;flex-shrink:0">
+      <button id="agent-run-btn" onclick="startAgentRun()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500"><i class="ph ph-play" style="margin-right:5px"></i>Run</button>
+      <div id="agent-run-status" style="font-size:11px;color:var(--muted)"></div>
+      <div class="action-btn" style="margin-left:auto;font-size:12px;color:var(--muted)" onclick="closeAgentRunModal()">Close</div>
+    </div>
+  </div>
+</div>
+
+<!-- Analyses run modal -->
+<div id="analyses-run-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeAnalysesRunModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:720px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div id="analyses-run-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">Run Analysis Agent</div>
+        <div id="analyses-run-modal-sub" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div onclick="closeAnalysesRunModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;min-height:0;display:flex;flex-direction:column;gap:14px">
+      <div style="position:relative">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Select Ticket</div>
+        <div id="analyses-run-ticket-trigger" onclick="toggleAnalysesTicketDropdown()" style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);cursor:pointer;user-select:none" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!document.getElementById('analyses-run-ticket-dropdown').classList.contains('open'))this.style.borderColor='var(--border)'">
+          <span id="analyses-run-ticket-label" style="font-size:13px;color:var(--muted)">— Select a ticket —</span>
+          <i class="ph ph-caret-down" id="analyses-run-ticket-caret" style="font-size:12px;color:var(--dim);transition:transform 0.15s"></i>
+        </div>
+        <div id="analyses-run-ticket-dropdown" style="display:none;position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xs);box-shadow:0 8px 24px rgba(0,0,0,0.3)">
+          <div style="padding:8px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">
+              <i class="ph ph-magnifying-glass" style="font-size:12px;color:var(--dim);flex-shrink:0"></i>
+              <input id="analyses-run-ticket-search" type="text" placeholder="Search tickets..." oninput="filterAnalysesTickets(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />
+            </div>
+          </div>
+          <div id="analyses-run-ticket-list" style="display:flex;flex-direction:column;max-height:200px;overflow-y:auto"></div>
+          <div id="analyses-run-no-tickets" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets found. Add tickets first.</div>
+          <div id="analyses-run-no-match" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets match your search.</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Additional context <span style="color:var(--muted)">(optional — e.g. repo URL, branch, focus area)</span></div>
+        <textarea id="analyses-run-prompt" rows="3" placeholder="e.g. repo: github.com/org/repo, branch: main" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);line-height:1.5;outline:none;resize:vertical"></textarea>
+      </div>
+      <div id="analyses-run-output-wrap" style="display:none">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Output</div>
+        <pre id="analyses-run-output" style="margin:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:break-word;max-height:320px;overflow-y:auto"></pre>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button id="analyses-run-btn" onclick="startAnalysesRun()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500"><i class="ph ph-play" style="margin-right:5px"></i>Run</button>
+      <div id="analyses-run-status" style="font-size:11px;color:var(--muted)"></div>
+      <div class="action-btn" style="margin-left:auto;font-size:12px;color:var(--muted)" onclick="closeAnalysesRunModal()">Close</div>
+    </div>
+  </div>
+</div>
+
+<!-- Test Cases run modal -->
+<div id="testcases-run-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeTestcasesRunModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:720px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div id="testcases-run-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">Run Test Cases Agent</div>
+        <div id="testcases-run-modal-sub" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div onclick="closeTestcasesRunModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;min-height:0;display:flex;flex-direction:column;gap:14px">
+      <div style="position:relative">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Select Ticket</div>
+        <div id="testcases-run-ticket-trigger" onclick="toggleTestcasesTicketDropdown()" style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);cursor:pointer;user-select:none" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!document.getElementById('testcases-run-ticket-dropdown').classList.contains('open'))this.style.borderColor='var(--border)'">
+          <span id="testcases-run-ticket-label" style="font-size:13px;color:var(--muted)">— Select a ticket —</span>
+          <i class="ph ph-caret-down" id="testcases-run-ticket-caret" style="font-size:12px;color:var(--dim);transition:transform 0.15s"></i>
+        </div>
+        <div id="testcases-run-ticket-dropdown" style="display:none;position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xs);box-shadow:0 8px 24px rgba(0,0,0,0.3)">
+          <div style="padding:8px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">
+              <i class="ph ph-magnifying-glass" style="font-size:12px;color:var(--dim);flex-shrink:0"></i>
+              <input id="testcases-run-ticket-search" type="text" placeholder="Search tickets..." oninput="filterTestcasesTickets(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />
+            </div>
+          </div>
+          <div id="testcases-run-ticket-list" style="display:flex;flex-direction:column;max-height:200px;overflow-y:auto"></div>
+          <div id="testcases-run-no-tickets" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets found. Add tickets first.</div>
+          <div id="testcases-run-no-match" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets match your search.</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Repo / MR / PR <span style="color:var(--muted)">(optional)</span></div>
+        <textarea id="testcases-run-prompt" rows="2" placeholder="e.g. repo: github.com/org/repo, MR: https://gitlab.com/org/repo/-/merge_requests/123" oninput="updateTestcasesRunCmd()" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);line-height:1.5;outline:none;resize:vertical"></textarea>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:4px">Command preview</div>
+        <div id="testcases-run-cmd-preview" style="font-size:11px;font-family:var(--font-mono);color:var(--dim);background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:6px 10px;word-break:break-all;line-height:1.5"></div>
+      </div>
+      <div id="testcases-run-output-wrap" style="display:none">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Output</div>
+        <pre id="testcases-run-output" style="margin:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:break-word;max-height:320px;overflow-y:auto"></pre>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button id="testcases-run-btn" onclick="startTestcasesRun()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500"><i class="ph ph-play" style="margin-right:5px"></i>Run</button>
+      <div id="testcases-run-status" style="font-size:11px;color:var(--muted)"></div>
+      <div class="action-btn" style="margin-left:auto;font-size:12px;color:var(--muted)" onclick="closeTestcasesRunModal()">Close</div>
+    </div>
+  </div>
+</div>
+
+<!-- Plans run modal -->
+<div id="plans-run-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closePlansRunModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:720px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div id="plans-run-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">Run Plan Agent</div>
+        <div id="plans-run-modal-sub" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div onclick="closePlansRunModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;min-height:0;display:flex;flex-direction:column;gap:14px">
+      <div style="position:relative">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Select Ticket</div>
+        <div id="plans-run-ticket-trigger" onclick="togglePlansTicketDropdown()" style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);cursor:pointer;user-select:none" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!document.getElementById('plans-run-ticket-dropdown').classList.contains('open'))this.style.borderColor='var(--border)'">
+          <span id="plans-run-ticket-label" style="font-size:13px;color:var(--muted)">— Select a ticket —</span>
+          <i class="ph ph-caret-down" id="plans-run-ticket-caret" style="font-size:12px;color:var(--dim);transition:transform 0.15s"></i>
+        </div>
+        <div id="plans-run-ticket-dropdown" style="display:none;position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xs);box-shadow:0 8px 24px rgba(0,0,0,0.3)">
+          <div style="padding:8px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">
+              <i class="ph ph-magnifying-glass" style="font-size:12px;color:var(--dim);flex-shrink:0"></i>
+              <input id="plans-run-ticket-search" type="text" placeholder="Search tickets..." oninput="filterPlansTickets(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />
+            </div>
+          </div>
+          <div id="plans-run-ticket-list" style="display:flex;flex-direction:column;max-height:200px;overflow-y:auto"></div>
+          <div id="plans-run-no-tickets" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets found. Add tickets first.</div>
+          <div id="plans-run-no-match" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets match your search.</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Repo / MR / PR <span style="color:var(--muted)">(optional)</span></div>
+        <textarea id="plans-run-prompt" rows="2" placeholder="e.g. repo: github.com/org/repo, MR: https://gitlab.com/org/repo/-/merge_requests/123" oninput="updatePlansRunCmd()" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);line-height:1.5;outline:none;resize:vertical"></textarea>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:4px">Command preview</div>
+        <div id="plans-run-cmd-preview" style="font-size:11px;font-family:var(--font-mono);color:var(--dim);background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:6px 10px;word-break:break-all;line-height:1.5"></div>
+      </div>
+      <div id="plans-run-output-wrap" style="display:none">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Output</div>
+        <pre id="plans-run-output" style="margin:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:break-word;max-height:320px;overflow-y:auto"></pre>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button id="plans-run-btn" onclick="startPlansRun()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500"><i class="ph ph-play" style="margin-right:5px"></i>Run</button>
+      <div id="plans-run-status" style="font-size:11px;color:var(--muted)"></div>
+      <div class="action-btn" style="margin-left:auto;font-size:12px;color:var(--muted)" onclick="closePlansRunModal()">Close</div>
+    </div>
+  </div>
+</div>
+
+<!-- Agent Runs modal -->
+<div id="agent-runs-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeAgentRunsModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:900px;max-width:97vw;height:78vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div id="agent-runs-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">Agent Runs</div>
+      <div onclick="closeAgentRunsModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="display:flex;flex:1;min-height:0">
+      <!-- Left: run list -->
+      <div style="width:260px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column">
+        <div style="padding:8px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">
+            <i class="ph ph-magnifying-glass" style="font-size:12px;color:var(--dim)"></i>
+            <input id="agent-runs-search" type="text" placeholder="Filter runs..." oninput="filterAgentRunsList(this.value)" style="border:none;outline:none;background:transparent;font-size:12px;color:var(--text);width:100%" />
+          </div>
+        </div>
+        <div id="agent-runs-list" style="flex:1;overflow-y:auto;padding:4px"></div>
+        <div id="agent-runs-empty" style="display:none;padding:16px;font-size:12px;color:var(--muted);text-align:center">No runs yet</div>
+      </div>
+      <!-- Right: output pane -->
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div id="agent-runs-detail-empty" style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px">Select a run to view output</div>
+        <div id="agent-runs-detail" style="display:none;flex:1;flex-direction:column;min-height:0">
+          <div style="padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div id="agent-runs-detail-cmd" style="font-size:11px;color:var(--dim);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+              <div id="agent-runs-detail-meta" style="font-size:10px;color:var(--muted);margin-top:2px"></div>
+            </div>
+            <button id="agent-runs-kill-btn" onclick="killSelectedRun()" style="display:none;padding:4px 12px;font-size:12px;border-radius:var(--radius-xs);border:1px solid var(--red);background:none;color:var(--red);cursor:pointer" onmouseover="this.style.background='var(--red)';this.style.color='#fff'" onmouseout="this.style.background='none';this.style.color='var(--red)'"><i class="ph ph-stop-circle" style="margin-right:4px"></i>Kill</button>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:10px 16px;min-height:0">
+            <pre id="agent-runs-output" style="margin:0;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:break-word"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Page agent config modal -->
+<div id="page-config-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closePageConfigModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:480px;max-width:96vw;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div id="page-config-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">Configure</div>
+      <div onclick="closePageConfigModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Assign Agent</div>
+        <select id="page-config-agent-select" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none">
+          <option value="">— None —</option>
+        </select>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">The assigned agent will be used when tickets are processed from this page.</div>
+      </div>
+      <div id="page-config-no-agents" style="display:none;font-size:11px;color:var(--muted)">No agents found. Create one in the Agents page first.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;flex-shrink:0">
+      <button onclick="savePageConfigModal()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Save</button>
+      <div id="page-config-clear-btn" class="action-btn" style="display:none;font-size:12px;color:var(--red)" onclick="clearPageConfigModal()">Clear</div>
+      <div class="action-btn" style="font-size:12px;color:var(--muted)" onclick="closePageConfigModal()">Cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- Pool config modal -->
+<div id="pool-config-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closePoolConfigModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:520px;max-width:96vw;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div><div style="font-weight:600;font-size:15px;color:var(--text)">Configure &#8212; Pool</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Assign the 5 agents used for pool execution</div></div>
+      <div onclick="closePoolConfigModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Prior Agents &#8212; run first, must complete before test agents start</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Normal Claim Agent <span style="color:var(--muted)">(claims normal test cases for the ticket)</span></div><select id="pool-cfg-prior_normal_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Visual Claim Agent <span style="color:var(--muted)">(claims visual test cases for the ticket)</span></div><select id="pool-cfg-prior_visual_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border)"></div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Test Agents &#8212; dependent on their respective prior agent</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">UI Test Agent <span style="color:var(--muted)">(runs UI test cases &#8212; starts after Normal Claim)</span></div><select id="pool-cfg-ui_test_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Visual Test Agent <span style="color:var(--muted)">(runs visual tests &#8212; starts after Visual Claim)</span></div><select id="pool-cfg-visual_test_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border)"></div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Independent Agents &#8212; run immediately, no prior required</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">API Test Agent <span style="color:var(--muted)">(runs API test cases &#8212; independent, no prior claim needed)</span></div><select id="pool-cfg-api_test_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button onclick="savePoolConfigModal()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Save</button>
+      <div class="action-btn" style="font-size:12px;color:var(--muted)" onclick="closePoolConfigModal()">Cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- Explore / Visual Runs — shared agent run modal -->
+<div id="explore-run-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeExploreRunModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:720px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div id="explore-run-modal-title" style="font-weight:600;font-size:15px;color:var(--text)">Run Agent</div>
+        <div id="explore-run-modal-sub" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div onclick="closeExploreRunModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;min-height:0;display:flex;flex-direction:column;gap:14px">
+      <!-- Ticket picker -->
+      <div style="position:relative">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Select Ticket</div>
+        <div id="explore-run-ticket-trigger" onclick="toggleExploreRunTicketDropdown()" style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);cursor:pointer;user-select:none" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(document.getElementById('explore-run-ticket-dropdown').style.display==='none')this.style.borderColor='var(--border)'">
+          <span id="explore-run-ticket-label" style="font-size:13px;color:var(--muted)">&#8212; Select a ticket &#8212;</span>
+          <i class="ph ph-caret-down" id="explore-run-ticket-caret" style="font-size:12px;color:var(--dim);transition:transform 0.15s"></i>
+        </div>
+        <div id="explore-run-ticket-dropdown" style="display:none;position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xs);box-shadow:0 8px 24px rgba(0,0,0,0.3)">
+          <div style="padding:8px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised)">
+              <i class="ph ph-magnifying-glass" style="font-size:12px;color:var(--dim);flex-shrink:0"></i>
+              <input id="explore-run-ticket-search" type="text" placeholder="Search tickets..." oninput="filterExploreRunTickets(this.value)" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--text);width:100%;font-family:var(--font-mono)" />
+            </div>
+          </div>
+          <div id="explore-run-ticket-list" style="display:flex;flex-direction:column;max-height:200px;overflow-y:auto"></div>
+          <div id="explore-run-no-tickets" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets with MR/PR and Repo linked. Update ticket details first.</div>
+          <div id="explore-run-no-match" style="display:none;font-size:12px;color:var(--muted);padding:10px 12px">No tickets match your search.</div>
+        </div>
+      </div>
+      <!-- Ticket details: MR/PR + Repo -->
+      <div id="explore-run-ticket-details" style="display:none;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 14px;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;color:var(--dim);width:52px;flex-shrink:0">MR / PR</span>
+          <span id="explore-run-mr-pr" style="font-size:12px;font-family:var(--font-mono);color:var(--dim);word-break:break-all">&#8212;</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;color:var(--dim);width:52px;flex-shrink:0">Repo</span>
+          <span id="explore-run-repo" style="font-size:12px;font-family:var(--font-mono);color:var(--dim);word-break:break-all">&#8212;</span>
+        </div>
+      </div>
+      <!-- Target + Role -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Target <span style="color:var(--muted)">(optional)</span></div>
+          <select id="explore-run-target" onchange="exploreRunUpdateRoles()" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none">
+            <option value="">&#8212; None &#8212;</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Role <span style="color:var(--muted)">(optional)</span></div>
+          <select id="explore-run-role" disabled onchange="exploreRunOnRoleChange()" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none">
+            <option value="">&#8212; None &#8212;</option>
+          </select>
+        </div>
+      </div>
+      <!-- Command preview -->
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:4px">Command preview</div>
+        <div id="explore-run-cmd-preview" style="font-size:11px;font-family:var(--font-mono);color:var(--dim);background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:6px 10px;word-break:break-all;line-height:1.5"></div>
+      </div>
+      <!-- Output -->
+      <div id="explore-run-output-wrap" style="display:none">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">Output</div>
+        <pre id="explore-run-output" style="margin:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:break-word;max-height:320px;overflow-y:auto"></pre>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button id="explore-run-btn" onclick="startExploreRun()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500"><i class="ph ph-play" style="margin-right:5px"></i>Run</button>
+      <div id="explore-run-status" style="font-size:11px;color:var(--muted)"></div>
+      <div class="action-btn" style="margin-left:auto;font-size:12px;color:var(--muted)" onclick="closeExploreRunModal()">Close</div>
+    </div>
+  </div>
+</div>
+
+<!-- Explore config modal -->
+<div id="explore-config-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeExploreConfigModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:480px;max-width:96vw;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div><div style="font-weight:600;font-size:15px;color:var(--text)">Configure &#8212; Explore</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Assign agents for UI and API test runs</div></div>
+      <div onclick="closeExploreConfigModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Prior Agent &#8212; runs before UI tests</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">UI Pre Claim Job <span style="color:var(--muted)">(claim agent &#8212; gates UI test execution)</span></div><select id="explore-cfg-ui_claim_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border)"></div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Dependent Agent &#8212; requires UI Pre Claim prior</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">UI Test Agent <span style="color:var(--muted)">(runs UI test cases &#8212; starts after UI Claim)</span></div><select id="explore-cfg-ui_test_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border)"></div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Independent Agent &#8212; no prior required</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">API Test Agent <span style="color:var(--muted)">(runs API test cases independently)</span></div><select id="explore-cfg-api_test_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button onclick="saveExploreConfigModal()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Save</button>
+      <div class="action-btn" style="font-size:12px;color:var(--muted)" onclick="closeExploreConfigModal()">Cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- Visual Runs config modal -->
+<div id="visual-runs-config-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeVisualRunsConfigModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:480px;max-width:96vw;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div><div style="font-weight:600;font-size:15px;color:var(--text)">Configure &#8212; Visual Runs</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Assign agents for visual regression test runs</div></div>
+      <div onclick="closeVisualRunsConfigModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Prior Agent &#8212; runs before visual tests</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Visual Pre Claim Job <span style="color:var(--muted)">(claim agent &#8212; gates visual test execution)</span></div><select id="vr-cfg-visual_claim_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border)"></div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Dependent Agent &#8212; requires Visual Pre Claim prior</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><div style="font-size:11px;color:var(--dim);margin-bottom:4px">Visual Test Agent <span style="color:var(--muted)">(runs visual tests &#8212; starts after Visual Claim)</span></div><select id="vr-cfg-visual_test_agent" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);color:var(--text);outline:none"><option value="">&#8212; None &#8212;</option></select></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+      <button onclick="saveVisualRunsConfigModal()" style="padding:7px 20px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">Save</button>
+      <div class="action-btn" style="font-size:12px;color:var(--muted)" onclick="closeVisualRunsConfigModal()">Cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- Reusable output modal -->
+<div id="output-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeOutputModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:1100px;max-width:96vw;height:80vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
+      <div id="output-modal-title" style="font-weight:500;font-size:13px;color:var(--text)">Output</div>
+      <div onclick="closeOutputModal()" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">&#10005;</div>
+    </div>
+    <pre id="output-modal-content" style="margin:0;flex:1;overflow-y:auto;background:var(--bg);padding:12px 16px;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-all;flex:1;min-height:0;border-radius:0 0 var(--radius) var(--radius)"></pre>
+  </div>
+</div>
+
 </body>
 </html>`;
 }

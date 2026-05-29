@@ -500,6 +500,21 @@ export function getDocsHtml(): string {
 </table>
 </div>
 
+<div class="doc-cmd">
+<h3>noob-tester ticket-workflow</h3>
+<p>Manage the lifecycle of tickets in the QA pool. One row per ticket tracks status, current phase, progress, and links to all related data (runs, analyses, plans, issues, test cases, visual test cases, blockers). The <strong>Tickets</strong> page in the dashboard reads from this table.</p>
+<table>
+<tr><td><code>ticket-workflow add &lt;ticket-id&gt;</code></td><td>Register a ticket (status: <code>new</code>). Idempotent — safe to call multiple times. <code>--notes &lt;text&gt;</code> optional. <code>--status</code> to set a different initial status. <code>--json</code>.</td></tr>
+<tr><td><code>ticket-workflow get &lt;ticket-id&gt;</code></td><td>Full workflow summary: status, phase, progress, timestamps, plus live counts for runs, analyses, plans, issues, test cases, visual test cases, and blockers. <code>--json</code>.</td></tr>
+<tr><td><code>ticket-workflow list</code></td><td>List all tracked tickets. <code>--status &lt;status&gt;</code> to filter. <code>--active</code> for actively running only. <code>--json</code>.</td></tr>
+<tr><td><code>ticket-workflow transition &lt;ticket-id&gt; --status &lt;status&gt;</code></td><td>Move to a new status. Optional <code>--phase &lt;phase&gt;</code>. Auto-sets <code>started_at</code> on first run, <code>completed_at</code> on terminal states. <code>--json</code>.</td></tr>
+<tr><td><code>ticket-workflow update &lt;ticket-id&gt;</code></td><td>Update <code>--notes</code>, <code>--progress &lt;0-100&gt;</code>, or <code>--metadata &lt;json&gt;</code>. <code>--json</code>.</td></tr>
+<tr><td><code>ticket-workflow remove &lt;ticket-id&gt;</code></td><td>Remove a ticket from workflow tracking.</td></tr>
+</table>
+<p><strong>Statuses:</strong> <code>new</code> → <code>queued</code> → <code>running</code> → <code>completed</code> / <code>failed</code> / <code>cancelled</code>. Can also be <code>paused</code> at any point.</p>
+<p><strong>Phases:</strong> <code>analyze</code> → <code>plan</code> → <code>test</code> → <code>review</code> → <code>done</code>.</p>
+</div>
+
 </div>
 
 <!-- SKILLS -->
@@ -508,7 +523,22 @@ export function getDocsHtml(): string {
 <h2 style="margin-bottom:16px">Skills</h2>
 
 <p style="color:var(--dim);margin-bottom:16px">Each skill works <strong>standalone</strong> or as part of a pipeline. Every skill MUST start by creating a session and run.</p>
-<p style="color:var(--dim);margin-bottom:16px"><strong>Full pipeline:</strong> <code>/noob-ticket-cache</code> → <code>/noob-repos-setup</code> → <code>/noob-analyze</code> → <code>/noob-testcase</code> → <code>/noob-plan</code> → <code>/noob-claim</code> → <code>/noob-explore</code> + <code>/noob-api-explore</code> (with a11y + risk ordering) → <code>/noob-rca</code> (classify failures + detect false positives) → <code>/noob-report</code></p>
+<p style="color:var(--dim);margin-bottom:16px"><strong>Full pipeline:</strong> <code>/noob-workflow</code> (register ticket) → <code>/noob-ticket-cache</code> → <code>/noob-repos-setup</code> → <code>/noob-analyze</code> → <code>/noob-testcase</code> → <code>/noob-plan</code> → <code>/noob-claim</code> → <code>/noob-explore</code> + <code>/noob-api-explore</code> (with a11y + risk ordering) → <code>/noob-rca</code> (classify failures + detect false positives) → <code>/noob-report</code></p>
+
+<div class="doc-cmd">
+<h3 style="color:var(--green)">/noob-workflow</h3>
+<p>Register a ticket ID into the workflow tracking system. Run this <strong>first</strong> — before any other skill — to create the canonical lifecycle record for a ticket. Idempotent: safe to call again if the ticket already exists.</p>
+<h4>What it does</h4>
+<ol>
+<li>Checks if the ticket already exists in <code>ticket_workflow</code></li>
+<li>If new: calls <code>noob-tester ticket-workflow add &lt;TICKET-ID&gt;</code> (status: <code>new</code>)</li>
+<li>Calls <code>noob-tester ticket-workflow get &lt;TICKET-ID&gt;</code> and returns the full summary</li>
+</ol>
+<h4>Output</h4>
+<p>Returns the full workflow summary JSON — current status, linked data counts (runs, analyses, plans, test cases, issues, blockers). Downstream skills use this to know where to pick up.</p>
+<h4>Status lifecycle</h4>
+<p><code>new</code> (just added) → <code>queued</code> (scheduled for processing) → <code>running</code> (active, with phase) → <code>completed</code> / <code>failed</code> / <code>cancelled</code>. Orchestrators and the polling agent drive status transitions via <code>ticket-workflow transition</code>.</p>
+</div>
 
 <div class="doc-cmd">
 <h3 style="color:var(--accent)">/noob-tester</h3>
@@ -759,13 +789,14 @@ Claude Code        →  Does the actual work using your session & credits</pre>
 <li><strong>API Maps</strong> — persistent registry of API endpoints, parameters, response schemas, and dependency chains. Grows with every <code>/noob-api-explore</code> session. Tracks endpoint health (active/flaky/failing), average response time, and call counts. Visualized as a force-directed graph in the dashboard.</li>
 <li><strong>Run Packs</strong> — execution containers with target URL, credential references, and capture config. Results, artifacts, logs per test case entry.</li>
 <li><strong>Ticket Context Cache</strong> — caches ticket info, MR/PR diffs, comments, and linked tickets across skills via <code>ticket-context</code> commands. First skill fetches from Atlassian MCP / glab / bb, saves to cache. Subsequent skills check cache first, skip redundant fetches. Each entry has a TTL (default: 24 hours for all types). Stored as files in <code>~/.noob-tester/ticket-context/</code> with a SQLite index.</li>
+<li><strong>Ticket Workflow</strong> — one row per ticket tracks the full lifecycle: status (<code>new → queued → running → completed/failed</code>), current phase (<code>analyze → plan → test → review → done</code>), progress %, and active flag. Linked to runs, sessions, and all data tables. Register tickets with <code>/noob-workflow</code> or via the Tickets page in the dashboard. The polling agent (when ready) will auto-populate this table.</li>
 <li><strong>Blockers</strong> — normalized from test plans into a dedicated table. Queryable across tickets, resolvable with resolution notes.</li>
 <li><strong>Coverage Map</strong> — links test cases to source files via <code>impacted_files</code> + import graph expansion. Shows which files have no test coverage. Built with <code>coverage build</code>, queried with <code>coverage stats/uncovered/file</code>.</li>
 <li><strong>RCA Results</strong> — root cause analysis classifications stored per failed run pack entry. Classifications (actual_bug, env_issue, flaky_selector, etc.) with confidence scores and suggested actions. Used by <code>/noob-report</code> to separate real bugs from noise.</li>
 <li><strong>Accessibility Issues</strong> — axe-core WCAG audit results captured on every page load during <code>/noob-explore</code>. Stored per page with rule_id, impact, WCAG criteria, and HTML snippets. Queried with <code>a11y list/summary</code>.</li>
 <li><strong>Visual Baselines &amp; Diffs</strong> — per-page/viewport screenshot baselines stored with SHA-256 hashes. On subsequent runs, hash comparison detects changes instantly. Claude vision describes differences. Diffs go through a review workflow (accept as new baseline or flag as regression).</li>
 </ul>
-<p><strong>Flow:</strong> <code>/noob-analyze</code> (Phase 1: analysis) → <code>/noob-plan</code> (Phase 2: planning) → <code>/noob-testcase</code> (Phase 3: test case generation) → <code>/noob-explore</code> + <code>/noob-api-explore</code> (Phase 4: execution + a11y audit) → <code>/noob-rca</code> (Phase 4.5: failure classification) → <code>/noob-report</code> (Phase 5: reporting with RCA + a11y). Each reads the previous skill's data by ticket ref. Both runners share the same run pack. Ticket info and MR diffs are cached after the first skill fetches them.</p>
+<p><strong>Flow:</strong> <code>/noob-workflow</code> (register ticket, status: new) → <code>/noob-analyze</code> (Phase 1: analysis, status: running/analyze) → <code>/noob-plan</code> (Phase 2: planning, status: running/plan) → <code>/noob-testcase</code> (Phase 3: test case generation, status: running/test) → <code>/noob-explore</code> + <code>/noob-api-explore</code> (Phase 4: execution + a11y audit) → <code>/noob-rca</code> (Phase 4.5: failure classification) → <code>/noob-report</code> (Phase 5: reporting, status: completed/failed). Each reads the previous skill's data by ticket ref. Both runners share the same run pack. Ticket info and MR diffs are cached after the first skill fetches them.</p>
 </div>
 
 <div class="doc-cmd">

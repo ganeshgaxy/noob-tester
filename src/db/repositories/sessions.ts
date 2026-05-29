@@ -27,14 +27,14 @@ const STREAM_PORT_MAX = 7799;
 
 /**
  * Allocate a unique stream port for a session by finding the first port in
- * the [STREAM_PORT_MIN, STREAM_PORT_MAX] range not used by any active session.
+ * the [STREAM_PORT_MIN, STREAM_PORT_MAX] range not used by any session.
  * Returns null if no ports are available.
  */
 export function allocateStreamPort(): number | null {
   const db = getDb();
   const usedRows = db
     .prepare(
-      "SELECT stream_port FROM sessions WHERE status = 'active' AND stream_port IS NOT NULL",
+      "SELECT stream_port FROM sessions WHERE stream_port IS NOT NULL",
     )
     .all() as Array<{ stream_port: number }>;
   const used = new Set(usedRows.map((r) => r.stream_port));

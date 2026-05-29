@@ -8,7 +8,14 @@ export function getDashboardHelpersScript(): string {
 
 function esc(s) {
   if (!s) return "";
+  if (typeof s !== "string") s = String(s);
   return s.replace(/&/g,"&amp;").replace(new RegExp("<","g"),"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Replace /Users/<name> or /home/<name> prefix with ~ for display
+function shortenPath(p) {
+  if (!p) return p;
+  return p.replace(/^\\/(?:Users|home)\\/[^\\/]+/, "~");
 }
 
 // Format plain-text LLM descriptions: escape HTML, bold known section headers, convert newlines to <br>
@@ -153,19 +160,50 @@ function actionBtn(label, onclick, color) {
 function repairJson(raw) {
   const trimmed = raw.trim();
   try { JSON.parse(trimmed); return trimmed; } catch {}
-  let braces = 0, brackets = 0, inString = false, esc2 = false;
-  for (const ch of trimmed) {
-    if (esc2) { esc2 = false; continue; }
-    if (ch === "\\\\") { esc2 = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") braces++; else if (ch === "}") braces--;
-    else if (ch === "[") brackets++; else if (ch === "]") brackets--;
+
+  // Walk the JSON, fixing: trailing commas, mismatched ] vs }, unclosed strings/brackets
+  function repair(s) {
+    let result = "";
+    let inStr = false, escaped = false;
+    const stack = []; // tracks '{' or '[' for each open container
+
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (escaped) { escaped = false; result += ch; continue; }
+      if (ch === "\\\\" && inStr) { escaped = true; result += ch; continue; }
+      if (ch === '"') { inStr = !inStr; result += ch; continue; }
+      if (inStr) { result += ch; continue; }
+
+      if (ch === "{" || ch === "[") {
+        stack.push(ch);
+        result += ch;
+      } else if (ch === "}" || ch === "]") {
+        const expected = stack.length > 0 ? (stack[stack.length - 1] === "{" ? "}" : "]") : ch;
+        if (ch !== expected) {
+          result += expected; // fix mismatched closer
+        } else {
+          result += ch;
+        }
+        if (stack.length > 0) stack.pop();
+      } else if (ch === ",") {
+        // Strip trailing comma before } or ]
+        let j = i + 1;
+        while (j < s.length && " \\n\\r\\t".includes(s[j])) j++;
+        if (s[j] === "}" || s[j] === "]") continue;
+        result += ch;
+      } else {
+        result += ch;
+      }
+    }
+
+    // Close unclosed string
+    if (inStr) result += '"';
+    // Close unclosed containers
+    while (stack.length > 0) result += stack.pop() === "{" ? "}" : "]";
+    return result;
   }
-  let repaired = trimmed;
-  if (inString) repaired += '"';
-  while (brackets-- > 0) repaired += "]";
-  while (braces-- > 0) repaired += "}";
+
+  const repaired = repair(trimmed);
   try { JSON.parse(repaired); return repaired; } catch { return trimmed; }
 }
 
@@ -227,6 +265,7 @@ function setPage(html) {
   const children = Array.from(tmp.children);
 
   let fixedHtml = "";
+  let preFixedHtml = "";
   let contentHtml = "";
   let fixedDone = false;
 
@@ -235,12 +274,18 @@ function setPage(html) {
       const isBack = child.classList && child.classList.contains("detail-back");
       const isStatsPanel = child.classList && child.classList.contains("panel") && child.querySelector(".stat, .stat-value, .breadcrumb");
       if (isBack || isStatsPanel) {
-        fixedHtml += child.outerHTML;
+        fixedHtml = preFixedHtml + child.outerHTML;
         fixedDone = true;
         continue;
       }
+      preFixedHtml += child.outerHTML;
+    } else {
+      contentHtml += child.outerHTML;
     }
-    contentHtml += child.outerHTML;
+  }
+
+  if (!fixedHtml && preFixedHtml) {
+    contentHtml = preFixedHtml + contentHtml;
   }
 
   if (fixedHtml) {

@@ -232,10 +232,10 @@ function computeCodeChurnScore(impactedFiles: string[]): number {
     for (const f of impactedFiles) {
       try {
         const output = execSync(
-          `git log --oneline --since="30 days" -- "${f}" 2>/dev/null | wc -l`,
-          { cwd: repo.local_path, encoding: "utf-8", timeout: 5000 }
+          `git log --oneline --since="30 days" -- "${f}"`,
+          { cwd: repo.local_path, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }
         ).trim();
-        totalCommits += parseInt(output) || 0;
+        totalCommits += output ? output.split("\n").filter(Boolean).length : 0;
       } catch {
         // File might not exist in this repo
       }
@@ -259,8 +259,8 @@ function computeRecencyScore(lastExecuted: string | null, impactedFiles: string[
     for (const f of impactedFiles) {
       try {
         const output = execSync(
-          `git log -1 --format="%aI" -- "${f}" 2>/dev/null`,
-          { cwd: repo.local_path, encoding: "utf-8", timeout: 5000 }
+          `git log -1 --format="%aI" -- "${f}"`,
+          { cwd: repo.local_path, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }
         ).trim();
         if (output && new Date(output) > new Date(lastExecuted)) {
           return 1.0; // File changed after last execution
