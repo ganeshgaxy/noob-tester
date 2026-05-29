@@ -28,6 +28,7 @@ import {
   workspacesDir,
   renameWorkspace,
   copyWorkspace,
+  workspaceNameError,
 } from "../db/client.js";
 import { getDashboardHtml } from "./dashboard.js";
 import { getDocsHtml } from "./docs.js";
@@ -3783,19 +3784,17 @@ export function startWatchServer(opts: WatchOptions): void {
       req.on("data", (chunk: Buffer) => (body += chunk));
       req.on("end", () => {
         try {
-          const { name } = JSON.parse(body);
-          if (!name || typeof name !== "string") {
+          const { name: rawName } = JSON.parse(body);
+          if (!rawName || typeof rawName !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "name is required" }));
             return;
           }
-          if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+          const name = rawName.trim();
+          const nameErr = workspaceNameError(name);
+          if (nameErr) {
             res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(
-              JSON.stringify({
-                error: "Workspace name must be alphanumeric (a-z, 0-9, -, _)",
-              }),
-            );
+            res.end(JSON.stringify({ error: nameErr }));
             return;
           }
           const wsDir = join(workspacesDir(), name);

@@ -740,7 +740,7 @@ function switchWorkspace(name) {
 }
 
 function wsCreate() {
-  const name = prompt("New workspace name (a-z, 0-9, -, _):");
+  const name = prompt("New workspace name:");
   if (!name || !name.trim()) return;
   const trimmed = name.trim();
   fetch(API + "/api/workspaces/create", {
@@ -781,7 +781,7 @@ function wsRename() {
 function wsCopy() {
   const sel = document.getElementById("ws-select");
   const from = sel ? sel.value : "default";
-  const to = prompt(\`Copy workspace "\${from}" to a new workspace name (a-z, 0-9, -, _):\`);
+  const to = prompt(\`Copy workspace "\${from}" to:\`);
   if (!to || !to.trim()) return;
   const trimmed = to.trim();
   if (trimmed === from) { alert("Target workspace must have a different name."); return; }
@@ -805,10 +805,22 @@ function wsCopy() {
 }
 
 // ── Settings-page workspace actions ──
+function validateWorkspaceName(name) {
+  var WIN_RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
+  if (!name || name.length === 0) return "Workspace name cannot be empty.";
+  if (name.length > 64) return "Workspace name must be 64 characters or fewer.";
+  if (/[\\/:*?"<>|]/.test(name)) return 'Workspace name cannot contain: \\ / : * ? " < > |';
+  if (/[. ]$/.test(name)) return "Workspace name cannot end with a space or period.";
+  if (WIN_RESERVED.test(name)) return '"' + name + '" is a reserved system name and cannot be used.';
+  return null;
+}
+
 window.wsSettingsCreate = function() {
   const inp = document.getElementById("ws-new-name");
   const name = inp ? inp.value.trim() : "";
   if (!name) { alert("Enter a workspace name."); return; }
+  const wsNameErr = validateWorkspaceName(name);
+  if (wsNameErr) { alert(wsNameErr); return; }
   fetch(API + "/api/workspaces/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -831,6 +843,8 @@ window.wsSettingsCopy = function() {
   const to = toInp ? toInp.value.trim() : "";
   if (!from || !to) { alert("Select a source and enter a target name."); return; }
   if (from === to) { alert("Target must differ from source."); return; }
+  var copyErr = validateWorkspaceName(to);
+  if (copyErr) { alert(copyErr); return; }
   fetch(API + "/api/workspaces/copy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -850,6 +864,8 @@ window.wsSettingsRename = function(current) {
   const newName = prompt('Rename workspace "' + current + '" to:');
   if (!newName || !newName.trim()) return;
   const trimmed = newName.trim();
+  var renameErr = validateWorkspaceName(trimmed);
+  if (renameErr) { alert(renameErr); return; }
   fetch(API + "/api/workspaces/rename", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2195,9 +2211,14 @@ async function renderWorkspacesTab() {
   html += '<div class="panel" style="margin-bottom:16px">';
   html += '<div style="margin-bottom:10px;font-weight:500;font-size:14px">Create Workspace</div>';
   html += '<div style="display:flex;gap:8px;align-items:center">';
-  html += '<input id="ws-new-name" type="text" placeholder="Workspace name (a-z, 0-9, -, _)" style="flex:1;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none" />';
+  html += '<input id="ws-new-name" type="text" placeholder="e.g. my-project, Sprint 42, feature/login" style="flex:1;font-size:13px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-family:var(--font-mono);outline:none" />';
   html += '<button onclick="wsSettingsCreate()" style="padding:6px 16px;font-size:13px;border-radius:var(--radius-xs);border:none;background:var(--accent);color:var(--bg);cursor:pointer;font-weight:500;white-space:nowrap">Create</button>';
-  html += '</div></div>';
+  html += '</div>';
+  html += '<div style="margin-top:6px;font-size:11px;color:var(--dim);line-height:1.6">';
+  html += '<i class="ph ph-check-circle" style="color:var(--green);margin-right:4px"></i><strong style="color:var(--dim)">Allowed:</strong> letters, numbers, spaces, hyphens, underscores, dots, parentheses — up to 64 characters.&nbsp;&nbsp;';
+  html += '<i class="ph ph-x-circle" style="color:var(--red);margin-right:4px"></i><strong style="color:var(--dim)">Not allowed:</strong> <code style="font-size:10px;background:var(--surface-raised);padding:1px 5px;border-radius:3px">\\ / : * ? " &lt; &gt; |</code> · trailing space or period · reserved names (CON, NUL, COM1…)';
+  html += '</div>';
+  html += '</div>';
 
   // ── Copy workspace ──
   html += '<div class="panel" style="margin-bottom:16px">';

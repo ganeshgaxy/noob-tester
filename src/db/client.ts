@@ -101,15 +101,47 @@ export function listWorkspaces(): Array<{ name: string; current: boolean }> {
  * If the renamed workspace is the current active one, updates config.json to
  * point at the new name and resets the DB singleton.
  */
+// Windows reserved device names — cannot be used as directory names.
+const WIN_RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
+
+/**
+ * Validate a workspace name for cross-platform filesystem safety.
+ * Rules that apply on all platforms (Windows is strictest):
+ *   - No forbidden chars: \ / : * ? " < > |
+ *   - Must not end with a space or period (Windows silently strips/rejects these)
+ *   - Must not be a Windows reserved device name (CON, NUL, COM1, etc.)
+ *   - 1–64 characters after trimming
+ */
+export function isValidWorkspaceName(name: string): boolean {
+  const t = name.trim();
+  if (t.length === 0 || t.length > 64) return false;
+  if (/[\\/:*?"<>|]/.test(t)) return false;
+  if (/[. ]$/.test(t)) return false;          // trailing period or space
+  if (WIN_RESERVED.test(t)) return false;      // reserved device names
+  return true;
+}
+
+/** Error message shown to users when a workspace name is rejected. */
+export function workspaceNameError(name: string): string | null {
+  const t = name.trim();
+  if (t.length === 0) return "Workspace name cannot be empty.";
+  if (t.length > 64) return "Workspace name must be 64 characters or fewer.";
+  if (/[\\/:*?"<>|]/.test(t)) return 'Workspace name cannot contain: \\ / : * ? " < > |';
+  if (/[. ]$/.test(t)) return "Workspace name cannot end with a space or period.";
+  if (WIN_RESERVED.test(t)) return `"${t}" is a reserved system name and cannot be used.`;
+  return null;
+}
+
 export function renameWorkspace(from: string, to: string): void {
   if (from === "default")
     throw new Error('Cannot rename the "default" workspace');
-  if (!/^[a-zA-Z0-9_-]+$/.test(to))
-    throw new Error("Workspace name must be alphanumeric (a-z, 0-9, -, _)");
+  const toErr = workspaceNameError(to);
+  if (toErr) throw new Error(toErr);
+  const toNorm = to.trim();
 
   const root = workspacesDir();
   const fromDir = join(root, from);
-  const toDir = join(root, to);
+  const toDir = join(root, toNorm);
 
   if (!existsSync(fromDir)) throw new Error(`Workspace "${from}" not found`);
   if (existsSync(toDir)) throw new Error(`Workspace "${to}" already exists`);
@@ -118,7 +150,7 @@ export function renameWorkspace(from: string, to: string): void {
 
   // If it was the active workspace, point the config at the new name
   if (getActiveWorkspace() === from) {
-    setActiveWorkspace(to);
+    setActiveWorkspace(toNorm);
   }
 }
 
@@ -129,13 +161,14 @@ export function renameWorkspace(from: string, to: string): void {
  * The active workspace is NOT changed — the caller decides whether to switch.
  */
 export function copyWorkspace(from: string, to: string): void {
-  if (from === to) throw new Error("Source and target workspace are the same");
-  if (!/^[a-zA-Z0-9_-]+$/.test(to))
-    throw new Error("Workspace name must be alphanumeric (a-z, 0-9, -, _)");
+  if (from.trim() === to.trim()) throw new Error("Source and target workspace are the same");
+  const toErr = workspaceNameError(to);
+  if (toErr) throw new Error(toErr);
+  const toNorm = to.trim();
 
   const root = workspacesDir();
   const fromDir = join(root, from);
-  const toDir = join(root, to);
+  const toDir = join(root, toNorm);
 
   // "default" workspace dir may not exist yet (created lazily by getDb)
   if (from !== "default" && !existsSync(fromDir))

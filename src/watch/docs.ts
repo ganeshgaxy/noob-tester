@@ -389,14 +389,18 @@ export function getDocsHtml(): string {
 <p>Clean up data and processes. All destructive commands require <code>--yes</code>.</p>
 <table>
 <tr><td><code>cleanup watch</code></td><td>Kill dashboard process. <code>--port</code> to specify.</td></tr>
-<tr><td><code>cleanup all --yes</code></td><td>Delete runs, sessions, analyses, test cases, issues. <strong>Keeps</strong> secrets, repos, index.</td></tr>
+<tr><td><code>cleanup stale --yes</code></td><td>Delete only stale/crashed sessions and their runs — safe to run while active sessions are live.</td></tr>
 <tr><td><code>cleanup session &lt;id&gt; --yes</code></td><td>Delete a specific session and all its data.</td></tr>
-<tr><td><code>cleanup stale --yes</code></td><td>Delete all stale/crashed sessions.</td></tr>
-<tr><td><code>cleanup secrets --yes</code></td><td>Delete all secrets and targets.</td></tr>
-<tr><td><code>cleanup repos --yes</code></td><td>Delete all repos, groups, codebase index, and synced files. <code>--name &lt;repo&gt;</code> for a specific repo.</td></tr>
+<tr><td><code>cleanup all --yes</code></td><td>Delete runs, sessions, analyses, test cases, issues, visual data, agent runs, ticket workflow, Datadog cache. <strong>Keeps</strong> secrets, repos, index, page configs.</td></tr>
 <tr><td><code>cleanup testcases --yes</code></td><td>Delete test cases. <code>--ticket</code>, <code>--run</code>, <code>--status</code> to filter.</td></tr>
+<tr><td><code>cleanup runpacks --yes</code></td><td>Delete run pack entries. <code>--ticket</code>, <code>--pack</code> to filter.</td></tr>
+<tr><td><code>cleanup tech-issues --yes</code></td><td>Delete tech issues. <code>--ticket</code>, <code>--status</code> to filter.</td></tr>
+<tr><td><code>cleanup secrets --yes</code></td><td>Delete all secrets and targets.</td></tr>
+<tr><td><code>cleanup repos --yes</code></td><td>Delete all repos, groups, codebase index (including embeddings), and synced files. <code>--name &lt;repo&gt;</code> for a specific repo.</td></tr>
 <tr><td><code>cleanup nuke --yes</code></td><td><strong>Full reset</strong> — deletes everything including secrets, repos, index, synced files.</td></tr>
 </table>
+<h4>Dashboard cleanup buttons (Settings → Workspaces)</h4>
+<p>Each button maps to the same operations above. Additional dashboard-only actions: <strong>Visual Data</strong> (visual runs, comparisons, screenshots, baselines), <strong>Agent Runs</strong> (agent_runs, pool_spawns, execution history), <strong>Ticket Workflow</strong> (ticket_workflow, polling history), <strong>Evidence Files</strong> (deletes evidence directory from disk).</p>
 </div>
 
 <div class="doc-cmd">
@@ -482,12 +486,37 @@ export function getDocsHtml(): string {
 
 <div class="doc-cmd">
 <h3>noob-tester settings</h3>
-<p>Manage application settings (key-value store). Used for repo provider, default configurations, etc.</p>
+<p>Manage application settings (key-value store). Also configurable via Settings → General in the dashboard.</p>
 <table>
 <tr><td><code>settings set &lt;key&gt; &lt;value&gt;</code></td><td>Set a setting. Validates <code>repo_provider</code> against: bitbucket, gitlab, github.</td></tr>
 <tr><td><code>settings get &lt;key&gt;</code></td><td>Get a setting value.</td></tr>
 <tr><td><code>settings list</code></td><td>List all settings. <code>--json</code> for JSON output.</td></tr>
 <tr><td><code>settings delete &lt;key&gt;</code></td><td>Delete a setting.</td></tr>
+</table>
+<h4>Known settings keys</h4>
+<table>
+<tr><td><code>repo_provider</code></td><td>Git provider for ticket MR/PR lookups. Values: <code>github</code>, <code>gitlab</code>, <code>bitbucket</code>.</td></tr>
+<tr><td><code>ai_provider</code></td><td>AI provider for agent execution. Currently only <code>claude</code> is supported. Configurable via Settings → General.</td></tr>
+</table>
+</div>
+
+<div class="doc-cmd">
+<h3>noob-tester page-config</h3>
+<p>Set the default Claude agent and auto-run behaviour for each dashboard page. Also configurable via Settings → General → Default Agents per Page.</p>
+<table>
+<tr><td><code>page-config set &lt;page&gt; --agent &lt;name&gt;</code></td><td>Set default agent for a page. <code>--auto-run</code> to trigger the agent automatically on page load. <code>--json</code>.</td></tr>
+<tr><td><code>page-config get &lt;page&gt;</code></td><td>Show config for a page. <code>--json</code>.</td></tr>
+<tr><td><code>page-config list</code></td><td>List all configured pages. <code>--json</code>.</td></tr>
+<tr><td><code>page-config clear &lt;page&gt;</code></td><td>Remove config for a page. <code>--json</code>.</td></tr>
+</table>
+<h4>Valid pages</h4>
+<table>
+<tr><td><code>explore</code></td><td>Browser-based UI test execution page</td></tr>
+<tr><td><code>plan</code></td><td>Test planning &amp; strategy page</td></tr>
+<tr><td><code>pool</code></td><td>Parallel agent pool execution page</td></tr>
+<tr><td><code>analyze</code></td><td>Ticket analysis &amp; gap detection page</td></tr>
+<tr><td><code>visual</code></td><td>Visual regression testing page</td></tr>
+<tr><td><code>testcases</code></td><td>Test case generation page</td></tr>
 </table>
 </div>
 
