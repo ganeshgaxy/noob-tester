@@ -5168,52 +5168,113 @@ async function renderAnalysesPage() {
     </div>
   </div>\`;
 
-  html += '<div class="split-view">';
+  const leftCollapsed = window._analysisLeftCollapsed === true;
+  const leftWidth = leftCollapsed ? '36px' : '260px';
+  html += '<div class="split-view" style="grid-template-columns:' + leftWidth + ' 1fr">';
 
-  // LEFT — analysis types
-  html += '<div class="split-left">';
-  html += \`<div style="font-size:16px;font-weight:600;color:var(--accent);margin-bottom:4px">\${esc(runGroup.ref)}</div>\`;
-  html += \`<div style="font-size:12px;color:var(--dim);margin-bottom:12px">\${runGroup.targetUrl ? esc(runGroup.targetUrl) + " · " : ""}Run: \${analysisSelectedRun.slice(0,8)}</div>\`;
-
-  for (const a of runGroup.items) {
-    const isSel = analysisSelectedId === a.id;
-    const color = typeColors[a.analysis_type] || "var(--dim)";
-    const label = typeLabels[a.analysis_type] || a.analysis_type;
-    html += \`<div class="tc-item \${isSel ? 'selected' : ''}" onclick="analysisSelectedId='\${a.id}';renderAnalysesPage()">
-      <span style="color:\${color};font-weight:600;font-size:13px">\${label}</span>
-      \${a.confidence !== null ? \`<span style="float:right;font-size:10px;color:var(--dim)">\${Math.round(a.confidence * 100)}%</span>\` : ""}
-      \${a.summary ? \`<div style="font-size:11px;color:var(--dim);margin-top:2px">\${esc(a.summary)}</div>\` : ""}
+  // LEFT — collapsible analysis type list
+  html += '<div class="split-left" style="display:flex;flex-direction:column;min-height:0;overflow:hidden">';
+  // Collapse toggle
+  html += '<div style="display:flex;align-items:center;' + (leftCollapsed ? 'justify-content:center;' : 'justify-content:space-between;') + 'padding:0 4px 10px;flex-shrink:0">';
+  if (!leftCollapsed) {
+    html += \`<div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">\${esc(runGroup.ref)}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:1px">Run \${analysisSelectedRun.slice(0,8)}</div>
     </div>\`;
+  }
+  html += '<button onclick="window._analysisLeftCollapsed=!' + leftCollapsed + ';renderAnalysesPage()" title="' + (leftCollapsed ? 'Expand' : 'Collapse') + ' panel" style="background:none;border:1px solid var(--border);border-radius:4px;padding:3px 5px;cursor:pointer;color:var(--muted);flex-shrink:0;display:flex;align-items:center">';
+  html += '<i class="ph ' + (leftCollapsed ? 'ph-caret-right' : 'ph-caret-left') + '" style="font-size:12px"></i></button>';
+  html += '</div>';
+
+  if (!leftCollapsed) {
+    html += '<div style="overflow-y:auto;flex:1;min-height:0">';
+    for (const a of runGroup.items) {
+      const isSel = analysisSelectedId === a.id;
+      const color = typeColors[a.analysis_type] || "var(--dim)";
+      const label = typeLabels[a.analysis_type] || a.analysis_type;
+      const typeIcons = { gap: 'ph-magnifying-glass', requirements: 'ph-list-checks', feasibility: 'ph-check-square', impact: 'ph-lightning' };
+      const icon = typeIcons[a.analysis_type] || 'ph-circle';
+      const conf = a.confidence !== null ? Math.round(a.confidence * 100) : null;
+      html += \`<div onclick="analysisSelectedId='\${a.id}';renderAnalysesPage()" style="display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border-radius:var(--radius-xs);margin-bottom:2px;cursor:pointer;border-left:2px solid \${isSel ? color : 'transparent'};background:\${isSel ? 'var(--surface-raised)' : 'transparent'};transition:background var(--transition)" onmouseover="if(!this.style.background||this.style.background==='transparent')this.style.background='var(--surface)'" onmouseout="this.style.background='\${isSel ? 'var(--surface-raised)' : 'transparent'}'">
+        <i class="ph \${icon}" style="font-size:14px;color:\${color};flex-shrink:0;margin-top:1px"></i>
+        <div style="min-width:0;flex:1">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+            <span style="font-size:12px;font-weight:\${isSel ? '600' : '500'};color:\${isSel ? 'var(--text)' : 'var(--dim)'}">\${label}</span>
+            \${conf !== null ? \`<span style="font-size:10px;padding:1px 5px;border-radius:8px;background:\${conf>=70?'rgba(63,185,80,0.12)':conf>=45?'rgba(210,153,34,0.12)':'rgba(248,81,73,0.1)'};color:\${conf>=70?'var(--green)':conf>=45?'var(--yellow)':'var(--red)'};white-space:nowrap">\${conf}%</span>\` : ""}
+          </div>
+          \${a.summary ? \`<div style="font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\${esc(a.summary)}</div>\` : ""}
+        </div>
+      </div>\`;
+    }
+    html += '</div>';
+  } else {
+    // Collapsed: just show color-coded dots
+    html += '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:2px">';
+    for (const a of runGroup.items) {
+      const isSel = analysisSelectedId === a.id;
+      const color = typeColors[a.analysis_type] || "var(--dim)";
+      const label = typeLabels[a.analysis_type] || a.analysis_type;
+      const typeIcons = { gap: 'ph-magnifying-glass', requirements: 'ph-list-checks', feasibility: 'ph-check-square', impact: 'ph-lightning' };
+      const icon = typeIcons[a.analysis_type] || 'ph-circle';
+      html += \`<button title="\${label}" onclick="analysisSelectedId='\${a.id}';renderAnalysesPage()" style="background:\${isSel ? 'var(--surface-raised)' : 'none'};border:1px solid \${isSel ? color : 'var(--border)'};border-radius:4px;padding:5px;cursor:pointer;color:\${color};display:flex;align-items:center;justify-content:center"><i class="ph \${icon}" style="font-size:14px"></i></button>\`;
+    }
+    html += '</div>';
   }
   html += '</div>';
 
   // RIGHT — detail
-  html += '<div class="split-right panel">';
+  html += '<div class="split-right panel" style="overflow-y:auto;min-height:0">';
   const selected = analysisSelectedId ? allAnalyses.find(a => a.id === analysisSelectedId) : null;
 
   if (!selected) {
-    html += '<div class="empty">Select an analysis to view details</div>';
+    html += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--muted)"><i class="ph ph-arrow-left" style="font-size:24px"></i><div style="font-size:13px">Select an analysis type</div></div>';
   } else {
     const color = typeColors[selected.analysis_type] || "var(--dim)";
     const label = typeLabels[selected.analysis_type] || selected.analysis_type;
+    const analysisView = window._analysisView || 'default';
+
+    const viewModes = [
+      { id: 'default',   icon: 'ph-list-bullets',    label: 'List'      },
+      { id: 'brief',     icon: 'ph-article',         label: 'Brief'     },
+      { id: 'board',     icon: 'ph-columns',         label: 'Board'     },
+      { id: 'heatmap',   icon: 'ph-grid-four',       label: 'Heat Map'  },
+      { id: 'scorecard', icon: 'ph-chart-pie-slice', label: 'Scorecard' },
+    ];
+
+    const conf = selected.confidence !== null ? Math.round(selected.confidence * 100) : null;
+    const confColor = conf !== null ? (conf >= 70 ? 'var(--green)' : conf >= 45 ? 'var(--yellow)' : 'var(--red)') : 'var(--muted)';
 
     html += \`<div class="tc-detail-panel">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="tc-detail-title" style="color:\${color};margin-bottom:0">\${label}</div>
-        <div style="display:flex;gap:6px">
-          <button onclick="exportAnalysisMd('\${selected.id}')" style="font-size:10px;color:var(--accent);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">Export MD</button>
-          <button onclick="exportAnalysisPdf('\${selected.id}')" style="font-size:10px;color:var(--accent);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">Export PDF</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0">
+          <div style="width:3px;height:28px;border-radius:2px;background:\${color};flex-shrink:0"></div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:-0.2px">\${label}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px">
+              \${selected.created_at.split('T')[0]}
+              \${conf !== null ? \` · <span style="color:\${confColor};font-weight:600">\${conf}% confidence</span>\` : ""}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div style="display:flex;gap:1px;background:var(--surface-raised);border:1px solid var(--border);border-radius:5px;padding:2px">
+            \${viewModes.map(v => \`<button onclick="window._analysisView='\${v.id}';renderAnalysesPage()" title="\${v.label}" style="display:flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border:none;border-radius:3px;cursor:pointer;background:\${analysisView===v.id?'var(--surface)':'transparent'};color:\${analysisView===v.id?'var(--text)':'var(--muted)'};font-weight:\${analysisView===v.id?'600':'400'};transition:all var(--transition)"><i class="ph \${v.icon}" style="font-size:12px"></i><span style="white-space:nowrap">\${v.label}</span></button>\`).join('')}
+          </div>
+          <div style="display:flex;gap:4px">
+            <button onclick="exportAnalysisMd('\${selected.id}')" style="font-size:10px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;display:flex;align-items:center;gap:3px" title="Export Markdown"><i class="ph ph-file-text" style="font-size:11px"></i>MD</button>
+            <button onclick="exportAnalysisPdf('\${selected.id}')" style="font-size:10px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;display:flex;align-items:center;gap:3px" title="Export PDF"><i class="ph ph-file-pdf" style="font-size:11px"></i>PDF</button>
+          </div>
         </div>
       </div>
-      \${selected.summary ? \`<div style="font-size:13px;color:var(--dim);margin-bottom:16px">\${esc(selected.summary)}</div>\` : ""}
-      <div style="font-size:11px;color:var(--dim);margin-bottom:12px">
-        Run: \${selected.run_id.slice(0,8)} · Created: \${selected.created_at}
-        \${selected.confidence !== null ? \` · Confidence: \${Math.round(selected.confidence * 100)}%\` : ""}
-      </div>\`;
+      \${selected.summary ? \`<div style="font-size:13px;color:var(--dim);margin-bottom:14px;line-height:1.6;padding-left:11px;border-left:2px solid var(--border)">\${esc(selected.summary)}</div>\` : ""}\`;
 
     try {
       const content = JSON.parse(repairJson(selected.content_json));
-      html += renderAnalysisContent(selected.analysis_type, content);
+      if      (analysisView === 'brief')     html += renderAnalysisBrief(selected.analysis_type, content, selected.confidence);
+      else if (analysisView === 'board')     html += renderAnalysisBoard(selected.analysis_type, content);
+      else if (analysisView === 'heatmap')   html += renderAnalysisHeatmap(selected.analysis_type, content);
+      else if (analysisView === 'scorecard') html += renderAnalysisScorecard(selected.analysis_type, content, selected.confidence);
+      else                                   html += renderAnalysisContent(selected.analysis_type, content);
     } catch {
       html += \`<pre style="font-size:12px;color:var(--dim);white-space:pre-wrap;max-height:500px;overflow:auto">\${esc(selected.content_json)}</pre>\`;
     }
@@ -5695,6 +5756,327 @@ function renderAnalysisContent(type, content) {
     html += \`<pre style="font-size:12px;color:var(--dim);white-space:pre-wrap;max-height:500px;overflow:auto">\${esc(JSON.stringify(content, null, 2))}</pre>\`;
   }
 
+  return html;
+}
+
+// ── Analysis View: QA Brief ──
+function renderAnalysisBrief(type, content, confidence) {
+  var html = '';
+
+  function callout(phIcon, title, color, items) {
+    if (!items || items.length === 0) return '';
+    var h = '<div style="border-left:3px solid ' + color + ';padding:10px 14px;margin-bottom:10px;background:var(--surface-raised);border-radius:0 4px 4px 0">';
+    h += '<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">';
+    h += '<i class="ph ' + phIcon + '" style="font-size:14px;color:' + color + ';flex-shrink:0"></i>';
+    h += '<span style="font-size:11px;font-weight:600;color:' + color + ';text-transform:uppercase;letter-spacing:0.5px">' + title + '</span>';
+    h += '<span style="font-size:10px;color:var(--muted);margin-left:auto;background:var(--surface);padding:1px 6px;border-radius:8px">' + items.length + '</span>';
+    h += '</div>';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var text = typeof item === 'string' ? item : (item.risk || item.area || item.description || JSON.stringify(item));
+      var detail = typeof item === 'object' && item.description && item.description !== text ? item.description : '';
+      var sev = typeof item === 'object' && item.severity ? item.severity : '';
+      var mit = typeof item === 'object' && item.mitigation ? item.mitigation : '';
+      h += '<div style="font-size:12px;color:var(--text);padding:5px 0;border-bottom:1px solid var(--border);line-height:1.5;display:flex;gap:8px;align-items:flex-start">';
+      h += '<i class="ph ph-caret-right" style="font-size:10px;color:' + color + ';flex-shrink:0;margin-top:3px"></i>';
+      h += '<div style="flex:1;min-width:0">' + esc(text);
+      if (sev) h += '<span style="font-size:10px;margin-left:6px;padding:1px 5px;border-radius:4px;background:var(--surface);color:' + severityColor(sev) + ';vertical-align:middle">' + esc(sev) + '</span>';
+      if (detail) h += '<div style="font-size:11px;color:var(--dim);margin-top:2px">' + esc(detail) + '</div>';
+      if (mit) h += '<div style="font-size:11px;color:var(--green);margin-top:3px;display:flex;align-items:center;gap:4px"><i class="ph ph-arrow-bend-down-right" style="font-size:10px"></i>' + esc(mit) + '</div>';
+      h += '</div></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  if (type === 'gap') {
+    html += callout('ph-check-circle', 'Known Facts', 'var(--green)', content.known_facts);
+    html += callout('ph-question', 'Unknowns', 'var(--yellow)', content.unknowns);
+    html += callout('ph-wave-triangle', 'Assumptions', 'var(--orange)', content.assumptions);
+    html += callout('ph-prohibit', 'Blockers', 'var(--red)', content.blocked_items);
+  } else if (type === 'requirements') {
+    html += callout('ph-check-circle', 'Explicit', 'var(--green)', content.explicit_requirements);
+    html += callout('ph-lightbulb', 'Implicit', 'var(--accent)', content.implicit_requirements);
+    html += callout('ph-warning', 'Ambiguous', 'var(--yellow)', content.ambiguous_requirements);
+    html += callout('ph-x-circle', 'Missing', 'var(--red)', content.missing_requirements);
+  } else if (type === 'feasibility') {
+    var testable = content.testable;
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-left:3px solid ' + (testable ? 'var(--green)' : 'var(--red)') + ';background:var(--surface-raised);border-radius:0 4px 4px 0;margin-bottom:10px">';
+    html += '<i class="ph ' + (testable ? 'ph-check-circle' : 'ph-x-circle') + '" style="font-size:16px;color:' + (testable ? 'var(--green)' : 'var(--red)') + '"></i>';
+    html += '<span style="font-size:13px;font-weight:600;color:' + (testable ? 'var(--green)' : 'var(--red)') + '">' + (testable ? 'Testable' : 'Not Testable') + '</span></div>';
+    if (content.recommended_approach && typeof content.recommended_approach === 'string') {
+      html += callout('ph-map-trifold', 'Recommended Approach', 'var(--accent)', [content.recommended_approach]);
+    }
+    html += callout('ph-prohibit', 'Blockers', 'var(--red)', content.blockers);
+    html += callout('ph-warning', 'Risks', 'var(--yellow)', content.risks || content.risk_areas);
+  } else if (type === 'impact') {
+    if (content.summary) html += callout('ph-clipboard-text', 'Summary', 'var(--dim)', [content.summary]);
+    html += callout('ph-lightning', 'Impacted Areas', 'var(--red)', content.impacted_areas);
+    html += callout('ph-link', 'Dependency Risks', 'var(--orange)', content.dependency_risks);
+    html += callout('ph-magnifying-glass', 'Test Gaps', 'var(--yellow)', content.test_gaps || content.existing_test_gaps);
+    html += callout('ph-arrows-clockwise', 'Regression Risks', 'var(--red)', content.regression_risks);
+    html += callout('ph-gear', 'Config Concerns', 'var(--purple)', content.config_concerns);
+  }
+  return html || '<div class="empty">No structured content for brief view.</div>';
+}
+
+// ── Analysis View: Board ──
+function renderAnalysisBoard(type, content) {
+  function getSections(t, c) {
+    if (t === 'gap') return [
+      { label: 'Known Facts',  color: '#3fb950', icon: 'ph-check-circle',  items: c.known_facts   || [] },
+      { label: 'Unknowns',     color: '#d29922', icon: 'ph-question',       items: c.unknowns      || [] },
+      { label: 'Assumptions',  color: '#d27122', icon: 'ph-wave-triangle',  items: c.assumptions   || [] },
+      { label: 'Blocked',      color: '#f85149', icon: 'ph-prohibit',       items: c.blocked_items || [] },
+    ];
+    if (t === 'requirements') return [
+      { label: 'Explicit',   color: '#3fb950', icon: 'ph-check-circle', items: c.explicit_requirements  || [] },
+      { label: 'Implicit',   color: '#58a6ff', icon: 'ph-lightbulb',    items: c.implicit_requirements  || [] },
+      { label: 'Ambiguous',  color: '#d29922', icon: 'ph-warning',      items: c.ambiguous_requirements || [] },
+      { label: 'Missing',    color: '#f85149', icon: 'ph-x-circle',     items: c.missing_requirements   || [] },
+    ];
+    if (t === 'feasibility') return [
+      { label: 'Approach', color: '#58a6ff', icon: 'ph-map-trifold', items: c.recommended_approach && typeof c.recommended_approach === 'string' ? [c.recommended_approach] : [] },
+      { label: 'Blockers', color: '#f85149', icon: 'ph-prohibit',    items: c.blockers || [] },
+      { label: 'Risks',    color: '#d29922', icon: 'ph-warning',     items: (c.risks || c.risk_areas || []).map(function(r) { return typeof r === 'string' ? r : (r.risk || r.area || r.description || ''); }).filter(Boolean) },
+    ];
+    if (t === 'impact') return [
+      { label: 'Impacted',      color: '#f85149', icon: 'ph-lightning',        items: (c.impacted_areas    || []).map(function(r) { return typeof r === 'string' ? r : (r.area || r.description || ''); }) },
+      { label: 'Dependencies',  color: '#d27122', icon: 'ph-link',             items: (c.dependency_risks  || []).map(function(r) { return typeof r === 'string' ? r : (r.risk || r.description || ''); }) },
+      { label: 'Test Gaps',     color: '#d29922', icon: 'ph-magnifying-glass', items: c.test_gaps || c.existing_test_gaps || [] },
+      { label: 'Regressions',   color: '#bc8cff', icon: 'ph-arrows-clockwise', items: (c.regression_risks || []).map(function(r) { return typeof r === 'string' ? r : (r.risk || r.description || ''); }) },
+    ];
+    return [];
+  }
+
+  var sections = getSections(type, content).filter(function(s) { return s.items.length > 0; });
+  if (sections.length === 0) return '<div class="empty">No items to show on board.</div>';
+
+  var cols = Math.min(sections.length, 4);
+  var html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:10px;align-items:start">';
+
+  for (var i = 0; i < sections.length; i++) {
+    var s = sections[i];
+    html += '<div style="background:var(--surface-raised);border-radius:6px;border:1px solid var(--border);overflow:hidden">';
+    // Column header
+    html += '<div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px">';
+    html += '<i class="ph ' + s.icon + '" style="font-size:13px;color:' + s.color + '"></i>';
+    html += '<span style="font-size:11px;font-weight:600;color:var(--text)">' + s.label + '</span>';
+    html += '<span style="font-size:10px;color:var(--muted);margin-left:auto;background:var(--surface);padding:1px 6px;border-radius:8px;border:1px solid var(--border)">' + s.items.length + '</span>';
+    html += '</div>';
+    // Cards
+    html += '<div style="padding:8px;display:flex;flex-direction:column;gap:6px">';
+    for (var j = 0; j < s.items.length; j++) {
+      var item = s.items[j];
+      var text = typeof item === 'string' ? item : (item.risk || item.area || item.description || JSON.stringify(item));
+      var sev  = typeof item === 'object' && item.severity ? item.severity : '';
+      var mit  = typeof item === 'object' && item.mitigation ? item.mitigation : '';
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ' + s.color + ';border-radius:3px;padding:7px 9px;font-size:12px;color:var(--text);line-height:1.5;word-break:break-word">';
+      html += esc(text);
+      if (sev) html += '<div style="margin-top:3px;font-size:10px;color:' + severityColor(sev) + ';font-weight:500">' + esc(sev) + '</div>';
+      if (mit) html += '<div style="margin-top:4px;font-size:10px;color:var(--green);display:flex;align-items:center;gap:3px"><i class="ph ph-arrow-bend-down-right" style="font-size:9px"></i>' + esc(mit) + '</div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Analysis View: Risk Heat Map ──
+function renderAnalysisHeatmap(type, content) {
+  // Map items to severity(0-2) × likelihood(0-2) cells
+  // Returns array of {label, items[]}
+  var cells = [];
+  for (var r = 0; r < 3; r++) cells.push([[], [], []]);
+
+  function addItem(text, sev, lik) {
+    sev = Math.max(0, Math.min(2, sev));
+    lik = Math.max(0, Math.min(2, lik));
+    cells[lik][sev].push(text);
+  }
+
+  if (type === 'gap') {
+    (content.blocked_items || []).forEach(function(i) { addItem(typeof i === 'string' ? i : i.description || '', 2, 2); });
+    (content.unknowns      || []).forEach(function(i, idx) { addItem(typeof i === 'string' ? i : i.description || '', 1, idx % 2 === 0 ? 2 : 1); });
+    (content.assumptions   || []).forEach(function(i, idx) { addItem(typeof i === 'string' ? i : i.description || '', 0 + (idx % 2), 1); });
+  } else if (type === 'requirements') {
+    (content.missing_requirements   || []).forEach(function(i) { addItem(i, 2, 2); });
+    (content.ambiguous_requirements || []).forEach(function(i, idx) { addItem(i, 1, idx % 2 === 0 ? 2 : 1); });
+    (content.implicit_requirements  || []).forEach(function(i, idx) { addItem(i, 0, 1 + (idx % 2)); });
+  } else if (type === 'feasibility') {
+    (content.blockers || []).forEach(function(i) { addItem(typeof i === 'string' ? i : (i.risk || i.description || ''), 2, 2); });
+    ((content.risks || content.risk_areas) || []).forEach(function(i, idx) {
+      var sev = (typeof i === 'object' && i.severity) ? (['low','medium','high'].indexOf((i.severity||'').toLowerCase())) : 1;
+      if (sev < 0) sev = 1;
+      addItem(typeof i === 'string' ? i : (i.risk || i.area || i.description || ''), sev, idx % 2 === 0 ? 2 : 1);
+    });
+  } else if (type === 'impact') {
+    var mapSev = function(s) { return s && s.toLowerCase() === 'high' ? 2 : s && s.toLowerCase() === 'medium' ? 1 : 0; };
+    var mapLik = function(s) { return s && s.toLowerCase() === 'high' ? 2 : s && s.toLowerCase() === 'medium' ? 1 : 0; };
+    (content.impacted_areas || []).forEach(function(i, idx) {
+      addItem(typeof i === 'string' ? i : (i.area || i.description || ''), mapSev(i && i.severity) || 2, idx % 2 === 0 ? 2 : 1);
+    });
+    (content.dependency_risks || []).forEach(function(i, idx) {
+      addItem(typeof i === 'string' ? i : (i.risk || i.description || ''), 1 + (idx % 2), 1);
+    });
+    (content.regression_risks || []).forEach(function(i) {
+      addItem(typeof i === 'string' ? i : (i.risk || i.description || ''), 1, 2);
+    });
+  }
+
+  var empty = cells.every(function(row) { return row.every(function(cell) { return cell.length === 0; }); });
+  if (empty) return '<div class="empty" style="padding:24px">No items to map. Heat map works best with gap, requirements, feasibility, or impact analysis.</div>';
+
+  var sevLabels  = ['Low Impact', 'Med Impact', 'High Impact'];
+  var likLabels  = ['Low Likely', 'Med Likely', 'High Likely'];
+  var cellColors = [
+    ['rgba(63,185,80,0.15)',  'rgba(210,153,34,0.15)', 'rgba(210,153,34,0.2)'],
+    ['rgba(210,153,34,0.12)', 'rgba(210,113,34,0.18)', 'rgba(248,81,73,0.18)'],
+    ['rgba(210,153,34,0.15)', 'rgba(248,81,73,0.20)',  'rgba(248,81,73,0.30)'],
+  ];
+  var cellBorder = [
+    ['#3fb950', '#d29922', '#d29922'],
+    ['#d29922', '#d27122', '#f85149'],
+    ['#d29922', '#f85149', '#f85149'],
+  ];
+
+  var html = '';
+  html += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ph ph-info" style="font-size:11px"></i>Each dot is one item. Hover to preview, click to read in full. Darker cell = higher risk zone.</div>';
+  html += '<div style="display:grid;grid-template-columns:64px 1fr 1fr 1fr;gap:4px">';
+
+  // Header row
+  html += '<div></div>';
+  for (var c = 0; c < 3; c++) {
+    html += '<div style="text-align:center;font-size:10px;font-weight:600;color:var(--muted);padding:4px 0">' + sevLabels[c] + '</div>';
+  }
+
+  // Data rows (high likelihood first)
+  for (var r2 = 2; r2 >= 0; r2--) {
+    html += '<div style="font-size:10px;font-weight:600;color:var(--muted);display:flex;align-items:center;justify-content:flex-end;padding-right:8px;text-align:right">' + likLabels[r2] + '</div>';
+    for (var c2 = 0; c2 < 3; c2++) {
+      var cellItems = cells[r2][c2];
+      var bg = cellColors[r2][c2];
+      var bd = cellBorder[r2][c2];
+      html += '<div style="min-height:72px;background:' + bg + ';border:1px solid ' + bd + '44;border-radius:6px;padding:6px;display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start">';
+      for (var k = 0; k < cellItems.length; k++) {
+        html += '<div data-text="' + esc(cellItems[k]) + '" title="' + esc(cellItems[k]) + '" style="width:10px;height:10px;border-radius:50%;background:' + bd + ';cursor:pointer;flex-shrink:0" onclick="alert(this.dataset.text)"></div>';
+      }
+      if (cellItems.length > 0) {
+        html += '<div style="font-size:9px;color:var(--muted);width:100%;margin-top:2px">' + cellItems.length + ' item' + (cellItems.length > 1 ? 's' : '') + '</div>';
+      }
+      html += '</div>';
+    }
+  }
+  html += '</div>';
+
+  html += '<div style="margin-top:10px;display:flex;gap:14px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px">';
+  html += '<span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3fb950"></span>Low risk</span>';
+  html += '<span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d29922"></span>Medium</span>';
+  html += '<span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f85149"></span>High risk</span>';
+  html += '</div>';
+  return html;
+}
+
+// ── Analysis View: Coverage Scorecard ──
+function renderAnalysisScorecard(type, content, confidence) {
+  function bar(label, count, total, color) {
+    if (total === 0) return '';
+    var pct = Math.round((count / total) * 100);
+    return '<div style="margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">' +
+      '<span style="color:var(--text)">' + label + '</span>' +
+      '<span style="color:' + color + ';font-weight:600">' + count + ' / ' + total + ' &nbsp;<span style="color:var(--muted)">' + pct + '%</span></span>' +
+      '</div>' +
+      '<div style="height:8px;border-radius:4px;background:var(--surface-raised);overflow:hidden">' +
+      '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:4px;transition:width 0.4s"></div>' +
+      '</div></div>';
+  }
+
+  var html = '';
+  var confPct = confidence !== null && confidence !== undefined ? Math.round(confidence * 100) : null;
+
+  // Big confidence ring
+  var ringColor = confPct !== null ? (confPct >= 75 ? '#3fb950' : confPct >= 45 ? '#d29922' : '#f85149') : 'var(--muted)';
+  var ringPct   = confPct !== null ? confPct : 0;
+  var circ = 2 * Math.PI * 22; // r=22
+  var dash = (ringPct / 100) * circ;
+
+  html += '<div style="display:flex;gap:16px;align-items:center;margin-bottom:18px;padding:12px 14px;background:var(--surface-raised);border-radius:6px;border:1px solid var(--border)">';
+  html += '<svg width="56" height="56" viewBox="0 0 64 64" style="flex-shrink:0">';
+  html += '<circle cx="32" cy="32" r="22" fill="none" stroke="var(--border)" stroke-width="5"/>';
+  html += '<circle cx="32" cy="32" r="22" fill="none" stroke="' + ringColor + '" stroke-width="5" stroke-dasharray="' + dash.toFixed(1) + ' ' + circ.toFixed(1) + '" stroke-linecap="round" transform="rotate(-90 32 32)"/>';
+  html += '<text x="32" y="36" text-anchor="middle" font-size="12" font-weight="700" fill="' + ringColor + '">' + (confPct !== null ? confPct + '%' : '—') + '</text>';
+  html += '</svg>';
+  html += '<div>';
+  html += '<div style="font-size:13px;font-weight:600;color:var(--text)">Confidence Score</div>';
+  html += '<div style="font-size:11px;color:var(--dim);margin-top:2px">';
+  if (confPct === null)      html += 'No score recorded';
+  else if (confPct >= 75)    html += 'High — solid foundation for testing';
+  else if (confPct >= 45)    html += 'Moderate — unknowns remain';
+  else                       html += 'Low — significant gaps to resolve';
+  html += '</div></div></div>';
+
+  // Per-category bars
+  if (type === 'gap') {
+    var known = (content.known_facts   || []).length;
+    var unk   = (content.unknowns      || []).length;
+    var assum = (content.assumptions   || []).length;
+    var block = (content.blocked_items || []).length;
+    var total = known + unk + assum + block;
+    html += '<div style="margin-bottom:8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">Coverage breakdown</div>';
+    html += bar('✓ Known Facts',  known, total, '#3fb950');
+    html += bar('? Unknowns',     unk,   total, '#d29922');
+    html += bar('~ Assumptions',  assum, total, '#d27122');
+    html += bar('✗ Blocked',      block, total, '#f85149');
+    var readiness = total > 0 ? Math.round((known / total) * 100) : 0;
+    html += '<div style="margin-top:14px;padding:10px 12px;border-radius:6px;background:' + (readiness >= 60 ? 'rgba(63,185,80,0.1)' : 'rgba(248,81,73,0.08)') + ';font-size:12px;color:' + (readiness >= 60 ? 'var(--green)' : 'var(--red)') + '">';
+    html += '<strong>Test Readiness: ' + readiness + '%</strong> — ' + known + ' known · ' + unk + ' unknown · ' + block + ' blocked';
+    html += '</div>';
+  } else if (type === 'requirements') {
+    var exp  = (content.explicit_requirements  || []).length;
+    var imp  = (content.implicit_requirements  || []).length;
+    var amb  = (content.ambiguous_requirements || []).length;
+    var miss = (content.missing_requirements   || []).length;
+    var tot2 = exp + imp + amb + miss;
+    html += '<div style="margin-bottom:8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">Requirements coverage</div>';
+    html += bar('Explicit',   exp,  tot2, '#3fb950');
+    html += bar('Implicit',   imp,  tot2, '#58a6ff');
+    html += bar('Ambiguous',  amb,  tot2, '#d29922');
+    html += bar('Missing',    miss, tot2, '#f85149');
+    var completeness = tot2 > 0 ? Math.round(((exp + imp) / tot2) * 100) : 0;
+    html += '<div style="margin-top:14px;padding:10px 12px;border-radius:6px;background:var(--surface-raised);font-size:12px;color:var(--dim)">';
+    html += 'Completeness: <strong style="color:' + (completeness >= 70 ? 'var(--green)' : 'var(--yellow)') + '">' + completeness + '%</strong> · ' + miss + ' missing · ' + amb + ' ambiguous';
+    html += '</div>';
+  } else if (type === 'feasibility') {
+    var bl = (content.blockers || []).length;
+    var ri = ((content.risks || content.risk_areas) || []).length;
+    html += '<div style="margin-bottom:8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">Feasibility overview</div>';
+    html += '<div style="display:flex;align-items:center;gap:7px;padding:10px 12px;border-radius:5px;background:' + (content.testable ? 'rgba(63,185,80,0.08)' : 'rgba(248,81,73,0.08)') + ';font-size:13px;color:' + (content.testable ? 'var(--green)' : 'var(--red)') + ';font-weight:600;margin-bottom:12px;border:1px solid ' + (content.testable ? 'rgba(63,185,80,0.2)' : 'rgba(248,81,73,0.2)') + '">';
+    html += '<i class="ph ' + (content.testable ? 'ph-check-circle' : 'ph-x-circle') + '" style="font-size:15px"></i>';
+    html += (content.testable ? 'Testable' : 'Not Testable') + '</div>';
+    if (bl + ri > 0) {
+      html += bar('Blockers', bl, bl + ri, '#f85149');
+      html += bar('Risks',    ri, bl + ri, '#d29922');
+    }
+  } else if (type === 'impact') {
+    var all = [];
+    ['impacted_areas','dependency_risks','test_gaps','existing_test_gaps','regression_risks','config_concerns','compatibility_issues','infrastructure_concerns','hidden_edge_cases'].forEach(function(k) {
+      (content[k] || []).forEach(function(i) { all.push({ key: k, item: i }); });
+    });
+    var high = all.filter(function(x) { return typeof x.item === 'object' && x.item.severity && x.item.severity.toLowerCase() === 'high'; }).length;
+    var med  = all.filter(function(x) { return typeof x.item === 'object' && x.item.severity && x.item.severity.toLowerCase() === 'medium'; }).length;
+    var other = all.length - high - med;
+    var tot3 = all.length || 1;
+    html += '<div style="margin-bottom:8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">Impact distribution</div>';
+    if (all.length === 0) {
+      html += '<div style="color:var(--dim);font-size:13px">No impact items found.</div>';
+    } else {
+      html += bar('High severity', high,  tot3, '#f85149');
+      html += bar('Medium',        med,   tot3, '#d29922');
+      html += bar('Low / Other',   other, tot3, '#58a6ff');
+    }
+  }
   return html;
 }
 
